@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+        request.auth.token.email == "bivaaxtrader@gmail.com" ||
+        request.auth.token.email == "hamproosapport@gmail.com"
+      );
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // KYC Documents: Users can upload their own, admins can read all
+    match /kyc/{userId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    // Public Assets (Banners, Logos)
+    match /public/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // User Avatars
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+    
+    // Deposit Proofs
+    match /deposits/{userId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Bivaax",
+  "description": "A custom application repository on GitHub providing specialized tools and functional resources for user installation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
+    "MAJOR_CAPABILITY_CLOUD_SQL"
+  ]
+}
