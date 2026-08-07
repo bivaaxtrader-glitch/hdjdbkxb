@@ -39,9 +39,9 @@
         "countryCode": "BD",
         "smart_mode_enabled": 0,
         "smart_mode_strategy": "auto_25_percent",
-        "createdAt": 1786093971756,
-        "created_at": 1786093971756,
-        "updated_at": 1786093971756
+        "createdAt": 1786104021360,
+        "created_at": 1786104021360,
+        "updated_at": 1786104021360
       },
       "admin_seed_0kikepnv": {
         "id": "admin_seed_0kikepnv",
@@ -56,7 +56,7 @@
         "demoBalance": 10000,
         "currency": "USD",
         "isVerified": false,
-        "isAdmin": false,
+        "isAdmin": true,
         "kycStatus": "unverified",
         "affiliateId": "GOBJP7",
         "referralCode": "GOBJP7",
@@ -68,9 +68,9 @@
         "countryCode": "BD",
         "smart_mode_enabled": 0,
         "smart_mode_strategy": "auto_25_percent",
-        "createdAt": 1786093047321,
-        "created_at": 1786093047321,
-        "updated_at": 1786093047321
+        "createdAt": 1786101684499,
+        "created_at": 1786101684499,
+        "updated_at": 1786101684499
       }
     },
     "news": {

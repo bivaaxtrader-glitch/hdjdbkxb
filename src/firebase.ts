@@ -3,13 +3,14 @@ import { getAuth, signInWithPopup as fbSignInWithPopup, GoogleAuthProvider as Fb
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyB8miEUU7d5t3DFnhgo37qK_Jsf4t5KLl4",
-  authDomain: "bivaax-31aec.firebaseapp.com",
-  projectId: "bivaax-31aec",
-  storageBucket: "bivaax-31aec.firebasestorage.app",
-  messagingSenderId: "645553787289",
-  appId: "1:645553787289:web:59ff80f839f8446a370308",
-  measurementId: "G-YD969NY4BC"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyB8miEUU7d5t3DFnhgo37qK_Jsf4t5KLl4",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "bivaax-31aec.firebaseapp.com",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://bivaax-31aec-default-rtdb.firebaseio.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "bivaax-31aec",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "bivaax-31aec.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "645553787289",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:645553787289:web:59ff80f839f8446a370308",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-YD969NY4BC"
 };
 
 // Initialize Firebase
