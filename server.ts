@@ -53,16 +53,13 @@ async function startServer() {
   }));
   
   app.use(cors());
+  // Explicitly handle OPTIONS preflight
+  app.options('*', cors());
+  
   app.use(compression());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use(cookieParser());
-  
-  // Debug logging
-  app.use((req, res, next) => {
-    console.log(`[Request] ${req.method} ${req.originalUrl}`);
-    next();
-  });
   
   // Logging
   app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
@@ -70,14 +67,14 @@ async function startServer() {
   // Rate Limiting
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10000, // Increased for dev/heavy use
+    max: 100000, // Very high for dev
     message: { error: 'Too many requests, please try again later.' }
   });
   app.use('/api/', limiter);
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100, // Increased for dev
+    max: 1000, // High for dev
     message: { error: 'Too many login/register attempts. Please try again after 15 minutes.' }
   });
   app.use('/api/auth/', authLimiter);

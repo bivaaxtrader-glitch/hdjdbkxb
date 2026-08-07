@@ -2,9 +2,9 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App';
-import { seedPromo } from './seedData';
+// import { seedPromo } from './seedData';
 
-seedPromo();
+// seedPromo();
 
 import './index.css';
 
@@ -22,10 +22,31 @@ console.error = (...args: any[]) => {
   originalConsoleError(...args);
 };
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <HelmetProvider>
-      <App />
-    </HelmetProvider>
-  </StrictMode>,
-);
+// Establishing session for AI Studio Preview Environment
+const establishSession = async () => {
+  try {
+    // A simple GET request will trigger the cookie check redirect if needed.
+    // GET redirects work correctly, while POST redirects to cookie check can cause 405 errors.
+    console.log("Establishing session...");
+    const res = await fetch('/api/health');
+    if (res.ok) {
+       console.log("Session established successfully.");
+    }
+  } catch (e) {
+    console.error("Failed to establish session:", e);
+  }
+};
+
+const init = async () => {
+  await establishSession();
+  
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <HelmetProvider>
+        <App />
+      </HelmetProvider>
+    </StrictMode>,
+  );
+};
+
+init();

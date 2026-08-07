@@ -39,9 +39,38 @@
         "countryCode": "BD",
         "smart_mode_enabled": 0,
         "smart_mode_strategy": "auto_25_percent",
-        "createdAt": 1786091081537,
-        "created_at": 1786091081537,
-        "updated_at": 1786091081537
+        "createdAt": 1786093971756,
+        "created_at": 1786093971756,
+        "updated_at": 1786093971756
+      },
+      "admin_seed_0kikepnv": {
+        "id": "admin_seed_0kikepnv",
+        "uid": "admin_seed_0kikepnv",
+        "email": "hamproosapport@gmail.com",
+        "displayName": "Bivaax Super Admin",
+        "gender": null,
+        "dob": null,
+        "photoURL": "",
+        "balance": 0,
+        "realBalance": 0,
+        "demoBalance": 10000,
+        "currency": "USD",
+        "isVerified": false,
+        "isAdmin": false,
+        "kycStatus": "unverified",
+        "affiliateId": "GOBJP7",
+        "referralCode": "GOBJP7",
+        "referralCount": 0,
+        "totalLiveVolume": 0,
+        "status": "Standard",
+        "phone": null,
+        "country": "Bangladesh",
+        "countryCode": "BD",
+        "smart_mode_enabled": 0,
+        "smart_mode_strategy": "auto_25_percent",
+        "createdAt": 1786093047321,
+        "created_at": 1786093047321,
+        "updated_at": 1786093047321
       }
     },
     "news": {
@@ -58,6 +87,14 @@
         "isPlatformNews": true,
         "reactions": 100,
         "badReactions": 0
+      },
+      "r2dmi6a4vjm": {
+        "title": "Test News",
+        "content": "Test Content"
+      },
+      "olvcmx67uk": {
+        "title": "Test News",
+        "content": "Test Content"
       }
     },
     "promos": {
@@ -61947,37 +61984,4 @@
         "close": 39.24340999065565,
         "volume": 95.04410513972229,
         "openTime": 1786086840,
-        "closeTime": 1786086900,
-        "updatedAt": 1786086903692
-      },
-      "USD/TRY (OTC)_real_5 minutes_1786086600": {
-        "pair": "USD/TRY (OTC)",
-        "type": "real",
-        "timeframe": "5 minutes",
-        "open": 49.189724168268484,
-        "high": 49.189724168268484,
-        "low": 39.035772272091094,
-        "close": 39.24340999065565,
-        "volume": 390.30778249158874,
-        "openTime": 1786086600,
-        "closeTime": 1786086900,
-        "updatedAt": 1786086903784
-      },
-      "USD/TRY (OTC)_real_15 minutes_1786086000": {
-        "pair": "USD/TRY (OTC)",
-        "type": "real",
-        "timeframe": "15 minutes",
-        "open": 40.453963615415255,
-        "high": 52.575433371603864,
-        "low": 39.035772272091094,
-        "close": 39.24340999065565,
-        "volume": 1182.3942687063052,
-        "openTime": 1786086000,
-        "closeTime": 1786086900,
-        "updatedAt": 1786086903868
-      },
-      "USD/MXN (OTC)_real_1 minute_1786086840": {
-        "pair": "USD/MXN (OTC)",
-        "type": "real",
-        "timeframe": "1 minute",
-        "open": 12.6354225940426
+        "closeTime": 17

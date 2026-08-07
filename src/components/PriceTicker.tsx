@@ -16,7 +16,11 @@ export const PriceTicker: React.FC = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {
-    const handleConnect = () => setIsConnected(true);
+    socket.on('connect', () => {
+      setIsConnected(true);
+      // Join real market room for public ticker updates
+      socket.emit('subscribe_market', 'all', 'real');
+    });
     const handleDisconnect = () => setIsConnected(false);
     
     const handleMarketTicks = (ticks: any) => {

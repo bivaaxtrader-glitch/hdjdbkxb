@@ -5,13 +5,13 @@ import { adminDb } from '../lib/firebase-admin.ts';
 import { generateSingleCandleOHLC } from './candlestickEngine.ts';
 
 export const markets_real = JSON.parse(JSON.stringify(markets));
-export const markets_demo = markets_real;
+export const markets_demo = JSON.parse(JSON.stringify(markets));
 
 export const history_real: Record<string, Record<string, any[]>> = {};
-export const history_demo = history_real;
+export const history_demo: Record<string, Record<string, any[]>> = {};
 
 export const currentCandles_real: Record<string, Record<string, any>> = {};
-export const currentCandles_demo = currentCandles_real;
+export const currentCandles_demo: Record<string, Record<string, any>> = {};
 
 export const TIMEFRAMES = [
   "1 second",
@@ -214,7 +214,7 @@ export async function initializeCandlesFromDB() {
   for (const pair of pairKeys) {
     // Yield every pair to prevent long blocking
     await new Promise(resolve => setImmediate(resolve));
-    for (const type of ['real']) {
+    for (const type of ['real', 'demo']) {
       try {
         // A. Copy old 5s data from the candles table if historical_candles is empty for 5s
         const tf5sCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, '5 seconds') as any;
