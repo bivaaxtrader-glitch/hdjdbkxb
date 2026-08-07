@@ -49,6 +49,15 @@ router.get('/news', async (req, res) => {
   }
 });
 
+router.post('/news', async (req, res) => {
+  try {
+    const docRef = await adminDb.collection('news').add(req.body);
+    res.json({ id: docRef.id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Market State ---
 router.get('/market/state', (req, res) => {
   res.json({
@@ -318,7 +327,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
 
   try {
     // Attempt 1: ip-api.com
-    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(2000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.status === 'success') {
@@ -326,12 +335,12 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
       }
     }
   } catch (err) {
-    logger.error(`getCountryFromIp error (ip-api): ${err}`);
+    logger.warn(`getCountryFromIp error (ip-api): ${err}`);
   }
 
   try {
     // Attempt 2: geojs.io
-    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(2000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.country) {
@@ -339,7 +348,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
       }
     }
   } catch (err) {
-    logger.error(`getCountryFromIp error (geojs): ${err}`);
+    logger.warn(`getCountryFromIp error (geojs): ${err}`);
   }
 
   return { countryName: 'Bangladesh', countryCode: 'BD' };
@@ -3765,6 +3774,17 @@ router.patch('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   try {
     await adminDb.collection(collection).doc(id).update(req.body);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:collection/:id', async (req, res) => {
+  console.log(`[DEBUG] Reached generic POST route for ${req.params.collection}/${req.params.id}`);
+  const { collection, id } = req.params;
+  try {
+    await adminDb.collection(collection).doc(id).set(req.body, { merge: true });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

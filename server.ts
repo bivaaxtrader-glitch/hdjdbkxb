@@ -58,6 +58,12 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use(cookieParser());
   
+  // Debug logging
+  app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+  
   // Logging
   app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
 
