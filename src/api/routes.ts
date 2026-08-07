@@ -12,6 +12,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { adminDb, syncUserToFirestore } from '../lib/firebase-admin.ts';
 import { sendEmail } from '../lib/email.ts';
 
+import { handleSupportQuery } from './support-agent.ts';
 import { body, validationResult } from 'express-validator';
 
 import { 
@@ -26,6 +27,12 @@ const router = express.Router();
 // --- Market News ---
 router.get('/news', async (req, res) => {
   try {
+    if (req.query.type === 'collection') {
+      const snapshot = await adminDb.collection('news').get();
+      const docs: any[] = [];
+      snapshot.forEach((doc: any) => docs.push({ id: doc.id, ...doc.data() }));
+      return res.json(docs);
+    }
     // Return news as expected by NewsWidget and TradeTerminal
     res.json({
       news: [
@@ -311,7 +318,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
 
   try {
     // Attempt 1: ip-api.com
-    const response = await fetch(`http://ip-api.com/json/${ip}`);
+    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(1000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.status === 'success') {
@@ -324,7 +331,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
 
   try {
     // Attempt 2: geojs.io
-    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`);
+    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(1000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.country) {
@@ -1532,42 +1539,24 @@ router.get('/market-movers', async (req, res) => {
 
 // --- Support API ---
 
-// AI Assistant Route
+// AI Assistant Route (Agentic)
 router.post('/support/ai-chat', async (req, res) => {
-    const { userId, message } = req.body;
+    const { userId, message, history, mode } = req.body;
     if (!userId || !message) return res.status(400).json({ error: 'Missing userId or message' });
 
     try {
-        const client = getGeminiClient();
-        if (!client) {
-            return res.status(503).json({ error: 'AI Support service is currently unavailable.' });
-        }
-        const chat = client.chats.create({
-            model: 'gemini-3.1-flash',
-            config: {
-                systemInstruction: `You are a professional customer support AI for Bivaax Trade, a global trading ecosystem.
-                - Answer ONLY questions related to Bivaax Trade (trading, deposits, withdrawals, account issues).
-                - For any question about other topics, politely decline.
-                - Never invent information.
-                - If you are not confident, or if the user requests a human agent, set a flag 'transferToAgent': true in your response.
-                - Respond in the user's language (English or Bangla).
-                
-                Return JSON: { "response": string, "transferToAgent": boolean }`
-            }
-        });
-
-        const result = await chat.sendMessage({ message });
-        const text = result.text || '{}';
-        const responseData = JSON.parse(text);
+        const responseData = await handleSupportQuery(userId, message, history || [], mode || 'agentic');
 
         if (responseData.transferToAgent) {
-             // Logic to create a ticket automatically
-             await run('INSERT INTO tickets (user_id, subject, status, category, message) VALUES (?, ?, ?, ?, ?)', [userId, 'AI to Human Escalation', 'open', 'General', message]);
+             // Logic to create a ticket automatically if handoff is requested
+             const ticketId = 'tkt_' + Math.random().toString(36).substring(2, 10);
+             await run('INSERT INTO tickets (id, user_id, subject, status, category, message) VALUES (?, ?, ?, ?, ?, ?)', 
+                [ticketId, userId, 'AI Escalation: ' + (responseData.suggestedCategory || 'General'), 'open', responseData.suggestedCategory || 'General', message]);
         }
 
         res.json(responseData);
     } catch (err: any) {
-        logger.error(`AI Support failed: ${err.message}`);
+        logger.error(`Agentic AI Support failed: ${err.message}`);
         res.status(500).json({ error: 'Support service currently unavailable' });
     }
 });
@@ -1942,92 +1931,9 @@ router.post('/support/tickets/:ticketId/rate', async (req, res) => {
   }
 });
 
-// Gemini AI Chat Handler Endpoint
-router.post('/support/ai-chat', async (req, res) => {
-  const { message, category, userId, history } = req.body;
-  if (!message) return res.status(400).json({ error: 'message is required' });
-
-  try {
-    const client = getGeminiClient();
-    const systemInstruction = `You are "Bivaax AI Support Specialist", an intelligent 24/7 AI assistant for Bivaax Trade, a premier international OTC binary options trading platform.
-    Key Platform Info:
-    - Minimum Deposit: $10 / 1000 BDT (processed via bKash, Nagad, Rocket, Binance Pay, Crypto, VISA/Mastercard).
-    - Minimum Withdrawal: $10 (processed in 1 to 24 hours).
-    - KYC Verification: Required for live withdrawals. Users upload NID / Passport / Driving License + Selfie in Profile -> Verification. Approval takes < 30 mins.
-    - Demo Account: Every user receives a free $10,000 renewable practice demo account.
-    - Payout Rates: Up to 98% on binary options assets (Forex, Crypto IDX, Commodities).
-    - Affiliate / Referral: Up to 80% revenue share.
-
-    Instructions:
-    1. Provide helpful, precise, polite, and reassuring answers.
-    2. If the user explicitly asks to speak with a human support agent, or if the issue involves lost funds, payment failure disputes, locked accounts, or fraud complaints, explicitly state that you are handing them over to a live human support specialist.
-    3. Return your response in concise JSON format:
-       {
-         "reply": "your text response",
-         "requiresHandoff": true/false,
-         "suggestedCategory": "Deposit" | "Withdrawal" | "Trading" | "Verification (KYC)" | "Referral" | "Technical Issue" | "Account",
-         "suggestedPriority": "low" | "medium" | "high" | "urgent"
-       }`;
-
-    const promptText = `User Query: "${message}"\nSelected Category: ${category || 'General'}`;
-    let jsonRes: any = {};
-    try {
-      const response = await client.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: promptText,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-        }
-      });
-
-      const text = response.text || '';
-      jsonRes = JSON.parse(text);
-    } catch (aiErr: any) {
-      logger.error(`Support AI Error: ${aiErr.message}`);
-      const lower = message.toLowerCase();
-      const isHandoff = lower.includes('human') || lower.includes('agent') || lower.includes('dispute') || lower.includes('urgent');
-      
-      jsonRes = {
-        reply: isHandoff 
-          ? "I am handing your request over to our senior human support agent queue. An agent will connect with you shortly!" 
-          : "Our AI assistant is temporarily busy. How can I help you manually with deposits, withdrawals, trading, or account verification?",
-        requiresHandoff: isHandoff,
-        suggestedCategory: category || "General",
-        suggestedPriority: isHandoff ? "high" : "medium"
-      };
-    }
-
-    res.json(jsonRes);
-  } catch (err: any) {
-    logger.error(`Support AI general error: ${err.message}`);
-    res.status(500).json({ error: 'Support service is temporarily unavailable.' });
-  }
-});
-
-// Legacy Support Bot Endpoint
+// Legacy Support Bot Endpoint - Deprecated in favor of /support/ai-chat
 router.post('/support/reply', async (req, res) => {
-  const { message } = req.body;
-  if (!message) return res.status(400).json({ error: 'message is required' });
-
-  try {
-    const client = getGeminiClient();
-    const response = await client.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: message,
-      config: {
-        systemInstruction: "You are the Support Assistant for Bivaax Trade, a professional OTC binary options trading platform. Keep your answers brief, professional, helpful, and concise.",
-      }
-    });
-
-    const reply = response.text || "Thank you for contacting support. An agent will be with you shortly.";
-    res.json({ reply });
-  } catch (err: any) {
-    logger.error(`Gemini support reply failed: ${err.message}`);
-    res.json({ 
-      reply: "Thank you for contacting Bivaax support. Our human representative has been notified of your request and will follow up with you as soon as possible." 
-    });
-  }
+  res.status(410).json({ error: 'This endpoint is deprecated. Use /support/ai-chat instead.' });
 });
 
 // User 360° Support Context Endpoint for Agents
@@ -2781,6 +2687,14 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
 
     const isSuccessOrApproved = status === 'success' || status === 'approved';
 
+    let depositAmountWithBonus = new Big(finalAmountInBase);
+    if (isSuccessOrApproved && depositData?.promoCode && depositData?.promoBonus) {
+        const bonusPercent = new Big(depositData.promoBonus);
+        const bonusAmount = new Big(finalAmountInBase).times(bonusPercent).div(100);
+        depositAmountWithBonus = depositAmountWithBonus.plus(bonusAmount);
+        logger.info(`Applying promo bonus: ${depositData.promoCode} (${depositData.promoBonus}%) for user ${userId}. Bonus: ${bonusAmount.toFixed(2)}`);
+    }
+
     // 1. Sync with SQL transactions table if applicable
     const tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'deposit\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, finalAmountInBase]) as any;
     
@@ -2807,11 +2721,11 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
 
         if (user) {
             const currentBalance = new Big(user.real_balance || 0);
-            const depositAmount = new Big(finalAmountInBase);
-            const newBalance = currentBalance.plus(depositAmount).toFixed(2);
+            const newBalance = currentBalance.plus(depositAmountWithBonus).toFixed(2);
             await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, userId]);
             
-            // Affiliate Commission (e.g., 10%)
+            // Affiliate Commission (e.g., 10%) - based on original amount, not bonus
+            const depositAmount = new Big(finalAmountInBase);
             if (user.referred_by_uid) {
                 const commission = depositAmount.times(0.10).toFixed(2);
                 await run(
@@ -2861,8 +2775,8 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
             const currentFbBalance = fbData?.balance || 0;
             const currentFbDeposits = fbData?.totalDeposits || 0;
             await adminDb.collection('users').doc(userId).update({
-                balance: currentFbBalance + finalAmountInBase,
-                totalDeposits: currentFbDeposits + finalAmountInBase
+                balance: currentFbBalance + parseFloat(depositAmountWithBonus.toFixed(2)),
+                totalDeposits: currentFbDeposits + finalAmountInBase // keep totalDeposits as base amount for stats
             });
         }
     }

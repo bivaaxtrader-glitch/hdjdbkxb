@@ -2,6 +2,9 @@
   "name": "bivaax-trade",
   "private": true,
   "version": "1.0.0",
+  "engines": {
+    "node": "22.x"
+  },
   "description": "Professional Bivaax Trade Terminal",
   "type": "module",
   "scripts": {

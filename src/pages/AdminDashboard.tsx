@@ -27,7 +27,7 @@ import { MarketControlCard } from '../components/MarketControlCard';
 
 type Role = 'superadmin' | 'admin' | 'moderator' | 'support' | 'user';
 type PermissionKey = 'canManageUsers' | 'canManageStaff' | 'canManageFinance' | 'canManageContent' | 'canManageMarkets' | 'canManageSystem' | 'canManageDeposits' | 'canManageWithdrawals' | 'canManageKYC' | 'canManageSupport';
-type AdminTab = 'stats' | 'market' | 'banners' | 'users' | 'finance' | 'deposits' | 'news' | 'education' | 'settings' | 'staff' | 'promotions' | 'tournaments' | 'logs' | 'tickets' | 'pages' | 'client_agreement' | 'aml_policy' | 'affiliate' | 'signals' | 'copytrading' | 'kyc';
+type AdminTab = 'stats' | 'market' | 'banners' | 'users' | 'finance' | 'deposits' | 'news' | 'education' | 'settings' | 'staff' | 'promotions' | 'promos' | 'tournaments' | 'logs' | 'tickets' | 'pages' | 'client_agreement' | 'aml_policy' | 'affiliate' | 'signals' | 'copytrading' | 'kyc';
 
 const INITIAL_PERMISSIONS: Record<PermissionKey, boolean> = {
   canManageUsers: false,
@@ -54,6 +54,7 @@ export default function AdminDashboard() {
   const [news, setNews] = useState<any[]>([]);
   const [education, setEducation] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
+  const [promoCodes, setPromoCodes] = useState<any[]>([]);
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [depositMethods, setDepositMethods] = useState<any[]>([]);
   const [promoMaterials, setPromoMaterials] = useState<any[]>([]);
@@ -512,6 +513,10 @@ export default function AdminDashboard() {
             unsubs.push(onSnapshot(collection(db, 'depositMethods'), (snap) => {
                 setDepositMethods(snap.docs.map(d => ({ id: d.id, ...d.data() })));
             }));
+
+            unsubs.push(onSnapshot(collection(db, 'promos'), (snap) => {
+                setPromoCodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            }));
             
             const token = await user.getIdToken();
             await Promise.all([
@@ -768,6 +773,7 @@ export default function AdminDashboard() {
           const col = modalType === 'news' ? 'news' : 
                       modalType === 'education' ? 'education' : 
                       modalType === 'promotions' ? 'promotions' : 
+                      modalType === 'promos' ? 'promos' : 
                       modalType === 'tournaments' ? 'tournaments' : 
                       modalType === 'deposit' ? 'depositMethods' : 
                       modalType === 'signals' ? 'signals' :
@@ -917,6 +923,7 @@ export default function AdminDashboard() {
                   { id: 'news', label: 'News Engine', icon: Megaphone, show: canManageContent },
                   { id: 'education', label: 'Trade Academy', icon: GraduationCap, show: canManageContent },
                   { id: 'promotions', label: 'Dynamic Bonuses', icon: Zap, show: isAdminPerm },
+                  { id: 'promos', label: 'Promo Codes', icon: Gift, show: isAdminPerm },
                   { id: 'tournaments', label: 'Arena Events', icon: Trophy, show: canManageContent },
 
                   { id: 'pages', label: 'About Us', icon: FileText, show: canManageContent },
@@ -1477,6 +1484,73 @@ export default function AdminDashboard() {
                             </div>
                         ))}
                    </div>
+               </motion.div>
+           )}
+
+           {activeTab === 'promos' && (
+               <motion.div key="promos" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+                   <div className="flex justify-between items-center">
+                       <h2 className="text-3xl font-black uppercase">Promo Codes (Deposit Bonuses)</h2>
+                       <button 
+                         onClick={() => {
+                             setEditingItem({ code: '', bonusPercentage: 50, expiryDate: new Date().getTime() + 86400000 * 30, isActive: true, isBonusActive: true });
+                             setModalType('promos');
+                             setShowModal(true);
+                         }}
+                         className="bg-yellow-500 text-black px-6 py-3 rounded-2xl font-bold flex items-center gap-2"
+                       >
+                           <Plus size={20} /> Add Promo
+                       </button>
+                   </div>
+                   
+                   {promoCodes.length === 0 ? (
+                       <div className="py-20 text-center bg-[#0a0a0f] border border-dashed border-white/10 rounded-[40px] space-y-4">
+                           <Gift className="mx-auto text-gray-700" size={48} />
+                           <div>
+                               <h3 className="text-xl font-bold text-white">No Promos</h3>
+                               <p className="text-gray-500 text-sm mt-2">Create promotional codes for users to get deposit bonuses.</p>
+                           </div>
+                       </div>
+                   ) : (
+                       <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                           {promoCodes.map((item: any, i: number) => (
+                               <div key={item.id || i} className="bg-[#0a0a0f] border border-[#1a1a24] p-6 rounded-3xl flex items-center justify-between group relative overflow-hidden">
+                                   <div className="flex items-center gap-4">
+                                       <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-yellow-500/10 text-yellow-500">
+                                           <Gift size={24} />
+                                       </div>
+                                       <div>
+                                           <h4 className="font-bold text-lg text-white uppercase tracking-wider">{item.code}</h4>
+                                           <div className="flex flex-wrap gap-2 mt-2">
+                                               <span className="text-[10px] bg-green-500/10 text-green-500 px-2 py-0.5 rounded font-black uppercase">+{item.bonusPercentage || 0}% Bonus</span>
+                                               {item.isActive ? (
+                                                  <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-black uppercase">Active</span>
+                                               ) : (
+                                                  <span className="text-[10px] bg-gray-500/10 text-gray-400 px-2 py-0.5 rounded font-black uppercase">Inactive</span>
+                                               )}
+                                               {item.isBonusActive ? (
+                                                  <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-black uppercase">Bonus On</span>
+                                               ) : (
+                                                  <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded font-black uppercase">Bonus Off</span>
+                                               )}
+                                           </div>
+                                           <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mt-2">
+                                               Expires: {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : 'N/A'}
+                                           </p>
+                                       </div>
+                                   </div>
+                                   <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity absolute right-6">
+                                       <button onClick={() => { setEditingItem(item); setModalType('promos'); setShowModal(true); }} className="p-3 bg-white/5 hover:bg-yellow-500 rounded-xl hover:text-black text-gray-400 transition-all">
+                                           <Settings2 size={18} />
+                                       </button>
+                                       <button onClick={() => handleDeleteItem('promos', item.id)} className="p-3 bg-red-500/10 text-red-500 hover:bg-red-500 rounded-xl hover:text-white transition-all">
+                                           <Trash2 size={18}/>
+                                       </button>
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   )}
                </motion.div>
            )}
 
@@ -4316,6 +4390,49 @@ export default function AdminDashboard() {
                                   </div>
                               </div>
                           )}
+                          {modalType === 'promos' && (
+                              <div className="space-y-4">
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Promo Code</label>
+                                      <input 
+                                        type="text" placeholder="e.g. WELCOME50" value={editingItem?.code || ''} onChange={e => setEditingItem({...editingItem, code: e.target.value.toUpperCase()})}
+                                        className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 focus:border-yellow-500 outline-none font-bold"
+                                      />
+                                  </div>
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Bonus Percentage (%)</label>
+                                      <input 
+                                        type="number" placeholder="50" value={editingItem?.bonusPercentage || ''} onChange={e => setEditingItem({...editingItem, bonusPercentage: Number(e.target.value)})}
+                                        className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 focus:border-yellow-500 outline-none"
+                                      />
+                                  </div>
+                                  <div className="space-y-1">
+                                      <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Expiry Date</label>
+                                      <input 
+                                        type="date" 
+                                        value={editingItem?.expiryDate ? new Date(editingItem.expiryDate).toISOString().split('T')[0] : ''} 
+                                        onChange={e => setEditingItem({...editingItem, expiryDate: new Date(e.target.value).getTime()})}
+                                        className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 focus:border-yellow-500 outline-none"
+                                      />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                                          <input 
+                                            type="checkbox" checked={editingItem?.isActive} onChange={e => setEditingItem({...editingItem, isActive: e.target.checked})}
+                                            className="w-5 h-5 rounded border-white/10 accent-yellow-500" 
+                                          />
+                                          <label className="text-xs font-black uppercase text-gray-400">Is Active</label>
+                                      </div>
+                                      <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                                          <input 
+                                            type="checkbox" checked={editingItem?.isBonusActive} onChange={e => setEditingItem({...editingItem, isBonusActive: e.target.checked})}
+                                            className="w-5 h-5 rounded border-white/10 accent-yellow-500" 
+                                          />
+                                          <label className="text-xs font-black uppercase text-gray-400">Bonus Active</label>
+                                      </div>
+                                  </div>
+                              </div>
+                          )}
                           {modalType === 'signals' && (
                               <div className="space-y-4">
                                   <div className="grid grid-cols-2 gap-4">
@@ -4418,16 +4535,35 @@ export default function AdminDashboard() {
                               </div>
                           )}
                           {modalType === 'news' && (
-                              <>
+                              <div className="space-y-4">
                                 <textarea 
                                     placeholder="Full Content" value={editingItem?.content || ''} onChange={e => setEditingItem({...editingItem, content: e.target.value})}
                                     className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 h-40 focus:border-yellow-500 outline-none resize-none"
                                 />
+                                <input type="text" placeholder="Image URL (optional)" value={editingItem?.imageUrl || ''} onChange={e => setEditingItem({...editingItem, imageUrl: e.target.value})} className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
                                 <div className="grid grid-cols-2 gap-4">
                                     <input type="text" placeholder="Emoji" value={editingItem?.emoji || ''} onChange={e => setEditingItem({...editingItem, emoji: e.target.value})} className="bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
                                     <input type="text" placeholder="Date" value={editingItem?.date || ''} onChange={e => setEditingItem({...editingItem, date: e.target.value})} className="bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
                                 </div>
-                              </>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input type="text" placeholder="CTA Text (e.g. DEPOSIT NOW)" value={editingItem?.ctaText || ''} onChange={e => setEditingItem({...editingItem, ctaText: e.target.value})} className="bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
+                                    <select value={editingItem?.actionType || ''} onChange={e => setEditingItem({...editingItem, actionType: e.target.value})} className="bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none text-white">
+                                        <option value="">No Action</option>
+                                        <option value="deposit">Deposit Page (with Promo)</option>
+                                        <option value="url">External Link</option>
+                                    </select>
+                                </div>
+                                {editingItem?.actionType && (
+                                    <input type="text" placeholder={editingItem.actionType === 'deposit' ? "Promo Code to Apply" : "Target URL"} value={editingItem?.actionValue || ''} onChange={e => setEditingItem({...editingItem, actionValue: e.target.value})} className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
+                                )}
+                                <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                                    <input 
+                                      type="checkbox" checked={editingItem?.isPlatformNews} onChange={e => setEditingItem({...editingItem, isPlatformNews: e.target.checked})}
+                                      className="w-5 h-5 rounded border-white/10 accent-yellow-500" 
+                                    />
+                                    <label className="text-xs font-black uppercase text-gray-400">Is Platform News</label>
+                                </div>
+                              </div>
                           )}
                           {modalType === 'education' && (
                               <div className="space-y-4">

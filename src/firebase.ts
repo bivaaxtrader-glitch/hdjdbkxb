@@ -130,7 +130,9 @@ export const db = {
         const isAdmin = !!user.is_admin;
         
         let endpoint = `/api/${name}`;
-        if (isAdmin && (name === 'users' || name === 'trades' || name === 'transactions')) {
+        if (name === 'news') {
+          endpoint = `/api/news?type=collection`;
+        } else if (isAdmin && (name === 'users' || name === 'trades' || name === 'transactions')) {
           endpoint = `/api/admin/${name}`;
         }
 

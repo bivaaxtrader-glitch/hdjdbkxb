@@ -30,6 +30,11 @@ service cloud.firestore {
       );
     }
 
+    // Checks if the authenticated user has a support role
+    function isSupport() {
+      return isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['support', 'moderator', 'agent', 'team_leader']);
+    }
+
     // Prevents document ID poisoning by enforcing character and length limits
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
@@ -50,22 +55,33 @@ service cloud.firestore {
     // 1. User Profiles & Balances
     // Only the profile owner or an administrator can access or modify user records.
     match /users/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isSupport();
+      allow write: if isOwner(userId) || isAdmin();
     }
 
     // 2. Support Tickets & Conversations
     // Users can read and write only their own support tickets. Administrators have full access.
     match /tickets/{ticketId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isSupport());
       allow write: if isSignedIn();
       
       // Messages within support tickets
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() && (get(/databases/$(database)/documents/tickets/$(ticketId)).data.userId == request.auth.uid || isSupport());
       }
     }
 
-    // 3. KYC Verification Requests
+    // 3. Knowledge Base & Canned Responses
+    match /knowledge_base/{articleId} {
+      allow read: if true;
+      allow write: if isSupport();
+    }
+    match /canned_responses/{responseId} {
+      allow read: if isSupport();
+      allow write: if isSupport();
+    }
+
+    // 4. KYC Verification Requests
     // Protects Personally Identifiable Information (PII) by restricting read/write to the applicant or admin.
     match /kyc_requests/{requestId} {
       allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());

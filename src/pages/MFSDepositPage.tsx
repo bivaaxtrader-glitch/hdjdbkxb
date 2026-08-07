@@ -5,7 +5,7 @@ import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import { auth, db } from '../firebase';
-import { collection, addDoc, doc, getDoc } from '../firebase';
+import { collection, addDoc, doc, getDoc, query, where, getDocs } from '../firebase';
 
 const MFSDepositPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -16,6 +16,9 @@ const MFSDepositPage: React.FC = () => {
   const methodId = searchParams.get('methodId');
 
   const [trxId, setTrxId] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  const [isPromoValid, setIsPromoValid] = useState<boolean | null>(null);
+  const [promoBonus, setPromoBonus] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [timeLeft, setTimeLeft] = useState(600); // 10 minutes
@@ -73,6 +76,11 @@ const MFSDepositPage: React.FC = () => {
       step1: "ক্যাশ আউট নম্বর কপি করুন",
       step1Desc: `নিচের নম্বরে ${methodName} অ্যাপ বা ক্যাশআউট মেনু দিয়ে টাকা পাঠান।`,
       step2: "লেনদেন আইডি (TrxID) দিন",
+      promoLabel: "প্রোমো কোড (ঐচ্ছিক)",
+      promoPlaceholder: "প্রোমো কোড দিন",
+      promoApply: "প্রয়োগ করুন",
+      promoValid: "প্রোমো কোডটি সঠিক!",
+      promoInvalid: "ভুল প্রোমো কোড বা মেয়াদ শেষ",
       trxPlaceholder: "লেনদেন আইডি প্রবেশ করুন (যেমন: 73V36DXK)",
       paste: "পেস্ট করুন",
       submit: "অনুরোধ নিশ্চিত করুন",
@@ -100,6 +108,11 @@ const MFSDepositPage: React.FC = () => {
       step1: "Copy Cash Out Number",
       step1Desc: `Send money to the number below using ${methodName} cash out.`,
       step2: "Enter Transaction ID (TrxID)",
+      promoLabel: "Promo Code (Optional)",
+      promoPlaceholder: "Enter promo code",
+      promoApply: "Apply",
+      promoValid: "Promo code applied!",
+      promoInvalid: "Invalid or expired promo code",
       trxPlaceholder: "Enter Transaction ID (e.g. 73V36DXK)",
       paste: "Paste",
       submit: "Confirm Request",
@@ -124,6 +137,35 @@ const MFSDepositPage: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleApplyPromo = async () => {
+    if (!promoCode) return;
+    try {
+      const q = query(collection(db, 'promo_codes'), where('code', '==', promoCode.toUpperCase()), where('isActive', '==', true));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const promoData = querySnapshot.docs[0].data();
+        const now = Date.now();
+        if (promoData.expiryDate && now > promoData.expiryDate) {
+          setIsPromoValid(false);
+          setPromoBonus(0);
+          toast.error(t.promoInvalid);
+        } else {
+          setIsPromoValid(true);
+          setPromoBonus(promoData.bonusPercentage);
+          toast.success(`${t.promoValid} (${promoData.bonusPercentage}% Bonus)`);
+        }
+      } else {
+        setIsPromoValid(false);
+        setPromoBonus(0);
+        toast.error(t.promoInvalid);
+      }
+    } catch (err) {
+      console.error("Promo error:", err);
+      toast.error("Error validating promo code");
+    }
+  };
+
   const handleConfirm = async () => {
     if (!trxId || trxId.length < 6) {
       toast.error(lang === 'BN' ? "দয়া করে সঠিক লেনদেন আইডি দিন" : "Please enter a valid Transaction ID");
@@ -141,6 +183,8 @@ const MFSDepositPage: React.FC = () => {
           status: 'pending',
           trxId: trxId,
           orderId: orderId,
+          promoCode: isPromoValid ? promoCode.toUpperCase() : null,
+          promoBonus: isPromoValid ? promoBonus : 0,
           timestamp: Date.now(),
           category: 'MFS'
         });
@@ -155,6 +199,8 @@ const MFSDepositPage: React.FC = () => {
           walletNumber: accountNumber || '',
           trxId: trxId,
           status: 'pending',
+          promoCode: isPromoValid ? promoCode.toUpperCase() : null,
+          promoBonus: isPromoValid ? promoBonus : 0,
           timestamp: Date.now(),
           orderId: orderId
         });
@@ -343,8 +389,8 @@ const MFSDepositPage: React.FC = () => {
                       <span className="w-7 h-7 flex items-center justify-center rounded-full bg-[#FFE24C] text-black font-black text-xs shrink-0 shadow-md">2</span>
                       <span className="font-black text-[14px] sm:text-[16px] text-white">{t.step2}</span>
                   </div>
-                  <div className="px-4 sm:px-5 pb-5">
-                      <div className="relative mb-4">
+                  <div className="px-4 sm:px-5 pb-5 space-y-4">
+                      <div className="relative">
                           <input 
                               type="text"
                               placeholder={t.trxPlaceholder}
@@ -369,6 +415,33 @@ const MFSDepositPage: React.FC = () => {
                                   {t.paste}
                               </button>
                           </div>
+                      </div>
+
+                      {/* Promo Code Input */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">{t.promoLabel}</label>
+                        <div className="relative">
+                          <input 
+                              type="text"
+                              placeholder={t.promoPlaceholder}
+                              value={promoCode}
+                              onChange={(e) => {
+                                setPromoCode(e.target.value);
+                                setIsPromoValid(null);
+                              }}
+                              className={`w-full bg-black/30 border rounded-2xl p-4 pr-24 text-sm font-bold text-white transition-all outline-none placeholder:text-gray-600 ${isPromoValid === true ? 'border-green-500' : isPromoValid === false ? 'border-red-500' : 'border-white/5 focus:border-[#FFE24C]'}`}
+                          />
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                              <button 
+                                  onClick={handleApplyPromo}
+                                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${isPromoValid === true ? 'bg-green-500 text-white' : 'bg-white/10 text-gray-400 hover:text-white'}`}
+                              >
+                                  {t.promoApply}
+                              </button>
+                          </div>
+                        </div>
+                        {isPromoValid === true && <p className="text-[10px] text-green-500 font-bold ml-1">{t.promoValid} ({promoBonus}% Bonus)</p>}
+                        {isPromoValid === false && <p className="text-[10px] text-red-500 font-bold ml-1">{t.promoInvalid}</p>}
                       </div>
 
                       <button 

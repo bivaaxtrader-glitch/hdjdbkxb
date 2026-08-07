@@ -35,9 +35,9 @@ const SEO: React.FC<SEOProps> = ({
       <link rel="canonical" href={effectiveUrl} />
 
       {/* Cross Domain Alternates for Google indexing both bivaax.com and bivaax.trade */}
-      <link rel="alternate" hreflang="en" href="https://bivaax.com/" />
-      <link rel="alternate" hreflang="en" href="https://bivaax.trade/" />
-      <link rel="alternate" hreflang="x-default" href="https://bivaax.com/" />
+      <link rel="alternate" hrefLang="en" href="https://bivaax.com/" />
+      <link rel="alternate" hrefLang="en" href="https://bivaax.trade/" />
+      <link rel="alternate" hrefLang="x-default" href="https://bivaax.com/" />
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content={type} />

@@ -197,5 +197,32 @@ export const NEWS_DATA: Record<string, NewsItem> = {
       
       <p>Start exploring the crypto markets today and discover why thousands of traders choose digital assets for their daily profit targets.</p>
     `
+  },
+  'deposit-bonus-50': {
+    id: 'deposit-bonus-50',
+    title: '50% Deposit Bonus',
+    subtitle: 'Boost Your Trading with Every Deposit!',
+    date: 'August 6, 2026',
+    category: 'Promotions',
+    imageUrl: 'https://i.postimg.cc/FHrDvXtr/file-0000000087d081fabe530d525061bcac.png',
+    content: `
+      <h2>Get 50% Bonus on your Deposit</h2>
+      <p>Take your trading to the next level with our limited-time 50% Deposit Bonus.</p>
+      
+      <h3>Why Take This Offer?</h3>
+      <ul>
+        <li><strong>Fast Bonus Credit:</strong> Get your funds instantly.</li>
+        <li><strong>Secure & Trusted Platform:</strong> Trade with peace of mind.</li>
+        <li><strong>Instant Deposit Processing:</strong> No waiting around.</li>
+      </ul>
+      
+      <p>Use Promo Code: <strong>BIVAAXFAST50</strong></p>
+      <p><em>Limited Time Offer!</em></p>
+      <p><strong>Trade Smart. Earn Big.</strong></p>
+      
+      <div style="margin-top: 2rem;">
+        <a href="/crypto-deposit?promoCode=BIVAAXFAST50" style="display: inline-block; padding: 1rem 2rem; background-color: #FFE24C; color: black; font-weight: 800; border-radius: 0.75rem; text-decoration: none;">DEPOSIT NOW</a>
+      </div>
+    `
   }
 };

@@ -67,6 +67,7 @@ import {
   Trophy,
   Users,
   Lock,
+  Loader2,
   ShieldCheck,
   LogOut,
   Activity,
@@ -4724,6 +4725,52 @@ const PROMOTED_ARTICLES = [
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<any>(null);
   const [depositAmount, setDepositAmount] = useState("77500");
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState("");
+  const [promoBonus, setPromoBonus] = useState(0);
+  const [isValidatingPromo, setIsValidatingPromo] = useState(false);
+  const [promoError, setPromoError] = useState("");
+
+  const validatePromoCode = async (codeToValidate?: string) => {
+    const code = codeToValidate || promoCode;
+    if (!code) {
+      setPromoError("Enter a promo code");
+      return;
+    }
+    setIsValidatingPromo(true);
+    setPromoError("");
+    try {
+      const q = query(
+        collection(db, 'promos'),
+        where('code', '==', code.toUpperCase()),
+        where('isActive', '==', true)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        setPromoError("Invalid or inactive promo code");
+        setPromoBonus(0);
+        setAppliedPromo("");
+      } else {
+        const data = snap.docs[0].data();
+        const expiry = data.expiryDate?.toDate ? data.expiryDate.toDate() : new Date(data.expiryDate);
+        if (expiry < new Date()) {
+          setPromoError("Promo code has expired");
+          setPromoBonus(0);
+          setAppliedPromo("");
+        } else {
+          setPromoBonus(data.bonusPercentage);
+          setAppliedPromo(code.toUpperCase());
+          if (codeToValidate) setPromoCode(code.toUpperCase());
+          toast.success(`Promo code applied: ${data.bonusPercentage}% bonus!`);
+        }
+      }
+    } catch (e) {
+      console.error("Promo validation error:", e);
+      setPromoError("Validation failed. Try again.");
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
   const [selectedBonusId, setSelectedBonusId] = useState<string>("none");
   const [paymentTimer, setPaymentTimer] = useState(15 * 60);
   const [isPaymentPageLoading, setIsPaymentPageLoading] = useState(false);
@@ -8311,170 +8358,23 @@ const PROMOTED_ARTICLES = [
               >
                 <ChevronLeft size={24} strokeWidth={1.5} />
               </button>
-              <h2 className="text-[22px] font-bold tracking-tight">Financial News</h2>
+              <h2 className="text-[22px] font-bold tracking-tight">What's new?</h2>
             </div>
+            
+            <div className="flex justify-between items-center px-6 pb-4 border-b border-[#2C2C2E]/60 bg-[#1C1C1E]">
+              <div className="flex items-center gap-2">
+                <span className="text-[15px] font-bold text-white">Unread</span>
+                <span className="bg-[#ffe24c] text-black text-[12px] font-black px-2 py-0.5 rounded-full">{newsData.filter(n => n.isPlatformNews).length}</span>
+              </div>
 
-            {/* Sub-tab switcher */}
-            <div className="flex px-6 pb-4 gap-2 border-b border-[#2C2C2E]/60 bg-[#1C1C1E]" id="news-subtabs-container">
-              <button
-                onClick={() => { setNewsFeedTab("platform"); setNewsSearchQuery(""); }}
-                className={`flex-1 py-2.5 rounded-xl font-bold text-[12px] uppercase tracking-wider border transition-all bg-[#2C2C2E] text-[#ffe24c] border-[#ffe24c]/30 shadow-lg`}
-                id="news-platform-tab-btn"
-              >
-                Platform News
+              <button className="text-gray-400 hover:text-gray-300 text-[13px] underline underline-offset-2 transition-colors">
+                Mark all read
               </button>
             </div>
 
-            {/* Interactive Search & Filter Bar */}
-            <div className="px-6 pt-4 pb-3 space-y-3 bg-[#1C1C1E] border-b border-[#2C2C2E]/50" id="news-search-filter-section">
-              {/* Search input */}
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500">
-                  <Icons.Search size={15} />
-                </span>
-                <input
-                  type="text"
-                  value={newsSearchQuery}
-                  onChange={(e) => setNewsSearchQuery(e.target.value)}
-                  placeholder="Search official announcements..."
-                  className="w-full bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl pl-9 pr-9 py-2.5 text-[13px] font-medium text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#ffe24c] focus:border-[#ffe24c] transition-all"
-                  id="news-feed-search-input"
-                />
-                {newsSearchQuery && (
-                  <button
-                    onClick={() => setNewsSearchQuery("")}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                    id="news-search-clear-btn"
-                  >
-                    <Icons.XCircle size={15} className="opacity-75" />
-                  </button>
-                )}
-              </div>
-
-              
-            </div>
-            
-            {/* Main scrollable list */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-hide pb-24 bg-[#151517]">
-              {newsFeedTab === "market" ? (
-                <>
-                  {newsRefreshing ? (
-                    <div className="py-16 flex flex-col items-center justify-center text-gray-500 space-y-3" id="news-feed-loading-state">
-                      <Icons.RefreshCw size={24} className="animate-spin text-[#ffe24c]" />
-                      <p className="text-[11px] font-black uppercase tracking-widest text-[#ffe24c]/70 animate-pulse">Syncing market feed...</p>
-                    </div>
-                  ) : (() => {
-                    const filteredRealtimeNews = realtimeNews.filter((item) => {
-                      const matchesSearch = 
-                        newsSearchQuery === "" ||
-                        (item.title && item.title.toLowerCase().includes(newsSearchQuery.toLowerCase())) ||
-                        (item.body && item.body.toLowerCase().includes(newsSearchQuery.toLowerCase())) ||
-                        (item.source_info?.name && item.source_info.name.toLowerCase().includes(newsSearchQuery.toLowerCase()));
-
-                      if (!matchesSearch) return false;
-                      if (marketNewsCategory === "All") return true;
-
-                      const titleLower = (item.title || "").toLowerCase();
-                      const bodyLower = (item.body || "").toLowerCase();
-                      const tagsLower = (item.tags || "").toLowerCase();
-                      const catsLower = (item.categories || "").toLowerCase();
-
-                      const cryptoKeywords = ["btc", "eth", "sol", "crypto", "bitcoin", "ethereum", "blockchain", "binance", "coin", "token", "defi", "web3", "memecoin"];
-                      const forexKeywords = ["usd", "eur", "gbp", "jpy", "cny", "fiat", "fed", "inflation", "macro", "rates", "interest", "currency", "forex", "central bank", "unemployment"];
-                      const regulationKeywords = ["sec", "regulation", "law", "court", "ban", "license", "irs", "compliance", "lawsuit", "judge", "illegal", "senate", "ftc"];
-
-                      if (marketNewsCategory === "Crypto") {
-                        return cryptoKeywords.some(kw => titleLower.includes(kw) || bodyLower.includes(kw) || tagsLower.includes(kw) || catsLower.includes(kw));
-                      }
-                      if (marketNewsCategory === "Forex") {
-                        return forexKeywords.some(kw => titleLower.includes(kw) || bodyLower.includes(kw) || tagsLower.includes(kw) || catsLower.includes(kw));
-                      }
-                      if (marketNewsCategory === "Regulations") {
-                        return regulationKeywords.some(kw => titleLower.includes(kw) || bodyLower.includes(kw) || tagsLower.includes(kw) || catsLower.includes(kw));
-                      }
-                      return true;
-                    });
-
-                    if (filteredRealtimeNews.length === 0) {
-                      return (
-                        <div className="py-20 text-center text-gray-500 space-y-3" id="news-market-empty-state">
-                          <Icons.Activity size={32} className="mx-auto text-gray-600 opacity-40 animate-pulse" />
-                          <p className="text-sm font-bold text-gray-400">No trading news found</p>
-                          <p className="text-xs text-gray-500 max-w-[280px] mx-auto">Try search modifiers or reset active filter categories.</p>
-                          <button
-                            onClick={() => { setNewsSearchQuery(""); setMarketNewsCategory("All"); }}
-                            className="bg-[#2C2C2E] border border-[#3A3A3C] hover:border-white/20 transition-all text-[11px] text-[#ffe24c] font-black px-4 py-2 rounded-xl"
-                            id="news-market-empty-reset-btn"
-                          >
-                            Reset filters
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    return filteredRealtimeNews.map((newsItem, idx) => {
-                      const ago = getRelativeTimeString(newsItem.published_on);
-                      return (
-                        <div 
-                          key={`realtime-news-item-${idx}-${newsItem.id}`} 
-                          onClick={() => {
-                            setSelectedNews({
-                              ...newsItem,
-                              isRealtime: true,
-                              reactions: newsItem.reactions || Math.floor(Math.random() * 85) + 12,
-                              badReactions: newsItem.badReactions || Math.floor(Math.random() * 12),
-                              emoji: "⚡"
-                            });
-                            setActiveTab("news-detail");
-                          }}
-                          className="bg-[#2C2C2E]/50 hover:bg-[#2C2C2E]/80 rounded-[24px] p-5 border border-white/5 hover:border-[#ffe24c]/20 transition-all cursor-pointer space-y-3 shrink-0 active:scale-[0.98] group relative overflow-hidden"
-                          id={`realtime-news-card-${newsItem.id || idx}`}
-                        >
-                          <div className="flex justify-between items-center text-gray-500 text-[11px] font-bold">
-                            <span className="text-[#309cf4] bg-[#309cf4]/10 border border-[#309cf4]/10 px-2.5 py-0.5 rounded-lg text-[9px] uppercase tracking-wider font-extrabold shadow-sm">
-                              {newsItem.source_info?.name || "Global"}
-                            </span>
-                            <span className="font-mono text-gray-400 bg-[#1C1C1E] px-2 py-0.5 rounded-md text-[10px]">{ago}</span>
-                          </div>
-
-                          <div className="flex gap-4 items-start">
-                            <div className="flex-1 space-y-1.5">
-                              <h4 className="text-[15px] font-black leading-snug group-hover:text-yellow-400 transition-colors line-clamp-3">
-                                {newsItem.title}
-                              </h4>
-                              <p className="text-gray-400 text-[12.5px] leading-relaxed line-clamp-2">
-                                {newsItem.body}
-                              </p>
-                            </div>
-                            {newsItem.imageurl && (
-                              <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-[#1C1C1E] border border-white/5 shadow-inner">
-                                <img 
-                                  src={newsItem.imageurl} 
-                                  referrerPolicy="no-referrer"
-                                  alt="" 
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500" 
-                                 loading="lazy" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between text-[11px] pt-3 border-t border-white/5 text-gray-500 font-bold">
-                            <span className="bg-white/5 hover:bg-white/10 transition-colors px-2 py-1 rounded-md text-[10px] text-gray-300 transform items-center flex gap-1 capitalize">
-                              <Icons.Hash size={11} className="text-[#ffe24c]" /> {newsItem.categories?.split(',')[0] || "Global Market"}
-                            </span>
-                            <span className="text-[#ffe24c] flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                              Take a brief <Icons.ArrowUpRight size={13} strokeWidth={2.5} />
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </>
-              ) : (
-                <>
                   {(() => {
-                    const platformItems = newsData;
+                    const platformItems = newsData.filter(n => n.isPlatformNews);
                     const filteredPlatformNews = platformItems.filter((item) => {
                       const matchesSearch = 
                         newsSearchQuery === "" ||
@@ -8509,28 +8409,32 @@ const PROMOTED_ARTICLES = [
                           });
                           setActiveTab("news-detail");
                         }}
-                        className="bg-[#2C2C2E]/60 hover:bg-[#2C2C2E] rounded-3xl p-5 border border-[#3A3A3C]/70 hover:border-white/10 transition-all cursor-pointer space-y-3 active:scale-[0.98] group relative"
+                        className="bg-[#2C2C2E] hover:bg-[#3A3A3C] rounded-2xl p-5 border border-transparent transition-all cursor-pointer flex flex-col gap-3 active:scale-[0.98] group relative"
                         id={`platform-news-card-${news.id || idx}`}
                       >
                         <div className="flex justify-between items-center">
-                          <p className="text-gray-500 text-[11px] font-mono font-bold bg-[#1C1C1E] px-2.5 py-0.5 rounded-md">{news.date}</p>
-                          <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                          <p className="text-[#8C8F96] text-[13px] font-medium">{news.date}</p>
+                          {idx !== 0 && <span className="w-2 h-2 rounded-full bg-[#FFE24C]"></span>}
                         </div>
-                        <h4 className="text-[16px] font-black leading-snug group-hover:text-[#ffe24c] transition-colors">
-                          {news.emoji} {news.title}
+                        <h4 className="text-[17px] font-bold leading-snug text-white group-hover:text-[#ffe24c] transition-colors">
+                          {news.title} {news.emoji}
                         </h4>
-                        <p className="text-gray-400 text-[13px] line-clamp-2 leading-relaxed">
+                        {news.imageUrl && (
+                           <div className="w-full h-40 md:h-48 rounded-xl overflow-hidden mt-3 mb-1">
+                             <img src={news.imageUrl} alt={news.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                           </div>
+                        )}
+                        <p className="text-[#8C8F96] text-[14px] line-clamp-3 leading-relaxed">
                           {news.description}
                         </p>
-                        <div className="flex items-center gap-1.5 pt-2 border-t border-white/5">
-                           <span className="text-yellow-500/70"><Icons.Smile size={13} /></span>
-                           <span className="text-gray-400 text-[11px] font-black">{news.reactions || 12} reactions</span>
+                        <div className="flex items-center gap-2 pt-1">
+                           <span className="text-[#8C8F96]"><Icons.Smile size={18} /></span>
+                           <span className="text-[#8C8F96] text-[14px] font-bold">{news.reactions || 75}</span>
                         </div>
+
                       </div>
                     ));
                   })()}
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -8548,52 +8452,55 @@ const PROMOTED_ARTICLES = [
               >
                 <ChevronLeft size={24} strokeWidth={1.5} />
               </button>
-              <h2 className="text-[15px] font-extrabold uppercase tracking-widest text-[#ffe24c] truncate max-w-[280px]">
-                {selectedNews.isRealtime ? "Live market update" : "Platform notice"}
+              <h2 className="text-[16px] font-bold text-white truncate max-w-[280px]">
+                {selectedNews.isRealtime ? "Live market update" : `${selectedNews.title} ${selectedNews.emoji || ''}`}
               </h2>
             </div>
             
-            <div className="flex-1 overflow-y-auto scrollbar-hide pb-24 bg-[#141416]">
+            <div className="flex-1 overflow-y-auto scrollbar-hide pb-24 bg-[#1C1C1E]">
+              {!selectedNews.isRealtime && (
+                <div className="px-6 py-6 space-y-3">
+                  <h2 className="text-3xl font-black leading-tight tracking-tight text-white">
+                    {selectedNews.title} {selectedNews.emoji}
+                  </h2>
+                  <p className="text-gray-500 text-sm font-medium">{selectedNews.date}</p>
+                </div>
+              )}
+
               {selectedNews.isRealtime ? (
                 selectedNews.imageurl ? (
                   <img 
                     src={selectedNews.imageurl} 
                     referrerPolicy="no-referrer"
                     alt={selectedNews.title} 
-                    className="w-full h-56 object-cover border-b border-white/5" 
+                    className="w-full h-56 object-cover" 
                    loading="lazy" />
                 ) : (
                   <div className="w-full h-48 bg-[#2C2C2E]/60 flex items-center justify-center text-4xl border-b border-white/5 text-gray-500">⚡</div>
                 )
-              ) : selectedNews.image ? (
-                <img src={selectedNews.image} alt={selectedNews.title} className="w-full h-56 object-cover border-b border-white/5"  loading="lazy" />
-              ) : (
-                <div className="w-full h-48 bg-[#2C2C2E]/60 flex items-center justify-center text-4xl border-b border-white/5">{selectedNews.emoji || "📣"}</div>
-              )}
+              ) : selectedNews.image || selectedNews.imageUrl ? (
+                <img src={selectedNews.image || selectedNews.imageUrl} alt={selectedNews.title} className="w-full h-56 md:h-72 object-cover"  loading="lazy" />
+              ) : null}
 
               <div className="px-6 py-6 space-y-6">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="text-[10px] font-black uppercase text-black bg-[#ffe24c] px-2.5 py-1 rounded-md tracking-wider">
-                      {selectedNews.isRealtime ? (selectedNews.source_info?.name || "Global News") : "Platform Official"}
-                    </span>
-                    {selectedNews.isRealtime && (
+                {selectedNews.isRealtime && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="text-[10px] font-black uppercase text-black bg-[#ffe24c] px-2.5 py-1 rounded-md tracking-wider">
+                        {selectedNews.source_info?.name || "Global News"}
+                      </span>
                       <span className="text-[11px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md">
                         {getRelativeTimeString(selectedNews.published_on)}
                       </span>
-                    )}
+                    </div>
+                    
+                    <h2 className="text-xl md:text-2xl font-black leading-tight tracking-tight text-white group-hover:text-yellow-400 transition-colors">
+                      {selectedNews.title}
+                    </h2>
                   </div>
-                  
-                  <h2 className="text-xl md:text-2xl font-black leading-tight tracking-tight text-white group-hover:text-yellow-400 transition-colors">
-                    {selectedNews.isRealtime ? "" : (selectedNews.emoji + " ")}{selectedNews.title}
-                  </h2>
-                  
-                  {!selectedNews.isRealtime && (
-                    <p className="text-gray-500 text-xs font-bold font-mono">{selectedNews.date}</p>
-                  )}
-                </div>
+                )}
                 
-                <div className="text-gray-300 text-[14.5px] leading-relaxed space-y-4 font-medium border-t border-white/5 pt-4">
+                <div className={`text-gray-300 text-[15px] leading-relaxed space-y-4 font-medium ${selectedNews.isRealtime ? 'border-t border-white/5 pt-4' : ''}`}>
                   {selectedNews.isRealtime ? (
                     <>
                       <p className="bg-white/[0.02] border-l-2 border-[#ffe24c] p-3 text-gray-400 italic rounded-r-xl text-[13.5px]">
@@ -8613,59 +8520,73 @@ const PROMOTED_ARTICLES = [
                     </>
                   ) : (
                     <>
-                      <p>
-                        <a href="#" className="text-blue-400 hover:underline">Increase your chances</a> of becoming a winner before time runs out: deposit $50 or more, reach a turnover of $300, and get your Horseshoe.
-                      </p>
-                      <p className="text-gray-300">
-                        {selectedNews.content?.split('*')[0] || ""}
-                      </p>
-                      {selectedNews.content?.includes('*') && (
-                        <p className="text-gray-500 text-[12.5px] italic pt-4 border-t border-[#2C2C2E]">
-                          *{selectedNews.content?.split('*')[1] || ""}
-                        </p>
+                      <div className="text-gray-300 space-y-4 whitespace-pre-wrap">
+                        {selectedNews.content || ""}
+                      </div>
+                      
+                      {selectedNews.actionType && (
+                        <div className="pt-6 pb-2 text-center" id="news-platform-external-link-container">
+                          <button
+                            onClick={() => {
+                              if (selectedNews.actionType === 'deposit') {
+                                if (selectedNews.actionValue) {
+                                  window.location.href = "/crypto-deposit?promoCode=" + selectedNews.actionValue;
+                                } else {
+                                  window.location.href = "/crypto-deposit";
+                                }
+
+                              } else if (selectedNews.actionType === 'url') {
+                                window.open(selectedNews.actionValue, "_blank");
+                              }
+                            }}
+                            className="w-full bg-[#ffe24c] hover:bg-[#ebd04f] text-black font-extrabold py-3.5 px-4 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-[13px] shadow-lg shadow-[#ffe24c]/20"
+                            id="news-platform-action-btn"
+                          >
+                            {selectedNews.actionType === 'url' ? <Icons.ExternalLink size={16} /> : <Icons.Wallet size={16} />}
+                            {selectedNews.ctaText || "Take Action"}
+                          </button>
+                        </div>
                       )}
                     </>
                   )}
                 </div>
 
                 {/* Reaction engine */}
-                <div className="pt-6 border-t border-white/5 space-y-4">
-                  <h5 className="text-white font-bold text-[14px] uppercase tracking-wider text-gray-400 font-extrabold">Did you find this helpful?</h5>
-                  <div className="flex gap-3">
+                <div className="pt-6 border-t border-white/10 flex items-center justify-between">
+                  <h5 className="text-white font-bold text-[17px]">Like it?</h5>
+                  <div className="flex gap-2">
                     <button 
                       onClick={() => {
                         if (!selectedNews.hasVotedUp && !selectedNews.hasVotedDown) {
                           setSelectedNews((p: any) => p ? { ...p, reactions: (p.reactions || 0) + 1, hasVotedUp: true } : null);
-                          toast.success("Thanks for your reaction!");
                         }
                       }}
-                      className={`flex-1 hover:bg-[#3A3A3C] transition-colors py-3.5 rounded-2xl flex items-center justify-center gap-3 border transition-all ${
+                      className={`hover:bg-[#3A3A3C] transition-colors py-2.5 px-4 rounded-[14px] flex items-center justify-center gap-2 border transition-all ${
                         selectedNews.hasVotedUp 
-                          ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/30 font-black shadow-inner"
-                          : "bg-[#2C2C2E] text-gray-300 border-[#3A3A3C]"
+                          ? "bg-[#3A3A3C] text-yellow-500 border-transparent shadow-inner"
+                          : "bg-[#2C2C2E] text-gray-400 border-transparent"
                       }`}
                       id="news-feedback-like-btn"
                     >
-                       <Icons.Smile size={20} className={selectedNews.hasVotedUp ? "text-yellow-500" : "text-gray-400"} />
-                       <span className="font-extrabold text-[13px]">{selectedNews.reactions}</span>
+                       <Icons.Smile size={18} />
+                       <span className="font-bold text-[14px]">{selectedNews.reactions || 75}</span>
                     </button>
                     
                     <button 
                       onClick={() => {
                         if (!selectedNews.hasVotedUp && !selectedNews.hasVotedDown) {
                           setSelectedNews((p: any) => p ? { ...p, badReactions: (p.badReactions || 0) + 1, hasVotedDown: true } : null);
-                          toast.success("Feedback submitted!");
                         }
                       }}
-                      className={`flex-1 hover:bg-[#3A3A3C] transition-colors py-3.5 rounded-2xl flex items-center justify-center gap-3 border transition-all ${
+                      className={`hover:bg-[#3A3A3C] transition-colors py-2.5 px-4 rounded-[14px] flex items-center justify-center gap-2 border transition-all ${
                         selectedNews.hasVotedDown 
-                          ? "bg-red-500/10 text-red-400 border-red-500/30 font-black shadow-inner"
-                          : "bg-[#2C2C2E] text-gray-300 border-[#3A3A3C]"
+                          ? "bg-[#3A3A3C] text-red-400 border-transparent shadow-inner"
+                          : "bg-[#2C2C2E] text-gray-400 border-transparent"
                       }`}
                       id="news-feedback-dislike-btn"
                     >
-                       <Icons.Frown size={20} className={selectedNews.hasVotedDown ? "text-red-400" : "text-gray-400"} />
-                       <span className="font-extrabold text-[13px]">{selectedNews.badReactions || 0}</span>
+                       <Icons.Frown size={18} />
+                       <span className="font-bold text-[14px]">{selectedNews.badReactions || 14}</span>
                     </button>
                   </div>
                 </div>
@@ -12105,7 +12026,7 @@ const PROMOTED_ARTICLES = [
                             <div className={`w-[22px] h-[22px] rounded-full border-[2px] ${selectedBonusId === "promo" ? 'border-[#FFE24C]' : 'border-gray-500'} flex items-center justify-center transition-colors shrink-0`}>
                                {selectedBonusId === "promo" && <div className="w-[10px] h-[10px] bg-[#FFE24C] rounded-full"></div>}
                             </div>
-                            <span className="text-white font-medium text-[15px]">Promo code bonus <span className="text-[#00C980] font-semibold">+0%</span></span>
+                            <span className="text-white font-medium text-[15px]">Promo code bonus <span className={`font-semibold ${promoBonus > 0 ? 'text-[#00C980]' : 'text-gray-400'}`}>+{promoBonus}%</span></span>
                           </div>
                           {selectedBonusId === "promo" && (
                              <div className="pl-9 mt-4 flex gap-3 h-[46px]">
@@ -12338,7 +12259,9 @@ const PROMOTED_ARTICLES = [
                                         trxId: paymentTrxId,
                                         status: 'pending',
                                         timestamp: Date.now(),
-                                        orderId
+                                        orderId,
+                                        promoCode: appliedPromo,
+                                        promoBonus: promoBonus
                                       };
                                       const depositRes = await fetch('/api/deposit', {
                                         method: 'POST',

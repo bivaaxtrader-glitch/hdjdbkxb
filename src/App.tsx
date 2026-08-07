@@ -40,6 +40,8 @@ import LtcDeposit from './pages/LtcDeposit';
 import GoPayDepositPage from './pages/GoPayDepositPage';
 import AuthPage from './pages/AuthPage';
 import AffiliateLandingPage from './pages/AffiliateLanding';
+import EnterpriseSupportCenter from './pages/EnterpriseSupportCenter';
+import ClientSupportCenter from './pages/ClientSupportCenter';
 
 // Loader for Suspense
 const PageLoader = () => (
@@ -688,13 +690,15 @@ export default function App() {
               <Route path="/tournaments" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/education" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/statuses" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
-              <Route path="/help-center" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/help-center" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />
+              <Route path="/support" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/profile" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
               <Route path="/affiliate" element={<RequireAuth user={user}><AffiliatePage /></RequireAuth>} />
               <Route path="/signals" element={<RequireAuth user={user}><SignalsPage /></RequireAuth>} />
               <Route path="/copytrading" element={<RequireAuth user={user}><CopyTradingPage /></RequireAuth>} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/support-center" element={<EnterpriseSupportCenter />} />
               <Route path="/about-us" element={<AboutUsPage />} />
               <Route path="/news/:slug" element={<NewsPage />} />
               <Route path="/page/:slug" element={<StaticPage />} />

@@ -31,6 +31,13 @@ export default function CryptoDepositPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [isTxInputVisible, setIsTxInputVisible] = useState(false);
+  const promoCode = searchParams.get('promoCode');
+
+  useEffect(() => {
+    if (promoCode) {
+      toast.success(`Promo code ${promoCode} applied successfully!`);
+    }
+  }, [promoCode]);
 
   const fallbackAddresses = {
     USDT_TRC20: 'TCT8YFWr74EdMwrDwpG8JwpD2yVPycebKU', // Perfectly matches the screenshot address
