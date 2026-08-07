@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, where, updateDoc, doc } from "./firebase";
+import { collection, addDoc, getDocs, query, where, updateDoc, doc, setDoc } from "./firebase";
 import { db } from "./firebase";
 
 export const seedPromo = async () => {
@@ -60,5 +60,27 @@ Trade Smart. Earn Big.`;
     }
   } catch (e) {
     console.error("Error seeding promo:", e);
+  }
+};
+
+import { adminDb } from "./lib/firebase-admin";
+
+export const seedPages = async () => {
+  try {
+    const pages = [
+      { id: 'about_us', title: 'About Us', content: 'Bivaax Trade is the most trusted binary options platform...' },
+      { id: 'regulations', title: 'Regulations', content: 'We are regulated by...' },
+      { id: 'client_agreement', title: 'Client Agreement', content: 'By using our platform, you agree to...' }
+    ];
+    for (const page of pages) {
+      try {
+        await adminDb.collection('pages').doc(page.id).set(page);
+        console.log(`Page ${page.id} seeded successfully to adminDb`);
+      } catch (e) {
+        console.log(`Page ${page.id} seeding failed:`, e);
+      }
+    }
+  } catch (e) {
+    console.error("Error seeding pages:", e);
   }
 };

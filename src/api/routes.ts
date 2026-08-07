@@ -3761,9 +3761,13 @@ router.post('/:collection/:id/:subcollection', async (req, res) => {
 // 2-segment routes
 router.get('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
+  console.log(`[DEBUG] Attempting to fetch: collection=${collection}, id=${id}`);
   try {
     const doc = await adminDb.collection(collection).doc(id).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Not found' });
+    if (!doc.exists) {
+        console.log(`[DEBUG] Document not found: collection=${collection}, id=${id}`);
+        return res.status(404).json({ error: 'Not found' });
+    }
     res.json({ id: doc.id, ...doc.data() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -3797,6 +3801,17 @@ router.delete('/:collection/:id', async (req, res) => {
     await adminDb.collection(collection).doc(id).delete();
     res.json({ success: true });
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/seed-pages', async (req, res) => {
+  try {
+    const { seedPages } = await import('../seedData');
+    await seedPages();
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Seeding failed:', err);
     res.status(500).json({ error: err.message });
   }
 });

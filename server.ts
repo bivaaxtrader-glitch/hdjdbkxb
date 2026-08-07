@@ -29,6 +29,7 @@ import { backupDatabase } from './src/db/backup';
 import authRouter from './src/api/auth';
 import apiRouter, { syncDatabaseFromFirestore } from './src/api/routes';
 import logger from './src/lib/logger';
+import { seedPromo, seedPages } from './src/seedData';
 
 async function startServer() {
   const app = express();
@@ -183,6 +184,14 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
       await syncDatabaseFromFirestore();
     } catch (syncErr: any) {
       console.error('Failed to sync database from Firestore on boot:', syncErr.message);
+    }
+
+    // Seed promos and static pages on server start
+    try {
+      await seedPromo();
+      await seedPages();
+    } catch (seedErr: any) {
+      console.error('Failed to run boot seeding:', seedErr.message);
     }
 
     // Seed master traders
