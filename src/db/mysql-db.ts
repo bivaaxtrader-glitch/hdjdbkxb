@@ -3,6 +3,7 @@ const { Pool } = pkg;
 import mysql from 'mysql2/promise';
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import logger from '../lib/logger.ts';
 
 const connectionString = process.env.DATABASE_URL;
@@ -12,7 +13,7 @@ let sqliteDb: any = null;
 let isPostgres = false;
 let isMysql = false;
 
-if (connectionString && !connectionString.includes('bivaax-bivaax-jxqz7u')) {
+if (connectionString && !connectionString.includes('bivaax-bivaax-jxqz7u') && !connectionString.includes('bivaax-bivaax-kdd3en')) {
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
     try {
       pgPool = new Pool({
@@ -68,11 +69,27 @@ if (!isPostgres && !isMysql) {
     sqliteDb = new Database(dbPath);
     sqliteDb.pragma('journal_mode = WAL');
     sqliteDb.pragma('synchronous = NORMAL');
+    sqliteDb.prepare('SELECT 1').get();
     console.log('✅ Using local SQLite database (better-sqlite3) at', dbPath);
   } catch (err) {
     console.error('Failed to initialize SQLite database:', err);
-    sqliteDb = new Database(':memory:');
-    console.log('⚠️ Using in-memory SQLite database fallback');
+    try {
+      if (sqliteDb) sqliteDb.close();
+    } catch (e) {}
+    try {
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+      if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
+      if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
+    } catch (e) {}
+    try {
+      sqliteDb = new Database(dbPath);
+      sqliteDb.pragma('journal_mode = WAL');
+      sqliteDb.pragma('synchronous = NORMAL');
+      console.log('✅ Recreated SQLite database at', dbPath);
+    } catch (innerErr) {
+      console.error('Failed to recreate SQLite database, falling back to memory:', innerErr);
+      sqliteDb = new Database(':memory:');
+    }
   }
 }
 
@@ -310,6 +327,18 @@ CREATE TABLE IF NOT EXISTS historical_candles (
   volume NUMERIC NOT NULL,
   openTime BIGINT NOT NULL,
   closeTime BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS candles (
+  id ${isPostgres ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT'},
+  pair TEXT NOT NULL,
+  type TEXT NOT NULL,
+  open NUMERIC NOT NULL,
+  high NUMERIC NOT NULL,
+  low NUMERIC NOT NULL,
+  close NUMERIC NOT NULL,
+  volume NUMERIC NOT NULL,
+  time BIGINT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS market_type_tf_time_idx ON historical_candles (market, type, timeframe, openTime);

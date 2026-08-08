@@ -226,58 +226,16 @@ export default function AuthPage() {
           return;
         }
 
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        const affiliateId = await getNextAffiliateId();
-
-        await setDoc(doc(db, 'users', user.uid), {
-          email: user.email,
-          displayName: fullName,
-          balance: 0.0,
-          demoBalance: 10000.0,
-          currency: currency,
-          affiliateId: affiliateId,
-          country: detectedCountry || 'Bangladesh',
-          countryCode: detectedCountryCode || 'BD',
-          createdAt: Date.now(),
-          isVerified: false,
-          referredBy: finalReferrerUid || null,
-          referredByUid: finalReferrerUid || null,
-          referralSubId: sub || null,
-          referralType: type || null
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, referralCode: ref, referralSubId: sub, referralType: type })
         });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        // If referred, increment referrer's count
-        if (finalReferrerUid) {
-          try {
-            await updateDoc(doc(db, 'users', finalReferrerUid), {
-              referralCount: increment(1)
-            });
-          } catch (e) {
-            console.error("Failed to increment referral count", e);
-          }
-        }
-
-        // Sync with SQL Backend
-        try {
-          await fetch('/api/user/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              uid: user.uid,
-              email: user.email,
-              displayName: fullName,
-              nickname: fullName.split(' ')[0],
-              country: detectedCountry || 'Bangladesh',
-              countryCode: detectedCountryCode || 'BD',
-              referralCode: ref,
-              referralSubId: sub,
-              referralType: type
-            })
-          });
-        } catch (syncErr) {
-          console.error("Backend sync failed:", syncErr);
-        }
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
 
         // Clean up referral data
         localStorage.removeItem('referralCode');
@@ -286,13 +244,24 @@ export default function AuthPage() {
         localStorage.removeItem('referral_sub_id');
         localStorage.removeItem('referralType');
         localStorage.removeItem('referral_type');
+        localStorage.setItem('device_registered', 'true');
 
         toast.success("Registration successful!");
         setCharacterState('success');
         setTimeout(() => navigate('/trade'), 1500);
 
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+
         toast.success("Welcome back!");
         setCharacterState('success');
         setTimeout(() => navigate('/trade'), 1500);
