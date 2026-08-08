@@ -3817,9 +3817,46 @@ router.get('/seed-pages', async (req, res) => {
 });
 
 // 1-segment routes last
+// 2-segment routes for sub-collections or specific documents
+router.get('/:collection/:id', async (req, res) => {
+  const { collection, id } = req.params;
+  try {
+    if (!adminDb) throw new Error('Firestore not initialized');
+    const doc = await adminDb.collection(collection).doc(id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Document not found' });
+    res.json({ id: doc.id, ...doc.data() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:collection/:id', async (req, res) => {
+  const { collection, id } = req.params;
+  try {
+    if (!adminDb) throw new Error('Firestore not initialized');
+    await adminDb.collection(collection).doc(id).set(req.body, { merge: true });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:collection/:id', async (req, res) => {
+  const { collection, id } = req.params;
+  try {
+    if (!adminDb) throw new Error('Firestore not initialized');
+    await adminDb.collection(collection).doc(id).delete();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 1-segment routes last
 router.get('/:collection', async (req, res) => {
   const { collection } = req.params;
   try {
+    if (!adminDb) throw new Error('Firestore not initialized');
     const snapshot = await adminDb.collection(collection).get();
     const docs: any[] = [];
     snapshot.forEach((doc: any) => docs.push({ id: doc.id, ...doc.data() }));
@@ -3832,6 +3869,7 @@ router.get('/:collection', async (req, res) => {
 router.post('/:collection', async (req, res) => {
   const { collection } = req.params;
   try {
+    if (!adminDb) throw new Error('Firestore not initialized');
     const docRef = await adminDb.collection(collection).add(req.body);
     logger.info(`Successfully added document to Firestore collection ${collection}: ${docRef.id}`);
     res.json({ id: docRef.id });

@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithPopup as fbSignInWithPopup, GoogleAuthProvider as FbGoogleAuthProvider } from "firebase/auth";
+import { getAnalytics } from "firebase/analytics";
 import firebaseAppletConfig from '../firebase-applet-config.json';
 
 const configData = firebaseAppletConfig as any;
@@ -19,6 +20,16 @@ const firebaseConfig = {
 // Initialize Firebase
 const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const realFirebaseAuth = getAuth(firebaseApp);
+let analytics: any = null;
+try {
+  if (typeof window !== 'undefined') {
+    analytics = getAnalytics(firebaseApp);
+  }
+} catch (e) {
+  console.warn("Analytics initialization failed:", e);
+}
+
+export { firebaseApp, analytics };
 
 import { getAuthToken, clearAuth, saveAuth } from './lib/auth-client.ts';
 
@@ -33,13 +44,13 @@ export enum OperationType {
 
 export const auth = {
   get currentUser() {
-    const user = localStorage.getItem('bivax_user');
+    const user = typeof window !== 'undefined' ? localStorage.getItem('bivax_user') : null;
     if (user) {
       try {
         const parsed = JSON.parse(user);
         return {
           ...parsed,
-          getIdToken: async () => localStorage.getItem('bivax_token') || ''
+          getIdToken: async () => typeof window !== 'undefined' ? (localStorage.getItem('bivax_token') || '') : ''
         };
       } catch (e) {
         return null;
@@ -49,13 +60,13 @@ export const auth = {
   },
   onAuthStateChanged: (callback: (user: any) => void) => {
     const handler = () => {
-      const user = localStorage.getItem('bivax_user');
+      const user = typeof window !== 'undefined' ? localStorage.getItem('bivax_user') : null;
       if (user) {
         try {
           const parsed = JSON.parse(user);
           callback({
             ...parsed,
-            getIdToken: async () => localStorage.getItem('bivax_token') || ''
+            getIdToken: async () => typeof window !== 'undefined' ? (localStorage.getItem('bivax_token') || '') : ''
           });
         } catch (e) {
           callback(null);
@@ -64,9 +75,12 @@ export const auth = {
         callback(null);
       }
     };
-    window.addEventListener('auth_change', handler);
-    handler();
-    return () => window.removeEventListener('auth_change', handler);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('auth_change', handler);
+      handler();
+      return () => window.removeEventListener('auth_change', handler);
+    }
+    return () => {};
   },
   signOut: async () => {
     console.log("signOut called");
@@ -130,7 +144,7 @@ export const db = {
     get: async () => {
       try {
         const token = getAuthToken();
-        const user = JSON.parse(localStorage.getItem('bivax_user') || '{}');
+        const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bivax_user') || '{}') : {};
         const isAdmin = !!user.is_admin;
         
         let endpoint = `/api/${name}`;
@@ -179,9 +193,9 @@ export async function signInWithEmailAndPassword(a: any, email: string, pass: st
 }
 
 export async function createUserWithEmailAndPassword(a: any, email: string, pass: string) {
-  const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '';
-  const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
-  const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
+  const referralCode = typeof window !== 'undefined' ? (localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '') : '';
+  const referralSubId = typeof window !== 'undefined' ? (localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '') : '';
+  const referralType = typeof window !== 'undefined' ? (localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '') : '';
 
   const res = await fetch('/api/auth/register', {
     method: 'POST',
@@ -199,12 +213,14 @@ export async function createUserWithEmailAndPassword(a: any, email: string, pass
   saveAuth(data.token, data.user);
 
   // Clear referral data
-  localStorage.removeItem('referralCode');
-  localStorage.removeItem('referral_code');
-  localStorage.removeItem('referralSub');
-  localStorage.removeItem('referral_sub_id');
-  localStorage.removeItem('referralType');
-  localStorage.removeItem('referral_type');
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('referralCode');
+    localStorage.removeItem('referral_code');
+    localStorage.removeItem('referralSub');
+    localStorage.removeItem('referral_sub_id');
+    localStorage.removeItem('referralType');
+    localStorage.removeItem('referral_type');
+  }
 
   return { 
     user: {
@@ -219,9 +235,9 @@ export const signInWithPopup = async (a: any, p: any) => {
     const result = await fbSignInWithPopup(realFirebaseAuth, p);
     const idToken = await result.user.getIdToken();
     
-    const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '';
-    const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
-    const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
+    const referralCode = typeof window !== 'undefined' ? (localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '') : '';
+    const referralSubId = typeof window !== 'undefined' ? (localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '') : '';
+    const referralType = typeof window !== 'undefined' ? (localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '') : '';
 
     const res = await fetch('/api/auth/firebase-google', {
       method: 'POST',
@@ -233,12 +249,14 @@ export const signInWithPopup = async (a: any, p: any) => {
     saveAuth(data.token, data.user);
 
     // Clear referral data
-    localStorage.removeItem('referralCode');
-    localStorage.removeItem('referral_code');
-    localStorage.removeItem('referralSub');
-    localStorage.removeItem('referral_sub_id');
-    localStorage.removeItem('referralType');
-    localStorage.removeItem('referral_type');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('referralCode');
+      localStorage.removeItem('referral_code');
+      localStorage.removeItem('referralSub');
+      localStorage.removeItem('referral_sub_id');
+      localStorage.removeItem('referralType');
+      localStorage.removeItem('referral_type');
+    }
 
     return { 
       user: {

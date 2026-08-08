@@ -1,10 +1,9 @@
-import { collection, addDoc, getDocs, query, where, updateDoc, doc, setDoc } from "./firebase";
-import { db } from "./firebase";
+import { adminDb } from "./lib/firebase-admin";
 
 export const seedPromo = async () => {
   try {
-    const q = query(collection(db, 'news'), where('title', '==', '50% Deposit Bonus'));
-    const snap = await getDocs(q);
+    const newsRef = adminDb.collection('news');
+    const snap = await newsRef.where('title', '==', '50% Deposit Bonus').get();
     
     const promoContent = `Promo Code: BIVAAXFAST50
 
@@ -18,7 +17,7 @@ Offer Details:
 Trade Smart. Earn Big.`;
 
     if (snap.empty) {
-      await addDoc(collection(db, 'news'), {
+      await newsRef.add({
         title: "50% Deposit Bonus",
         description: "Boost Your Trading with Every Deposit!",
         content: promoContent,
@@ -34,8 +33,8 @@ Trade Smart. Earn Big.`;
       });
       console.log("News Promo seeded successfully");
     } else {
-      const docRef = doc(db, 'news', snap.docs[0].id);
-      await updateDoc(docRef, {
+      const docRef = newsRef.doc(snap.docs[0].id);
+      await docRef.update({
         description: "Boost Your Trading with Every Deposit!",
         content: promoContent,
         isPlatformNews: true,
@@ -46,10 +45,10 @@ Trade Smart. Earn Big.`;
       });
     }
 
-    const qPromo = query(collection(db, 'promos'), where('code', '==', 'BIVAAXFAST50'));
-    const snapPromo = await getDocs(qPromo);
+    const promoRef = adminDb.collection('promos');
+    const snapPromo = await promoRef.where('code', '==', 'BIVAAXFAST50').get();
     if (snapPromo.empty) {
-        await addDoc(collection(db, 'promos'), {
+        await promoRef.add({
            code: 'BIVAAXFAST50',
            bonusPercentage: 50,
            isActive: true,
@@ -62,8 +61,6 @@ Trade Smart. Earn Big.`;
     console.error("Error seeding promo:", e);
   }
 };
-
-import { adminDb } from "./lib/firebase-admin";
 
 export const seedPages = async () => {
   try {

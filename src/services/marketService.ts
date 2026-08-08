@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { markets, Market } from '../markets.ts';
-import db from '../db/mysql-db.ts';
+import db, { run, get, query, transaction, isPostgres, isMysql } from '../db/mysql-db.ts';
 import { adminDb } from '../lib/firebase-admin.ts';
 import { generateSingleCandleOHLC } from './candlestickEngine.ts';
 
@@ -43,7 +43,7 @@ export const timeframeSecondsMap: Record<string, number> = {
   "1 day": 86400
 };
 
-export function saveCandleToDB(pair: string, type: 'real' | 'demo', candle: any) {
+export async function saveCandleToDB(pair: string, type: 'real' | 'demo', candle: any) {
   // Backwards compatibility wrapper for the old 5s format
   saveCandleToDB_v2(pair, type, "5 seconds", {
     open: candle.open,
@@ -58,7 +58,7 @@ export function saveCandleToDB(pair: string, type: 'real' | 'demo', candle: any)
 
 const lastSqliteWrite = new Map<string, number>();
 
-export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
+export async function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
   try {
     const nowMs = Date.now();
     const nowSec = Math.floor(nowMs / 1000);
@@ -69,7 +69,7 @@ export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe
     // ONLY save to SQLite periodically (every 5 seconds) to reduce CPU load, or if the candle just completed
     if (nowMs - lastWrite >= 5000 || isCompleted) {
       lastSqliteWrite.set(cacheKey, nowMs);
-      db.prepare(`
+      const upsertSql = isPostgres ? `
         INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(market, type, timeframe, openTime) DO UPDATE SET
@@ -78,7 +78,12 @@ export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe
           close = excluded.close,
           volume = excluded.volume,
           closeTime = excluded.closeTime
-      `).run(
+      ` : `
+        INSERT OR REPLACE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      
+      await run(upsertSql, [
         pair,
         type,
         timeframe,
@@ -89,7 +94,7 @@ export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe
         Number(candle.volume).toFixed(2),
         candle.openTime,
         candle.closeTime
-      );
+      ]);
     }
 
     // Save only COMPLETED candles (1m+) to Firestore to significantly reduce write quota usage.
@@ -187,7 +192,7 @@ export async function initializeCandlesFromDB() {
   console.log('📦 Initializing candle storage from database...');
   
   // 1. Create the new historical_candles table and unique index if they don't exist
-  db.prepare(`
+  await run(`
     CREATE TABLE IF NOT EXISTS historical_candles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       market TEXT NOT NULL,
@@ -201,12 +206,12 @@ export async function initializeCandlesFromDB() {
       openTime INTEGER NOT NULL,
       closeTime INTEGER NOT NULL
     )
-  `).run();
+  `, []);
 
-  db.prepare(`
+  await run(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_candles_market_type_tf_opentime 
     ON historical_candles (market, type, timeframe, openTime)
-  `).run();
+  `, []);
 
   const pairKeys = Object.keys(markets);
   
@@ -217,26 +222,30 @@ export async function initializeCandlesFromDB() {
     for (const type of ['real', 'demo']) {
       try {
         // A. Copy old 5s data from the candles table if historical_candles is empty for 5s
-        const has5s = db.prepare('SELECT 1 FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? LIMIT 1').get(pair, type, '5 seconds') as any;
+        const has5s = await get('SELECT 1 FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? LIMIT 1', [pair, type, '5 seconds']) as any;
         
         if (!has5s) {
           // Check if old candles exist
           let oldCandles: any[] = [];
           try {
-            oldCandles = db.prepare('SELECT * FROM candles WHERE pair = ? AND type = ? ORDER BY time ASC').all(pair, type) as any[];
+            oldCandles = await query('SELECT * FROM candles WHERE pair = ? AND type = ? ORDER BY time ASC', [pair, type]) as any[];
           } catch (e) {
             // candles table might not exist or be empty
           }
 
           if (oldCandles.length > 0) {
             console.log(`📦 Migrating ${oldCandles.length} old 5-second candles to historical_candles for ${pair} (${type})`);
-            const insertStmt = db.prepare(`
-              INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+            const insertStmt = await query(`
+              INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            const runTx = db.transaction((rows) => {
+            const runTx = async (rows) => {
               for (const r of rows) {
-                insertStmt.run(
+                await run(`
+              INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT DO NOTHING
+            `, [
                   r.pair,
                   r.type,
                   '5 seconds',
@@ -247,10 +256,10 @@ export async function initializeCandlesFromDB() {
                   r.volume,
                   r.time,
                   r.time + 5
-                );
+                ]);
               }
-            });
-            runTx(oldCandles);
+            };
+            await runTx(oldCandles);
           } else {
             // Seed brand new initial 5s candles (200 candles to provide background efficiently)
             const basePrice = markets[pair].price || 100;
@@ -298,13 +307,21 @@ export async function initializeCandlesFromDB() {
               currentPrice = c.close + pull;
             }
 
-            const insertStmt = db.prepare(`
+            
+            const runTx = async (rows) => {
+              for (const r of rows) {
+                const upsertSql = isPostgres ? `
+              INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT DO NOTHING
+            ` : (isMysql ? `
+              INSERT IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ` : `
               INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            const runTx = db.transaction((rows) => {
-              for (const r of rows) {
-                insertStmt.run(
+                await run(upsertSql, [
                   r.market,
                   r.type,
                   r.timeframe,
@@ -315,10 +332,10 @@ export async function initializeCandlesFromDB() {
                   r.volume.toFixed(2),
                   r.openTime,
                   r.closeTime
-                );
+                ]);
               }
-            });
-            runTx(seedRows);
+            };
+            await runTx(seedRows);
           }
         }
 
@@ -326,36 +343,44 @@ export async function initializeCandlesFromDB() {
         let baseCandles: any[] | null = null;
         for (const tf of TIMEFRAMES) {
           if (tf === '5 seconds') continue;
-          const hasTf = db.prepare('SELECT 1 FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? LIMIT 1').get(pair, type, tf) as any;
+          const hasTf = await get('SELECT 1 FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? LIMIT 1', [pair, type, tf]) as any;
           
           if (!hasTf) {
             if (baseCandles === null) {
-              baseCandles = db.prepare('SELECT open, high, low, close, volume, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime ASC').all(pair, type, '5 seconds') as any[];
+              baseCandles = await query('SELECT open, high, low, close, volume, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime ASC', [pair, type, '5 seconds']) as any[];
             }
             const resampled = resampleCandles(baseCandles, timeframeSecondsMap[tf]);
             
             if (resampled.length > 0) {
-              const insertStmt = db.prepare(`
-                INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `);
-              const runTx = db.transaction((rows) => {
+              const runTx = async (rows: any[]) => {
                 for (const r of rows) {
-                  insertStmt.run(
-                    pair,
-                    type,
-                    tf,
-                    Number(r.open).toFixed(6),
-                    Number(r.high).toFixed(6),
-                    Number(r.low).toFixed(6),
-                    Number(r.close).toFixed(6),
-                    Number(r.volume).toFixed(2),
-                    r.openTime,
-                    r.closeTime
-                  );
+          const upsertSql = isPostgres ? `
+            INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+          ` : (isMysql ? `
+            INSERT IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ` : `
+            INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          
+          await run(upsertSql, [
+            pair,
+            type,
+            tf,
+            Number(r.open).toFixed(6),
+            Number(r.high).toFixed(6),
+            Number(r.low).toFixed(6),
+            Number(r.close).toFixed(6),
+            Number(r.volume).toFixed(2),
+            r.openTime,
+            r.closeTime
+          ]);
                 }
-              });
-              runTx(resampled);
+              };
+              await runTx(resampled);
             }
           }
         }
@@ -363,7 +388,7 @@ export async function initializeCandlesFromDB() {
         // C. Gap-filling & Memory loading for EVERY timeframe
         for (const tf of TIMEFRAMES) {
           const tfSeconds = timeframeSecondsMap[tf];
-          const latestCandle = db.prepare('SELECT close, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime DESC LIMIT 1').get(pair, type, tf) as any;
+          const latestCandle = await get('SELECT close, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime DESC LIMIT 1', [pair, type, tf]) as any;
           
           if (latestCandle) {
             const lastClose = parseFloat(latestCandle.close);
@@ -389,10 +414,7 @@ export async function initializeCandlesFromDB() {
               console.log(`⚠️ Gap is too large for ${pair} (${type}) ${tf} (${requiredCandles} candles). Capping to last ${maxGapCandles} candles.`);
             }
 
-            const insertGapStmt = db.prepare(`
-              INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
+            
 
             let currentPrice = lastClose;
             let gapBatch: any[] = [];
@@ -403,9 +425,13 @@ export async function initializeCandlesFromDB() {
             const relVolatility = volatility / basePrice;
             const stepVol = relVolatility * Math.sqrt(tfSeconds);
 
-            const runGapTx = db.transaction((rows: any[]) => {
+            const runGapTx = async (rows) => {
               for (const r of rows) {
-                insertGapStmt.run(
+                await run(`
+              INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT DO NOTHING
+            `, [
                   r.market,
                   r.type,
                   r.timeframe,
@@ -416,9 +442,9 @@ export async function initializeCandlesFromDB() {
                   Number(r.volume).toFixed(2),
                   r.openTime,
                   r.closeTime
-                );
+                ]);
               }
-            });
+            };
 
             const gapRowsList: any[] = [];
             while (gapTime < currentBucket) {
@@ -459,13 +485,13 @@ export async function initializeCandlesFromDB() {
               totalFilled++;
 
               if (gapBatch.length >= 5000) {
-                runGapTx(gapBatch);
+                await runGapTx(gapBatch);
                 gapBatch = [];
               }
             }
 
             if (gapBatch.length > 0) {
-              runGapTx(gapBatch);
+              await runGapTx(gapBatch);
             }
 
             // For the VERY LAST gap candle, set it to the current candle state in memory to prevent jumps
@@ -499,13 +525,13 @@ export async function initializeCandlesFromDB() {
           }
 
           // Load complete historical candles from DB up to 100,000 limit
-          const rows = db.prepare(`
+          const rows = await query(`
             SELECT openTime as time, open, high, low, close, volume, openTime, closeTime
             FROM historical_candles
             WHERE market = ? AND type = ? AND timeframe = ?
             ORDER BY openTime DESC
             LIMIT 1000
-          `).all(pair, type, tf) as any[];
+          `, [pair, type, tf]) as any[];
           
           const formattedRows = rows.map(r => ({
             time: r.time,
@@ -534,7 +560,7 @@ export async function initializeCandlesFromDB() {
           
           if (!currentCandles[pair]) currentCandles[pair] = {};
 
-          const activeDbCandle = db.prepare('SELECT * FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? AND openTime = ?').get(pair, type, tf, bucketTime) as any;
+          const activeDbCandle = await get('SELECT * FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? AND openTime = ?', [pair, type, tf, bucketTime]) as any;
           if (activeDbCandle) {
             currentCandles[pair][tf] = {
               open: parseFloat(activeDbCandle.open),
