@@ -31,7 +31,7 @@ try {
 
 export { firebaseApp, analytics };
 
-import { getAuthToken, clearAuth, saveAuth } from './lib/auth-client.ts';
+import { getAuthToken, clearAuth, saveAuth } from './lib/auth-client';
 
 export enum OperationType {
   CREATE = 'create',

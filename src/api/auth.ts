@@ -39,6 +39,10 @@ const googleClient = new OAuth2Client(
 const generateUid = () => 'usr_' + Math.random().toString(36).substring(2, 15);
 
 // 1. Local Registration
+router.get('/register', (req, res) => {
+  res.status(405).json({ error: 'Method Not Allowed. Please use POST for registration.' });
+});
+
 router.post('/register', 
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
@@ -162,6 +166,10 @@ router.post('/register',
 });
 
 // 2. Local Login
+router.get('/login', (req, res) => {
+  res.status(405).json({ error: 'Method Not Allowed. Please use POST for login.' });
+});
+
 router.post('/login', 
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
@@ -467,8 +475,6 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
-import { sendEmail } from '../lib/email.ts';
-
 // 5. Forgot Password
 router.post('/forgot-password', 
   body('email').isEmail().normalizeEmail(),
@@ -671,6 +677,12 @@ router.post('/verify-email-otp', requireAuth, async (req: any, res: any) => {
   }
 
   res.json({ success: true, message: 'Email verified successfully.' });
+});
+
+// Fallback for unmatched auth routes
+router.use((req, res) => {
+  logger.warn(`Unmatched auth route: ${req.method} ${req.url}`);
+  res.status(404).json({ error: `Auth API route not found: ${req.method} ${req.url}` });
 });
 
 export default router;

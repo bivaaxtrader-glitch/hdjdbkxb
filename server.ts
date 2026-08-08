@@ -78,7 +78,7 @@ async function startServer() {
     max: 1000, // High for dev
     message: { error: 'Too many login/register attempts. Please try again after 15 minutes.' }
   });
-  app.use('/api/auth/', authLimiter);
+  app.use('/api/auth', authLimiter);
 
   // Initialize Socket.IO
   initSocket(httpServer);

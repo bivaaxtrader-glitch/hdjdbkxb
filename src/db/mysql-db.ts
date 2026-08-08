@@ -13,7 +13,7 @@ let sqliteDb: any = null;
 let isPostgres = false;
 let isMysql = false;
 
-if (connectionString && !connectionString.includes('bivaax-bivaax-jxqz7u') && !connectionString.includes('bivaax-bivaax-kdd3en')) {
+if (connectionString) {
   if (connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://')) {
     try {
       pgPool = new Pool({

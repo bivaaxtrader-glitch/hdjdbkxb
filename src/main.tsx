@@ -62,7 +62,8 @@ const establishSession = (): Promise<void> => {
 };
 
 const init = async () => {
-  await establishSession();
+  // Session establishment is optional and should not block the app
+  establishSession();
   
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

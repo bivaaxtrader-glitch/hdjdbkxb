@@ -17,7 +17,7 @@ import {
   increment,
   sendEmailVerification
 } from '../firebase';
-import { saveAuth } from '../lib/auth-client.ts';
+import { saveAuth } from '../lib/auth-client';
 import { getNextAffiliateId, getUserByAffiliateId } from '../lib/affiliate';
 import { Logo } from '../components/Logo';
 import { toast } from 'react-hot-toast';
@@ -245,7 +245,8 @@ export default function AuthPage() {
           data = await res.json();
         } else {
           const text = await res.text();
-          throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100) || 'No details available.'}`);
+          const serverHeader = res.headers.get('server') || 'unknown';
+          throw new Error(`Server error ${res.status} (${serverHeader}): ${text.substring(0, 300) || 'Empty response body.'}`);
         }
 
         if (!res.ok) throw new Error(data.error || 'Registration failed');
@@ -278,7 +279,8 @@ export default function AuthPage() {
           data = await res.json();
         } else {
           const text = await res.text();
-          throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100)}`);
+          const serverHeader = res.headers.get('server') || 'unknown';
+          throw new Error(`Server error ${res.status} (${serverHeader}): ${text.substring(0, 300) || 'Empty response body.'}`);
         }
 
         if (!res.ok) throw new Error(data.error || 'Login failed');

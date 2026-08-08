@@ -4,7 +4,7 @@ import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, googleProvider, signInWithPopup, sendPasswordResetEmail, sendEmailVerification, signOut } from '../firebase';
 import { doc, setDoc, getDoc, updateDoc, increment } from '../firebase';
 import { getNextAffiliateId, getUserByAffiliateId } from '../lib/affiliate';
-import { saveAuth } from '../lib/auth-client.ts';
+import { saveAuth } from '../lib/auth-client';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AuthModalProps {
