@@ -217,10 +217,9 @@ export async function initializeCandlesFromDB() {
     for (const type of ['real', 'demo']) {
       try {
         // A. Copy old 5s data from the candles table if historical_candles is empty for 5s
-        const tf5sCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, '5 seconds') as any;
-        const tf5sCount = tf5sCountResult ? tf5sCountResult.count : 0;
+        const has5s = db.prepare('SELECT 1 FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? LIMIT 1').get(pair, type, '5 seconds') as any;
         
-        if (tf5sCount === 0) {
+        if (!has5s) {
           // Check if old candles exist
           let oldCandles: any[] = [];
           try {
@@ -324,13 +323,15 @@ export async function initializeCandlesFromDB() {
         }
 
         // B. Generate / Seeding for all OTHER timeframes by resampling the 5s base candles
+        let baseCandles: any[] | null = null;
         for (const tf of TIMEFRAMES) {
           if (tf === '5 seconds') continue;
-          const tfCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, tf) as any;
-          const tfCount = tfCountResult ? tfCountResult.count : 0;
+          const hasTf = db.prepare('SELECT 1 FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? LIMIT 1').get(pair, type, tf) as any;
           
-          if (tfCount === 0) {
-            const baseCandles = db.prepare('SELECT open, high, low, close, volume, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime ASC').all(pair, type, '5 seconds') as any[];
+          if (!hasTf) {
+            if (baseCandles === null) {
+              baseCandles = db.prepare('SELECT open, high, low, close, volume, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime ASC').all(pair, type, '5 seconds') as any[];
+            }
             const resampled = resampleCandles(baseCandles, timeframeSecondsMap[tf]);
             
             if (resampled.length > 0) {

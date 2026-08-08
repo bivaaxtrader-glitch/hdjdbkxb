@@ -28,7 +28,7 @@
         "smart_mode_enabled": 0,
         "smart_mode_strategy": "auto_25_percent",
         "created_at": 1786115281991,
-        "updated_at": 1786119081646,
+        "updated_at": 1786119531464,
         "countryCode": "BD"
       },
       "admin_seed_dijdbqhf": {
@@ -56,9 +56,9 @@
         "countryCode": "BD",
         "smart_mode_enabled": 0,
         "smart_mode_strategy": "auto_25_percent",
-        "createdAt": 1786118926994,
-        "created_at": 1786118926994,
-        "updated_at": 1786118926994
+        "createdAt": 1786119526082,
+        "created_at": 1786119526082,
+        "updated_at": 1786119526082
       },
       "admin_seed_0kikepnv": {
         "id": "admin_seed_0kikepnv",
@@ -61740,4 +61740,4 @@
         "closeTime": 1786116420,
         "updatedAt": 1786116424789
       },
-      "USD/ZAR_demo_1 minute_1786116360"
+      "USD/ZAR_demo_1 minute_1786116360

@@ -202,12 +202,37 @@ function createMockAuth() {
 }
 
 function handleFirebaseError(err: any) {
-  if (err && (err.code === 7 || err.code === 5 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('NOT_FOUND') || err.message?.includes('permission') || err.message?.includes('not found'))) {
+  if (err && (err.code === 7 || err.code === 5 || err.message?.includes('PERMISSION_DENIED') || err.message?.includes('NOT_FOUND') || err.message?.includes('permission') || err.message?.includes('not found') || err.message?.includes('insufficient'))) {
     if (!useMock) {
       console.log(`ℹ️ Firestore access unavailable (${err.code || 'UNKNOWN'}). Switching adminDb to mock/offline mode.`);
       useMock = true;
     }
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Promise<T>): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('Firebase operation timed out'));
+    }, timeoutMs);
+  });
+
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timer);
+      return res;
+    }),
+    timeoutPromise
+  ]).catch(async (err) => {
+    clearTimeout(timer);
+    if (err.message === 'Firebase operation timed out') {
+      console.warn(`⏳ Firebase operation timed out after ${timeoutMs}ms. Switching adminDb to mock/offline mode.`);
+      useMock = true;
+      return await onTimeout();
+    }
+    throw err;
+  });
 }
 
 function wrapCollectionRef(realCol: any, mockCol: any): any {
@@ -226,7 +251,7 @@ function wrapCollectionRef(realCol: any, mockCol: any): any {
     async add(...args: any[]) {
       if (useMock) return mockCol.add(...args);
       try {
-        return await realCol.add(...args);
+        return await withTimeout(realCol.add(...args), 2000, () => mockCol.add(...args));
       } catch (err) {
         handleFirebaseError(err);
         return await mockCol.add(...args);
@@ -262,7 +287,7 @@ function wrapCollectionRef(realCol: any, mockCol: any): any {
     async get() {
       if (useMock) return mockCol.get();
       try {
-        return await realCol.get();
+        return await withTimeout(realCol.get(), 2000, () => mockCol.get());
       } catch (err) {
         handleFirebaseError(err);
         return await mockCol.get();
@@ -288,7 +313,7 @@ function wrapDocRef(realDoc: any, mockDoc: any): any {
     async get() {
       if (useMock) return mockDoc.get();
       try {
-        return await realDoc.get();
+        return await withTimeout(realDoc.get(), 2000, () => mockDoc.get());
       } catch (err) {
         handleFirebaseError(err);
         return await mockDoc.get();
@@ -297,7 +322,7 @@ function wrapDocRef(realDoc: any, mockDoc: any): any {
     async set(...args: any[]) {
       if (useMock) return mockDoc.set(...args);
       try {
-        return await realDoc.set(...args);
+        return await withTimeout(realDoc.set(...args), 2000, () => mockDoc.set(...args));
       } catch (err) {
         handleFirebaseError(err);
         return await mockDoc.set(...args);
@@ -306,7 +331,7 @@ function wrapDocRef(realDoc: any, mockDoc: any): any {
     async update(...args: any[]) {
       if (useMock) return mockDoc.update(...args);
       try {
-        return await realDoc.update(...args);
+        return await withTimeout(realDoc.update(...args), 2000, () => mockDoc.update(...args));
       } catch (err) {
         handleFirebaseError(err);
         return await mockDoc.update(...args);
@@ -315,7 +340,7 @@ function wrapDocRef(realDoc: any, mockDoc: any): any {
     async delete() {
       if (useMock) return mockDoc.delete();
       try {
-        return await realDoc.delete();
+        return await withTimeout(realDoc.delete(), 2000, () => mockDoc.delete());
       } catch (err) {
         handleFirebaseError(err);
         return await mockDoc.delete();
@@ -356,7 +381,7 @@ function wrapQuery(realQuery: any, mockQuery: any): any {
     async get() {
       if (useMock) return mockQuery.get();
       try {
-        return await realQuery.get();
+        return await withTimeout(realQuery.get(), 2000, () => mockQuery.get());
       } catch (err) {
         handleFirebaseError(err);
         return await mockQuery.get();

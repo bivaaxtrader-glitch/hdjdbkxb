@@ -179,12 +179,10 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
   httpServer.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Sync local database from Firestore on startup to restore all state (Users, Trades, Transactions, KYC)
-    try {
-      await syncDatabaseFromFirestore();
-    } catch (syncErr: any) {
+    // Sync local database from Firestore on startup in the background to avoid blocking the boot sequence
+    syncDatabaseFromFirestore().catch((syncErr: any) => {
       console.error('Failed to sync database from Firestore on boot:', syncErr.message);
-    }
+    });
 
     // Seed promos and static pages on server start
     try {
