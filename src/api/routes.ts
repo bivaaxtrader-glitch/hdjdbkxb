@@ -453,9 +453,11 @@ router.post('/auth/register', async (req, res) => {
           </div>
         </div>
       `;
-      await sendEmail(email, subject, html);
+      sendEmail(email, subject, html).catch((mailErr) => {
+        logger.error('Failed to send registration welcome email:', mailErr);
+      });
     } catch (mailErr) {
-      logger.error('Failed to send registration welcome email:', mailErr);
+      logger.error('Error preparing welcome email:', mailErr);
     }
 
     res.json({ success: true, user });

@@ -234,8 +234,7 @@ export default function AuthPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        saveAuth(data.token, data.user);
 
         // Clean up referral data
         localStorage.removeItem('referralCode');
@@ -259,8 +258,7 @@ export default function AuthPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');
 
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        saveAuth(data.token, data.user);
 
         toast.success("Welcome back!");
         setCharacterState('success');

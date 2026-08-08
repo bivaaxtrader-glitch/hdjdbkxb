@@ -4431,7 +4431,7 @@ const PROMOTED_ARTICLES = [
       if (rawLastCandleRef.current && targetPriceRef.current > 0) {
           const currentInterp = currentInterpolatedPriceRef.current ?? rawLastCandleRef.current.close;
           const target = targetPriceRef.current;
-          const dt = 0.15;
+          const dt = 0.3;
           const MathAbs = Math.abs(target - currentInterp);
           newInterp = MathAbs < 0.000001 ? target : currentInterp + (target - currentInterp) * dt;
           currentInterpolatedPriceRef.current = newInterp;
@@ -5520,86 +5520,73 @@ const PROMOTED_ARTICLES = [
         const tfCurrent = timeframeRef.current;
         const timeframeSeconds = getTimeSeconds(tfCurrent);
         const serverTime = tickData.time || (Date.now() / 1000);
-        let bucketTime = Math.floor(serverTime - (serverTime % timeframeSeconds));
+        const baseCandleTime = (tfCurrent === "5 seconds" && tickData.candle?.time) ? tickData.candle.time : serverTime;
+        let bucketTime = Math.floor(baseCandleTime - (baseCandleTime % timeframeSeconds));
 
-        // If on 5 seconds timeframe and server provided exact authoritative candle, use it directly!
-        if (tfCurrent === "5 seconds" && tickData.candle) {
-            const sc = tickData.candle;
-            bucketTime = sc.time;
-            if (!rawLastCandleRef.current || rawLastCandleRef.current.time !== bucketTime) {
-                const prevClose = rawLastCandleRef.current ? rawLastCandleRef.current.close : sc.open;
-                const newCandle = {
-                    time: bucketTime as Time,
-                    open: sc.open ?? prevClose,
-                    high: Math.max(sc.open ?? prevClose, sc.high, newClose),
-                    low: Math.min(sc.open ?? prevClose, sc.low, newClose),
-                    close: newClose,
-                    volume: sc.volume || 10
-                };
-                rawLastCandleRef.current = newCandle;
-                currentInterpolatedPriceRef.current = newCandle.open;
-                if (baseDataRef.current) {
-                    const baseData = baseDataRef.current;
-                    if (baseData.length === 0 || baseData[baseData.length - 1].time < bucketTime) {
-                        baseData.push({ ...newCandle });
-                        if (baseData.length > 5000) baseData.shift();
-                    } else if (baseData[baseData.length - 1].time === bucketTime) {
-                        baseData[baseData.length - 1] = { ...newCandle };
-                    }
-                }
-            } else {
-                const candle = rawLastCandleRef.current;
-                candle.close = newClose;
-                candle.high = Math.max(candle.high, sc.high, newClose);
-                candle.low = Math.min(candle.low, sc.low, newClose);
-                candle.volume = (candle.volume || 0) + (sc.volume || 1);
+        // Prevent bucket time from going backward due to clock jitter
+        if (rawLastCandleRef.current && bucketTime < rawLastCandleRef.current.time) {
+            bucketTime = rawLastCandleRef.current.time;
+        }
+
+        if (!rawLastCandleRef.current) {
+            const serverCandle = tickData.candle;
+            rawLastCandleRef.current = {
+                time: bucketTime as Time,
+                open: serverCandle?.open ?? newClose,
+                high: serverCandle?.high ?? (newClose * 1.0001),
+                low: serverCandle?.low ?? (newClose * 0.9999),
+                close: serverCandle?.close ?? newClose,
+                volume: serverCandle?.volume || 10
+            };
+            currentInterpolatedPriceRef.current = newClose;
+            if (baseDataRef.current && baseDataRef.current.length === 0) {
+                baseDataRef.current.push({ ...rawLastCandleRef.current });
             }
-        } else {
-            // General timeframe logic
-            if (!rawLastCandleRef.current) {
-                const serverCandle = tickData.candle;
-                rawLastCandleRef.current = {
-                    time: bucketTime as Time,
-                    open: serverCandle?.open ?? newClose,
-                    high: serverCandle?.high ?? (newClose * 1.0001),
-                    low: serverCandle?.low ?? (newClose * 0.9999),
-                    close: serverCandle?.close ?? newClose,
-                    volume: serverCandle?.volume || 1
-                };
-                currentInterpolatedPriceRef.current = newClose;
-            }
-
-            if (rawLastCandleRef.current.time !== bucketTime && bucketTime > rawLastCandleRef.current.time) {
-                const prevClose = rawLastCandleRef.current.close;
-                const openPrice = prevClose;
-
-                const highPrice = Math.max(openPrice, newClose);
-                const lowPrice = Math.min(openPrice, newClose);
-
-                const newCandle = {
-                    time: bucketTime as Time,
-                    open: openPrice,
-                    high: highPrice,
-                    low: lowPrice,
-                    close: newClose,
-                    volume: 10 + Math.random() * 20
-                };
-                rawLastCandleRef.current = newCandle;
-                currentInterpolatedPriceRef.current = openPrice;
-                if (baseDataRef.current) {
-                    const baseData = baseDataRef.current;
-                    if (baseData.length > 0 && baseData[baseData.length - 1].time < bucketTime) {
-                        baseData.push({...newCandle});
-                        if (baseData.length > 5000) baseData.shift();
-                    }
-                }
+        } else if (rawLastCandleRef.current.time === bucketTime) {
+            // Update the current active candle
+            const candle = rawLastCandleRef.current;
+            candle.close = newClose;
+            if (tickData.candle) {
+                candle.high = Math.max(candle.high, tickData.candle.high, newClose);
+                candle.low = Math.min(candle.low, tickData.candle.low, newClose);
+                candle.volume = (candle.volume || 0) + (tickData.candle.volume || 1);
             } else {
-                // Update the current candle with the latest tick price
-                const candle = rawLastCandleRef.current;
-                candle.close = newClose;
                 candle.high = Math.max(candle.high, newClose);
                 candle.low = Math.min(candle.low, newClose);
                 candle.volume = (candle.volume || 0) + 1;
+            }
+            if (baseDataRef.current && baseDataRef.current.length > 0) {
+                const lastIdx = baseDataRef.current.length - 1;
+                if (baseDataRef.current[lastIdx].time === bucketTime) {
+                    baseDataRef.current[lastIdx] = { ...candle };
+                }
+            }
+        } else if (bucketTime > rawLastCandleRef.current.time) {
+            // Transition to a new candle bucket smoothly
+            const prevClose = rawLastCandleRef.current.close;
+            const openPrice = tickData.candle?.open ?? prevClose;
+            const highPrice = Math.max(openPrice, newClose, tickData.candle?.high ?? newClose);
+            const lowPrice = Math.min(openPrice, newClose, tickData.candle?.low ?? newClose);
+
+            const newCandle = {
+                time: bucketTime as Time,
+                open: openPrice,
+                high: highPrice,
+                low: lowPrice,
+                close: newClose,
+                volume: tickData.candle?.volume || 10
+            };
+            rawLastCandleRef.current = newCandle;
+            currentInterpolatedPriceRef.current = openPrice;
+
+            if (baseDataRef.current) {
+                const baseData = baseDataRef.current;
+                if (baseData.length === 0 || baseData[baseData.length - 1].time < bucketTime) {
+                    baseData.push({ ...newCandle });
+                    if (baseData.length > 5000) baseData.shift();
+                } else if (baseData[baseData.length - 1].time === bucketTime) {
+                    baseData[baseData.length - 1] = { ...newCandle };
+                }
             }
         }
 

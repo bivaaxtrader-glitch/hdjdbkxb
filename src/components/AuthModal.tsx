@@ -4,6 +4,7 @@ import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, googleProvider, signInWithPopup, sendPasswordResetEmail, sendEmailVerification, signOut } from '../firebase';
 import { doc, setDoc, getDoc, updateDoc, increment } from '../firebase';
 import { getNextAffiliateId, getUserByAffiliateId } from '../lib/affiliate';
+import { saveAuth } from '../lib/auth-client.ts';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AuthModalProps {
@@ -68,9 +69,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Backend sync failed');
       
-      // Store token
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      saveAuth(data.token, data.user);
       
       onSuccess();
       onClose();
@@ -114,8 +113,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Registration failed');
             
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            saveAuth(data.token, data.user);
             localStorage.setItem('device_registered', 'true');
             
             // Clear used referral code
@@ -137,8 +135,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Login failed');
 
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            saveAuth(data.token, data.user);
 
             onSuccess();
             onClose();

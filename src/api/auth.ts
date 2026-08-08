@@ -133,9 +133,11 @@ router.post('/register',
           </div>
         </div>`;
 
-      await sendEmail(email, welcomeSubject, welcomeHtml);
+      sendEmail(email, welcomeSubject, welcomeHtml).catch((emailErr) => {
+        logger.error('Failed to send welcome email:', emailErr);
+      });
     } catch (emailErr) {
-      logger.error('Failed to send welcome email:', emailErr);
+      logger.error('Error preparing welcome email:', emailErr);
     }
 
     const user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
@@ -491,14 +493,14 @@ router.post('/forgot-password',
 
       const resetLink = `${process.env.APP_URL || 'https://bivaax.com'}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
       
-      await sendEmail(email, 'Password Reset Request', `
+      sendEmail(email, 'Password Reset Request', `
         <div style="font-family: sans-serif; padding: 20px;">
           <h2>Password Reset Request</h2>
           <p>You requested a password reset. Click the link below to reset your password.</p>
           <a href="${resetLink}" style="background: #FFE24C; padding: 10px 20px; text-decoration: none; color: #1a1b23; border-radius: 5px;">Reset Password</a>
           <p>This link expires in 1 hour.</p>
         </div>
-      `);
+      `).catch((err) => logger.error('Failed to send password reset email:', err));
     }
     res.json({ message: 'If an account exists with this email, a reset link has been sent.' });
   }
