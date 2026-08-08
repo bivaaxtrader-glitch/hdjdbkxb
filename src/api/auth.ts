@@ -8,6 +8,7 @@ import { requireAuth } from '../middleware/jwtAuth.ts';
 import { mapUserForFrontend } from '../lib/user-utils.ts';
 import { syncUserToFirestore, adminAuth } from '../lib/firebase-admin.ts';
 import logger from '../lib/logger.ts';
+import { sendEmail } from '../lib/email.ts';
 
 import { body, validationResult } from 'express-validator';
 
