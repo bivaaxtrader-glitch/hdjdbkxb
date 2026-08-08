@@ -44,15 +44,18 @@ router.post('/register',
   body('password').isLength({ min: 6 }),
   validate,
   async (req, res) => {
-    const { email, password, referralCode, referralSubId, referralType } = req.body;
+    const { email, password, fullName, referralCode, referralSubId, referralType } = req.body;
   
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
+  logger.info(`Registration attempt for: ${email}`);
+
   try {
     const existing = await get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
+      logger.warn(`Registration failed: Email ${email} already exists`);
       return res.status(400).json({ error: 'Email already registered' });
     }
 
@@ -78,9 +81,9 @@ router.post('/register',
     ].filter(Boolean).includes(emailLower);
 
     await run(
-      `INSERT INTO users (uid, email, password, referral_code, referred_by_uid, referral_sub_id, referral_type, is_admin) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [uid, email, hashedPassword, affiliateId, referredBy, referralSubId || null, referralType || null, isHardcodedAdmin ? 1 : 0]
+      `INSERT INTO users (uid, email, password, display_name, referral_code, referred_by_uid, referral_sub_id, referral_type, is_admin) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uid, email, hashedPassword, fullName || null, affiliateId, referredBy, referralSubId || null, referralType || null, isHardcodedAdmin ? 1 : 0]
     );
 
     if (referredBy) {

@@ -145,7 +145,7 @@ export default function AuthPage() {
 
       // Fetch custom Google OAuth URL from backend
       const res = await fetch(`/api/auth/google/url?state=${stateStr}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: `Server returned invalid response (Status: ${res.status})` }));
       if (data.error || !data.url) {
         throw new Error(data.error || "Failed to generate Google login URL");
       }
@@ -229,9 +229,25 @@ export default function AuthPage() {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, referralCode: ref, referralSubId: sub, referralType: type })
+          body: JSON.stringify({ 
+            email, 
+            password, 
+            fullName, 
+            referralCode: ref, 
+            referralSubId: sub, 
+            referralType: type 
+          })
         });
-        const data = await res.json();
+
+        let data;
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100) || 'No details available.'}`);
+        }
+
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
         saveAuth(data.token, data.user);
@@ -255,7 +271,16 @@ export default function AuthPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
         });
-        const data = await res.json();
+
+        let data;
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const text = await res.text();
+          throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100)}`);
+        }
+
         if (!res.ok) throw new Error(data.error || 'Login failed');
 
         saveAuth(data.token, data.user);

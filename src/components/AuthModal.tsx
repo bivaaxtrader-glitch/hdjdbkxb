@@ -66,7 +66,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
         body: JSON.stringify({ token })
       });
       
-      const data = await response.json();
+      const data = await response.json().catch(() => ({ error: `Server error ${response.status}: Invalid JSON response` }));
       if (!response.ok) throw new Error(data.error || 'Backend sync failed');
       
       saveAuth(data.token, data.user);
@@ -110,7 +110,16 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email, password })
             });
-            const data = await res.json();
+
+            let data;
+            const contentType = res.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              data = await res.json();
+            } else {
+              const text = await res.text();
+              throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100)}`);
+            }
+
             if (!res.ok) throw new Error(data.error || 'Registration failed');
             
             saveAuth(data.token, data.user);
@@ -132,7 +141,16 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email, password })
             });
-            const data = await res.json();
+
+            let data;
+            const contentType = res.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              data = await res.json();
+            } else {
+              const text = await res.text();
+              throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100)}`);
+            }
+
             if (!res.ok) throw new Error(data.error || 'Login failed');
 
             saveAuth(data.token, data.user);

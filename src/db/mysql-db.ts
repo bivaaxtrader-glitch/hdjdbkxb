@@ -364,6 +364,28 @@ const setup = async () => {
   } else {
     try {
       sqliteDb.exec(setupSql);
+      
+      // Migration: Ensure display_name exists
+      try {
+        sqliteDb.prepare('SELECT display_name FROM users LIMIT 1').get();
+      } catch (e) {
+        console.log('⚠️ Migration: Adding display_name to users table...');
+        try { sqliteDb.exec('ALTER TABLE users ADD COLUMN display_name TEXT;'); } catch (ae) {}
+      }
+
+      // Migration: Ensure referral columns exist
+      try {
+        sqliteDb.prepare('SELECT referred_by_uid FROM users LIMIT 1').get();
+      } catch (e) {
+        console.log('⚠️ Migration: Adding referral columns to users table...');
+        try { 
+          sqliteDb.exec('ALTER TABLE users ADD COLUMN referred_by_uid TEXT;');
+          sqliteDb.exec('ALTER TABLE users ADD COLUMN referral_code TEXT;');
+          sqliteDb.exec('ALTER TABLE users ADD COLUMN referral_sub_id TEXT;');
+          sqliteDb.exec('ALTER TABLE users ADD COLUMN referral_type TEXT;');
+          sqliteDb.exec('ALTER TABLE users ADD COLUMN referral_count INTEGER DEFAULT 0;');
+        } catch (ae) {}
+      }
     } catch (err) {
       logger?.error?.('Failed to setup SQLite schema:', err);
       // If it fails because of schema mismatch, we might need to drop and recreate
