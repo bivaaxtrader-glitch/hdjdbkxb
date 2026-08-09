@@ -4,7 +4,6 @@ import { auth, db } from '../firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, googleProvider, signInWithPopup, sendPasswordResetEmail, sendEmailVerification, signOut } from '../firebase';
 import { doc, setDoc, getDoc, updateDoc, increment } from '../firebase';
 import { getNextAffiliateId, getUserByAffiliateId } from '../lib/affiliate';
-import { saveAuth } from '../lib/auth-client';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AuthModalProps {
@@ -66,10 +65,12 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
         body: JSON.stringify({ token })
       });
       
-      const data = await response.json().catch(() => ({ error: `Server error ${response.status}: Invalid JSON response` }));
+      const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Backend sync failed');
       
-      saveAuth(data.token, data.user);
+      // Store token
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       
       onSuccess();
       onClose();
@@ -105,24 +106,34 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
             setSuccessMsg("Password reset email sent! Please check your inbox.");
             setView('login');
         } else if (view === 'register') {
-            const res = await fetch('/api/auth/register', {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            
+            // Send email verification
+            sendEmailVerification(userCredential.user).catch(console.error);
+            
+            // Sync with backend to create SQL user and get JWT
+            const idToken = await userCredential.user.getIdToken();
+            const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code');
+            const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id');
+            const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type');
+
+            const response = await fetch('/api/auth/firebase-google', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password })
+              body: JSON.stringify({ 
+                token: idToken,
+                referralCode,
+                referralSubId,
+                referralType
+              })
             });
-
-            let data;
-            const contentType = res.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-              data = await res.json();
-            } else {
-              const text = await res.text();
-              throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100)}`);
-            }
-
-            if (!res.ok) throw new Error(data.error || 'Registration failed');
             
-            saveAuth(data.token, data.user);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Backend registration failed');
+            
+            // Store JWT and User
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('device_registered', 'true');
             
             // Clear used referral code
@@ -136,25 +147,23 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
             onSuccess();
             onClose();
         } else {
-            const res = await fetch('/api/auth/login', {
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            
+            // Sync with backend to get JWT
+            const idToken = await userCredential.user.getIdToken();
+            const response = await fetch('/api/auth/firebase-google', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password })
+              body: JSON.stringify({ token: idToken })
             });
-
-            let data;
-            const contentType = res.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-              data = await res.json();
-            } else {
-              const text = await res.text();
-              throw new Error(res.ok ? 'Success but invalid response format' : `Server error: ${res.status}. ${text.substring(0, 100)}`);
-            }
-
-            if (!res.ok) throw new Error(data.error || 'Login failed');
-
-            saveAuth(data.token, data.user);
-
+            
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Backend login failed');
+            
+            // Store JWT and User
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            
             onSuccess();
             onClose();
         }

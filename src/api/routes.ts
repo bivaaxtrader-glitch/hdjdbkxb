@@ -49,15 +49,6 @@ router.get('/news', async (req, res) => {
   }
 });
 
-router.post('/news', async (req, res) => {
-  try {
-    const docRef = await adminDb.collection('news').add(req.body);
-    res.json({ id: docRef.id });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // --- Market State ---
 router.get('/market/state', (req, res) => {
   res.json({
@@ -327,7 +318,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
 
   try {
     // Attempt 1: ip-api.com
-    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(2000) });
+    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(1000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.status === 'success') {
@@ -335,12 +326,12 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
       }
     }
   } catch (err) {
-    logger.warn(`getCountryFromIp error (ip-api): ${err}`);
+    logger.error(`getCountryFromIp error (ip-api): ${err}`);
   }
 
   try {
     // Attempt 2: geojs.io
-    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(2000) });
+    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(1000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.country) {
@@ -348,7 +339,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
       }
     }
   } catch (err) {
-    logger.warn(`getCountryFromIp error (geojs): ${err}`);
+    logger.error(`getCountryFromIp error (geojs): ${err}`);
   }
 
   return { countryName: 'Bangladesh', countryCode: 'BD' };
@@ -372,6 +363,130 @@ router.get('/ip-info', async (req, res) => {
 });
 
 // --- REST Endpoint Implementations ---
+
+// Auth Routes (Custom)
+router.post('/auth/register', async (req, res) => {
+  const { email, password, fullName, country, countryCode, referralCode, referralSubId, referralType } = req.body;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  if (!email || !password || !fullName) {
+    return res.status(400).json({ error: 'Email, password and name are required' });
+  }
+
+  try {
+    const existing = await get('SELECT * FROM users WHERE email = ?', [email]);
+    if (existing) return res.status(400).json({ error: 'Email already registered' });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const uid = 'user_' + Math.random().toString(36).substring(2, 15);
+    const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    let cName = country;
+    let cCode = countryCode;
+    
+    if (!cName || !cCode) {
+      const geo = await getCountryFromIp(ip as string);
+      cName = cName || geo.countryName;
+      cCode = cCode || geo.countryCode;
+    }
+
+    let referredBy = null;
+    if (referralCode) {
+      const referrer = await get('SELECT uid FROM users WHERE referral_code = ? OR uid = ?', [referralCode, referralCode]);
+      if (referrer) {
+        referredBy = (referrer as any).uid;
+      }
+    }
+
+    await run(
+      `INSERT INTO users (uid, email, password_hash, display_name, nickname, referral_code, country, country_code, referred_by_uid, referral_sub_id, referral_type) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uid, email, passwordHash, fullName, fullName.split(' ')[0], affiliateId, cName, cCode, referredBy, referralSubId || null, referralType || null]
+    );
+
+    if (referredBy) {
+      await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);
+    }
+
+    const user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
+
+    // Send Welcome Email
+    try {
+      const subject = 'Welcome to Bivaax Trade - Professional Global Trading';
+      const welcomeLink = `${req.headers.origin || 'https://bivaax.com'}/trade`;
+      const html = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
+          <div style="background-color: #1a1b23; padding: 40px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
+            <h1 style="margin: 0; font-size: 28px; color: #FFE24C;">Welcome to Bivaax!</h1>
+            <p style="opacity: 0.9; margin-top: 10px;">Your Professional Trading Journey Starts Here</p>
+          </div>
+          <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+            <p style="font-size: 16px; color: #333;">Hello <strong>${fullName || 'Trader'}</strong>,</p>
+            <p style="font-size: 16px; color: #333; line-height: 1.6;">Thank you for choosing Bivaax Trade. We are excited to have you on board as we redefine global trading with precision and transparency.</p>
+            
+            <div style="background-color: #f8fafc; border-radius: 12px; padding: 25px; margin: 30px 0; border-left: 4px solid #FFE24C;">
+              <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 14px; text-transform: uppercase; tracking-wider;">Your Account Details:</h3>
+              <p style="margin: 5px 0; font-size: 15px; color: #475569;"><strong>Email:</strong> ${email}</p>
+              <p style="margin: 5px 0; font-size: 15px; color: #475569;"><strong>Affiliate Code:</strong> ${affiliateId}</p>
+            </div>
+
+            <div style="text-align: center; margin: 35px 0;">
+              <a href="${welcomeLink}" style="background-color: #FFE24C; color: #1a1b23; padding: 16px 40px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 15px; text-transform: uppercase; display: inline-block; box-shadow: 0 4px 15px rgba(255, 226, 76, 0.3);">Access Trading Terminal</a>
+            </div>
+
+            <p style="font-size: 14px; color: #64748b; line-height: 1.6; text-align: center;">Need assistance? Our professional support team is available 24/7 to guide you through your first trades.</p>
+            
+            <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
+            <div style="text-align: center; font-size: 12px; color: #94a3b8;">
+              <p>&copy; 2026 Bivaax Trade Ecosystem. All Rights Reserved.</p>
+              <p>Professional | Secure | Global</p>
+            </div>
+          </div>
+        </div>
+      `;
+      await sendEmail(email, subject, html);
+    } catch (mailErr) {
+      logger.error('Failed to send registration welcome email:', mailErr);
+    }
+
+    res.json({ success: true, user });
+    
+    // Sync to Firestore for real-time data accessibility
+    try {
+      syncUserToFirestore(uid, mapUserForFrontend(user));
+    } catch (syncErr) {
+      logger.error('Failed to sync new user to Firestore:', syncErr);
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+  try {
+    const user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
+    if (!user || !user.password_hash) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+    // Sync to Firestore on login to ensure latest data is available real-time
+    try {
+      syncUserToFirestore(user.uid, mapUserForFrontend(user));
+    } catch (syncErr) {
+      logger.error('Failed to sync user to Firestore on login:', syncErr);
+    }
+
+    res.json({ success: true, user });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/api/kyc', async (req, res) => {
   const { userId, kycData } = req.body;
@@ -3637,13 +3752,9 @@ router.post('/:collection/:id/:subcollection', async (req, res) => {
 // 2-segment routes
 router.get('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
-  console.log(`[DEBUG] Attempting to fetch: collection=${collection}, id=${id}`);
   try {
     const doc = await adminDb.collection(collection).doc(id).get();
-    if (!doc.exists) {
-        console.log(`[DEBUG] Document not found: collection=${collection}, id=${id}`);
-        return res.status(404).json({ error: 'Not found' });
-    }
+    if (!doc.exists) return res.status(404).json({ error: 'Not found' });
     res.json({ id: doc.id, ...doc.data() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -3660,67 +3771,9 @@ router.patch('/:collection/:id', async (req, res) => {
   }
 });
 
-router.post('/:collection/:id', async (req, res) => {
-  console.log(`[DEBUG] Reached generic POST route for ${req.params.collection}/${req.params.id}`);
-  const { collection, id } = req.params;
-  try {
-    await adminDb.collection(collection).doc(id).set(req.body, { merge: true });
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.delete('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   try {
-    await adminDb.collection(collection).doc(id).delete();
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/seed-pages', async (req, res) => {
-  try {
-    const { seedPages } = await import('../seedData');
-    await seedPages();
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error('Seeding failed:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 1-segment routes last
-// 2-segment routes for sub-collections or specific documents
-router.get('/:collection/:id', async (req, res) => {
-  const { collection, id } = req.params;
-  try {
-    if (!adminDb) throw new Error('Firestore not initialized');
-    const doc = await adminDb.collection(collection).doc(id).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Document not found' });
-    res.json({ id: doc.id, ...doc.data() });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/:collection/:id', async (req, res) => {
-  const { collection, id } = req.params;
-  try {
-    if (!adminDb) throw new Error('Firestore not initialized');
-    await adminDb.collection(collection).doc(id).set(req.body, { merge: true });
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.delete('/:collection/:id', async (req, res) => {
-  const { collection, id } = req.params;
-  try {
-    if (!adminDb) throw new Error('Firestore not initialized');
     await adminDb.collection(collection).doc(id).delete();
     res.json({ success: true });
   } catch (err: any) {
@@ -3732,7 +3785,6 @@ router.delete('/:collection/:id', async (req, res) => {
 router.get('/:collection', async (req, res) => {
   const { collection } = req.params;
   try {
-    if (!adminDb) throw new Error('Firestore not initialized');
     const snapshot = await adminDb.collection(collection).get();
     const docs: any[] = [];
     snapshot.forEach((doc: any) => docs.push({ id: doc.id, ...doc.data() }));
@@ -3745,7 +3797,6 @@ router.get('/:collection', async (req, res) => {
 router.post('/:collection', async (req, res) => {
   const { collection } = req.params;
   try {
-    if (!adminDb) throw new Error('Firestore not initialized');
     const docRef = await adminDb.collection(collection).add(req.body);
     logger.info(`Successfully added document to Firestore collection ${collection}: ${docRef.id}`);
     res.json({ id: docRef.id });

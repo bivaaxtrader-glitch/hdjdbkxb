@@ -1,9 +1,10 @@
-import { adminDb } from "./lib/firebase-admin";
+import { collection, addDoc, getDocs, query, where, updateDoc, doc } from "./firebase";
+import { db } from "./firebase";
 
 export const seedPromo = async () => {
   try {
-    const newsRef = adminDb.collection('news');
-    const snap = await newsRef.where('title', '==', '50% Deposit Bonus').get();
+    const q = query(collection(db, 'news'), where('title', '==', '50% Deposit Bonus'));
+    const snap = await getDocs(q);
     
     const promoContent = `Promo Code: BIVAAXFAST50
 
@@ -17,7 +18,7 @@ Offer Details:
 Trade Smart. Earn Big.`;
 
     if (snap.empty) {
-      await newsRef.add({
+      await addDoc(collection(db, 'news'), {
         title: "50% Deposit Bonus",
         description: "Boost Your Trading with Every Deposit!",
         content: promoContent,
@@ -33,8 +34,8 @@ Trade Smart. Earn Big.`;
       });
       console.log("News Promo seeded successfully");
     } else {
-      const docRef = newsRef.doc(snap.docs[0].id);
-      await docRef.update({
+      const docRef = doc(db, 'news', snap.docs[0].id);
+      await updateDoc(docRef, {
         description: "Boost Your Trading with Every Deposit!",
         content: promoContent,
         isPlatformNews: true,
@@ -45,10 +46,10 @@ Trade Smart. Earn Big.`;
       });
     }
 
-    const promoRef = adminDb.collection('promos');
-    const snapPromo = await promoRef.where('code', '==', 'BIVAAXFAST50').get();
+    const qPromo = query(collection(db, 'promos'), where('code', '==', 'BIVAAXFAST50'));
+    const snapPromo = await getDocs(qPromo);
     if (snapPromo.empty) {
-        await promoRef.add({
+        await addDoc(collection(db, 'promos'), {
            code: 'BIVAAXFAST50',
            bonusPercentage: 50,
            isActive: true,
@@ -59,25 +60,5 @@ Trade Smart. Earn Big.`;
     }
   } catch (e) {
     console.error("Error seeding promo:", e);
-  }
-};
-
-export const seedPages = async () => {
-  try {
-    const pages = [
-      { id: 'about_us', title: 'About Us', content: 'Bivaax Trade is the most trusted binary options platform...' },
-      { id: 'regulations', title: 'Regulations', content: 'We are regulated by...' },
-      { id: 'client_agreement', title: 'Client Agreement', content: 'By using our platform, you agree to...' }
-    ];
-    for (const page of pages) {
-      try {
-        await adminDb.collection('pages').doc(page.id).set(page);
-        console.log(`Page ${page.id} seeded successfully to adminDb`);
-      } catch (e) {
-        console.log(`Page ${page.id} seeding failed:`, e);
-      }
-    }
-  } catch (e) {
-    console.error("Error seeding pages:", e);
   }
 };

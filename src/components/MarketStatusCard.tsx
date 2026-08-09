@@ -117,10 +117,7 @@ export const MarketStatusCard: React.FC = () => {
 
   // Sync prices in real time over Socket.IO connection
   useEffect(() => {
-    const handleConnect = () => {
-      console.log('⚡ Market Status Card connected to live socket');
-      socket.emit('subscribe_market', 'all', 'real');
-    };
+    const handleConnect = () => console.log('⚡ Market Status Card connected to live socket');
     
     const handleMarketTicks = (ticks: any) => {
       const priceUpdates: Record<string, 'up' | 'down'> = {};

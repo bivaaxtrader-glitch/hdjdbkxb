@@ -29,7 +29,6 @@ import { backupDatabase } from './src/db/backup';
 import authRouter from './src/api/auth';
 import apiRouter, { syncDatabaseFromFirestore } from './src/api/routes';
 import logger from './src/lib/logger';
-import { seedPromo, seedPages } from './src/seedData';
 
 async function startServer() {
   const app = express();
@@ -54,9 +53,6 @@ async function startServer() {
   }));
   
   app.use(cors());
-  // Explicitly handle OPTIONS preflight
-  app.options('*', cors());
-  
   app.use(compression());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -68,17 +64,17 @@ async function startServer() {
   // Rate Limiting
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100000, // Very high for dev
+    max: 10000, // Increased for dev/heavy use
     message: { error: 'Too many requests, please try again later.' }
   });
   app.use('/api/', limiter);
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 1000, // High for dev
+    max: 100, // Increased for dev
     message: { error: 'Too many login/register attempts. Please try again after 15 minutes.' }
   });
-  app.use('/api/auth', authLimiter);
+  app.use('/api/auth/', authLimiter);
 
   // Initialize Socket.IO
   initSocket(httpServer);
@@ -179,17 +175,11 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
   httpServer.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Sync local database from Firestore on startup in the background to avoid blocking the boot sequence
-    syncDatabaseFromFirestore().catch((syncErr: any) => {
-      console.error('Failed to sync database from Firestore on boot:', syncErr.message);
-    });
-
-    // Seed promos and static pages on server start
+    // Sync local database from Firestore on startup to restore all state (Users, Trades, Transactions, KYC)
     try {
-      await seedPromo();
-      await seedPages();
-    } catch (seedErr: any) {
-      console.error('Failed to run boot seeding:', seedErr.message);
+      await syncDatabaseFromFirestore();
+    } catch (syncErr: any) {
+      console.error('Failed to sync database from Firestore on boot:', syncErr.message);
     }
 
     // Seed master traders

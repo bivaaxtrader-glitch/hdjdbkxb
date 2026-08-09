@@ -1,37 +1,22 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithPopup as fbSignInWithPopup, GoogleAuthProvider as FbGoogleAuthProvider } from "firebase/auth";
-import { getAnalytics } from "firebase/analytics";
-import firebaseAppletConfig from '../firebase-applet-config.json';
-
-const configData = firebaseAppletConfig as any;
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: configData?.apiKey || import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyB8miEUU7d5t3DFnhgo37qK_Jsf4t5KLl4",
-  authDomain: configData?.authDomain || import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "bivaax-31aec.firebaseapp.com",
-  databaseURL: configData?.databaseURL || import.meta.env?.VITE_FIREBASE_DATABASE_URL || `https://${configData?.projectId || 'bivaax-31aec'}-default-rtdb.firebaseio.com`,
-  projectId: configData?.projectId || import.meta.env?.VITE_FIREBASE_PROJECT_ID || "bivaax-31aec",
-  storageBucket: configData?.storageBucket || import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "bivaax-31aec.firebasestorage.app",
-  messagingSenderId: configData?.messagingSenderId || import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "645553787289",
-  appId: configData?.appId || import.meta.env?.VITE_FIREBASE_APP_ID || "1:645553787289:web:59ff80f839f8446a370308",
-  measurementId: configData?.measurementId || import.meta.env?.VITE_FIREBASE_MEASUREMENT_ID || "G-YD969NY4BC"
+  apiKey: "AIzaSyB8miEUU7d5t3DFnhgo37qK_Jsf4t5KLl4",
+  authDomain: "bivaax-31aec.firebaseapp.com",
+  projectId: "bivaax-31aec",
+  storageBucket: "bivaax-31aec.firebasestorage.app",
+  messagingSenderId: "645553787289",
+  appId: "1:645553787289:web:59ff80f839f8446a370308",
+  measurementId: "G-YD969NY4BC"
 };
 
 // Initialize Firebase
 const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const realFirebaseAuth = getAuth(firebaseApp);
-let analytics: any = null;
-try {
-  if (typeof window !== 'undefined') {
-    analytics = getAnalytics(firebaseApp);
-  }
-} catch (e) {
-  console.warn("Analytics initialization failed:", e);
-}
 
-export { firebaseApp, analytics };
-
-import { getAuthToken, clearAuth, saveAuth } from './lib/auth-client';
+import { getAuthToken, clearAuth, saveAuth } from './lib/auth-client.ts';
 
 export enum OperationType {
   CREATE = 'create',
@@ -44,13 +29,13 @@ export enum OperationType {
 
 export const auth = {
   get currentUser() {
-    const user = typeof window !== 'undefined' ? localStorage.getItem('bivax_user') : null;
+    const user = localStorage.getItem('bivax_user');
     if (user) {
       try {
         const parsed = JSON.parse(user);
         return {
           ...parsed,
-          getIdToken: async () => typeof window !== 'undefined' ? (localStorage.getItem('bivax_token') || '') : ''
+          getIdToken: async () => localStorage.getItem('bivax_token') || ''
         };
       } catch (e) {
         return null;
@@ -60,13 +45,13 @@ export const auth = {
   },
   onAuthStateChanged: (callback: (user: any) => void) => {
     const handler = () => {
-      const user = typeof window !== 'undefined' ? localStorage.getItem('bivax_user') : null;
+      const user = localStorage.getItem('bivax_user');
       if (user) {
         try {
           const parsed = JSON.parse(user);
           callback({
             ...parsed,
-            getIdToken: async () => typeof window !== 'undefined' ? (localStorage.getItem('bivax_token') || '') : ''
+            getIdToken: async () => localStorage.getItem('bivax_token') || ''
           });
         } catch (e) {
           callback(null);
@@ -75,12 +60,9 @@ export const auth = {
         callback(null);
       }
     };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('auth_change', handler);
-      handler();
-      return () => window.removeEventListener('auth_change', handler);
-    }
-    return () => {};
+    window.addEventListener('auth_change', handler);
+    handler();
+    return () => window.removeEventListener('auth_change', handler);
   },
   signOut: async () => {
     console.log("signOut called");
@@ -144,7 +126,7 @@ export const db = {
     get: async () => {
       try {
         const token = getAuthToken();
-        const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bivax_user') || '{}') : {};
+        const user = JSON.parse(localStorage.getItem('bivax_user') || '{}');
         const isAdmin = !!user.is_admin;
         
         let endpoint = `/api/${name}`;
@@ -193,9 +175,9 @@ export async function signInWithEmailAndPassword(a: any, email: string, pass: st
 }
 
 export async function createUserWithEmailAndPassword(a: any, email: string, pass: string) {
-  const referralCode = typeof window !== 'undefined' ? (localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '') : '';
-  const referralSubId = typeof window !== 'undefined' ? (localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '') : '';
-  const referralType = typeof window !== 'undefined' ? (localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '') : '';
+  const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '';
+  const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
+  const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
 
   const res = await fetch('/api/auth/register', {
     method: 'POST',
@@ -213,14 +195,12 @@ export async function createUserWithEmailAndPassword(a: any, email: string, pass
   saveAuth(data.token, data.user);
 
   // Clear referral data
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('referralCode');
-    localStorage.removeItem('referral_code');
-    localStorage.removeItem('referralSub');
-    localStorage.removeItem('referral_sub_id');
-    localStorage.removeItem('referralType');
-    localStorage.removeItem('referral_type');
-  }
+  localStorage.removeItem('referralCode');
+  localStorage.removeItem('referral_code');
+  localStorage.removeItem('referralSub');
+  localStorage.removeItem('referral_sub_id');
+  localStorage.removeItem('referralType');
+  localStorage.removeItem('referral_type');
 
   return { 
     user: {
@@ -235,9 +215,9 @@ export const signInWithPopup = async (a: any, p: any) => {
     const result = await fbSignInWithPopup(realFirebaseAuth, p);
     const idToken = await result.user.getIdToken();
     
-    const referralCode = typeof window !== 'undefined' ? (localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '') : '';
-    const referralSubId = typeof window !== 'undefined' ? (localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '') : '';
-    const referralType = typeof window !== 'undefined' ? (localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '') : '';
+    const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '';
+    const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
+    const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
 
     const res = await fetch('/api/auth/firebase-google', {
       method: 'POST',
@@ -249,14 +229,12 @@ export const signInWithPopup = async (a: any, p: any) => {
     saveAuth(data.token, data.user);
 
     // Clear referral data
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('referralCode');
-      localStorage.removeItem('referral_code');
-      localStorage.removeItem('referralSub');
-      localStorage.removeItem('referral_sub_id');
-      localStorage.removeItem('referralType');
-      localStorage.removeItem('referral_type');
-    }
+    localStorage.removeItem('referralCode');
+    localStorage.removeItem('referral_code');
+    localStorage.removeItem('referralSub');
+    localStorage.removeItem('referral_sub_id');
+    localStorage.removeItem('referralType');
+    localStorage.removeItem('referral_type');
 
     return { 
       user: {

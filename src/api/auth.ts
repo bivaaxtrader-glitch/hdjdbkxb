@@ -8,7 +8,6 @@ import { requireAuth } from '../middleware/jwtAuth.ts';
 import { mapUserForFrontend } from '../lib/user-utils.ts';
 import { syncUserToFirestore, adminAuth } from '../lib/firebase-admin.ts';
 import logger from '../lib/logger.ts';
-import { sendEmail } from '../lib/email.ts';
 
 import { body, validationResult } from 'express-validator';
 
@@ -39,27 +38,20 @@ const googleClient = new OAuth2Client(
 const generateUid = () => 'usr_' + Math.random().toString(36).substring(2, 15);
 
 // 1. Local Registration
-router.get('/register', (req, res) => {
-  res.status(405).json({ error: 'Method Not Allowed. Please use POST for registration.' });
-});
-
 router.post('/register', 
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   validate,
   async (req, res) => {
-    const { email, password, fullName, referralCode, referralSubId, referralType } = req.body;
+    const { email, password, referralCode, referralSubId, referralType } = req.body;
   
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  logger.info(`Registration attempt for: ${email}`);
-
   try {
     const existing = await get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
-      logger.warn(`Registration failed: Email ${email} already exists`);
       return res.status(400).json({ error: 'Email already registered' });
     }
 
@@ -85,9 +77,9 @@ router.post('/register',
     ].filter(Boolean).includes(emailLower);
 
     await run(
-      `INSERT INTO users (uid, email, password, display_name, referral_code, referred_by_uid, referral_sub_id, referral_type, is_admin) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [uid, email, hashedPassword, fullName || null, affiliateId, referredBy, referralSubId || null, referralType || null, isHardcodedAdmin ? 1 : 0]
+      `INSERT INTO users (uid, email, password, referral_code, referred_by_uid, referral_sub_id, referral_type, is_admin) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uid, email, hashedPassword, affiliateId, referredBy, referralSubId || null, referralType || null, isHardcodedAdmin ? 1 : 0]
     );
 
     if (referredBy) {
@@ -140,11 +132,9 @@ router.post('/register',
           </div>
         </div>`;
 
-      sendEmail(email, welcomeSubject, welcomeHtml).catch((emailErr) => {
-        logger.error('Failed to send welcome email:', emailErr);
-      });
+      await sendEmail(email, welcomeSubject, welcomeHtml);
     } catch (emailErr) {
-      logger.error('Error preparing welcome email:', emailErr);
+      logger.error('Failed to send welcome email:', emailErr);
     }
 
     const user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
@@ -166,10 +156,6 @@ router.post('/register',
 });
 
 // 2. Local Login
-router.get('/login', (req, res) => {
-  res.status(405).json({ error: 'Method Not Allowed. Please use POST for login.' });
-});
-
 router.post('/login', 
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
@@ -475,6 +461,8 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
+import { sendEmail } from '../lib/email.ts';
+
 // 5. Forgot Password
 router.post('/forgot-password', 
   body('email').isEmail().normalizeEmail(),
@@ -502,14 +490,14 @@ router.post('/forgot-password',
 
       const resetLink = `${process.env.APP_URL || 'https://bivaax.com'}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
       
-      sendEmail(email, 'Password Reset Request', `
+      await sendEmail(email, 'Password Reset Request', `
         <div style="font-family: sans-serif; padding: 20px;">
           <h2>Password Reset Request</h2>
           <p>You requested a password reset. Click the link below to reset your password.</p>
           <a href="${resetLink}" style="background: #FFE24C; padding: 10px 20px; text-decoration: none; color: #1a1b23; border-radius: 5px;">Reset Password</a>
           <p>This link expires in 1 hour.</p>
         </div>
-      `).catch((err) => logger.error('Failed to send password reset email:', err));
+      `);
     }
     res.json({ message: 'If an account exists with this email, a reset link has been sent.' });
   }
@@ -677,12 +665,6 @@ router.post('/verify-email-otp', requireAuth, async (req: any, res: any) => {
   }
 
   res.json({ success: true, message: 'Email verified successfully.' });
-});
-
-// Fallback for unmatched auth routes
-router.use((req, res) => {
-  logger.warn(`Unmatched auth route: ${req.method} ${req.url}`);
-  res.status(404).json({ error: `Auth API route not found: ${req.method} ${req.url}` });
 });
 
 export default router;

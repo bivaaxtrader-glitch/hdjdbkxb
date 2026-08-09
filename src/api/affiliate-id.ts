@@ -1,3 +1,4 @@
+import { db } from '../firebase';
 export async function getNextAffiliateId(): Promise<number> {
     try {
         const res = await fetch('/api/affiliate/next-id', {

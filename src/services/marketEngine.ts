@@ -12,7 +12,7 @@ import { settleExpiredTrades, updateTradeExposureCache } from './tradeService.ts
 import { updatePair } from './otcEngine.ts';
 import { liveApiService } from './liveApiService.ts';
 
-const TICK_INTERVAL = 250;
+const TICK_INTERVAL = 1000;
 
 export async function startMarketEngine() {
   console.log('🚀 Starting Market Engine...');
@@ -42,7 +42,7 @@ export async function startMarketEngine() {
     }
   }, 2000);
 
-  // Main Ticker Loop (1000ms)
+  // Main Ticker Loop (500ms)
   setInterval(async () => {
     if (!systemActive) return;
 
@@ -50,27 +50,15 @@ export async function startMarketEngine() {
     const nowSec = Math.floor(Date.now() / 1000);
 
     const tickDataReal: Record<string, any> = {};
-    const tickDataDemo: Record<string, any> = {};
 
     Object.keys(markets).forEach(pair => {
-      // Update Real Market
       const realTick = updatePair(pair, 'real', nowSec);
       if (realTick) {
         tickDataReal[pair] = realTick;
       }
-      
-      // Update Demo Market (Independent movement)
-      const demoTick = updatePair(pair, 'demo', nowSec);
-      if (demoTick) {
-        tickDataDemo[pair] = demoTick;
-      }
     });
 
-    // Broadcast market states (ticks) to respective rooms
-    io.to('real').emit('market_ticks', tickDataReal);
-    io.to('demo').emit('market_ticks', tickDataDemo);
-    
-    // Also broadcast real market ticks globally for public components (tickers, status cards)
+    // Broadcast market states (ticks)
     io.emit('market_ticks', tickDataReal);
   }, TICK_INTERVAL);
 }

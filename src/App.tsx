@@ -1,7 +1,7 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { auth, db, onAuthStateChanged, signOut, getDoc, doc, getDocs, query, collection, where, setDoc, updateDoc } from './firebase';
-import { User } from './lib/auth-client';
+import { User } from './lib/auth-client.ts';
 import { Lock, LogOut } from 'lucide-react';
 import * as OTPAuth from 'otpauth';
 import { motion } from 'motion/react';
@@ -14,41 +14,41 @@ import { SupportProvider, useSupport } from './contexts/SupportContext';
 import { LiveSupport } from './components/LiveSupport';
 import AppBoundary from './components/AppBoundary';
 
+
+import DocsPage from './pages/DocsPage';
+import ProfilePage from './pages/Profile';
+import AffiliatePage from './pages/Affiliate';
+import Homepage from './pages/Homepage';
+import TradeTerminal from './pages/TradeTerminal';
+import AdminDashboard from './pages/AdminDashboard';
+import SignalsPage from './pages/Signals';
+import CopyTradingPage from './pages/CopyTrading';
+import StaticPage from './pages/StaticPage';
+import AboutUsPage from './pages/AboutUs';
+import NewsPage from './pages/NewsPage';
+import BinancePayPage from './pages/BinancePayPage';
+import CryptoDepositPage from './pages/CryptoDepositPage';
+import MFSDepositPage from './pages/MFSDepositPage';
+import BkashDeposit from './pages/BkashDeposit';
+import NagadDeposit from './pages/NagadDeposit';
+import RocketDeposit from './pages/RocketDeposit';
+import UsdtTrc20Deposit from './pages/UsdtTrc20Deposit';
+import BitcoinDeposit from './pages/BitcoinDeposit';
+import TonDeposit from './pages/TonDeposit';
+import DogeDeposit from './pages/DogeDeposit';
+import LtcDeposit from './pages/LtcDeposit';
+import GoPayDepositPage from './pages/GoPayDepositPage';
+import AuthPage from './pages/AuthPage';
+import AffiliateLandingPage from './pages/AffiliateLanding';
+import EnterpriseSupportCenter from './pages/EnterpriseSupportCenter';
+import ClientSupportCenter from './pages/ClientSupportCenter';
+
 // Loader for Suspense
 const PageLoader = () => (
   <div className="min-h-[100dvh] bg-[#101115] flex items-center justify-center">
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#FFE24C]"></div>
   </div>
 );
-
-// Lazy load pages to keep initial bundle small
-const DocsPage = lazy(() => import('./pages/DocsPage'));
-const ProfilePage = lazy(() => import('./pages/Profile'));
-const AffiliatePage = lazy(() => import('./pages/Affiliate'));
-const Homepage = lazy(() => import('./pages/Homepage'));
-const TradeTerminal = lazy(() => import('./pages/TradeTerminal'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const SignalsPage = lazy(() => import('./pages/Signals'));
-const CopyTradingPage = lazy(() => import('./pages/CopyTrading'));
-const StaticPage = lazy(() => import('./pages/StaticPage'));
-const AboutUsPage = lazy(() => import('./pages/AboutUs'));
-const NewsPage = lazy(() => import('./pages/NewsPage'));
-const BinancePayPage = lazy(() => import('./pages/BinancePayPage'));
-const CryptoDepositPage = lazy(() => import('./pages/CryptoDepositPage'));
-const MFSDepositPage = lazy(() => import('./pages/MFSDepositPage'));
-const BkashDeposit = lazy(() => import('./pages/BkashDeposit'));
-const NagadDeposit = lazy(() => import('./pages/NagadDeposit'));
-const RocketDeposit = lazy(() => import('./pages/RocketDeposit'));
-const UsdtTrc20Deposit = lazy(() => import('./pages/UsdtTrc20Deposit'));
-const BitcoinDeposit = lazy(() => import('./pages/BitcoinDeposit'));
-const TonDeposit = lazy(() => import('./pages/TonDeposit'));
-const DogeDeposit = lazy(() => import('./pages/DogeDeposit'));
-const LtcDeposit = lazy(() => import('./pages/LtcDeposit'));
-const GoPayDepositPage = lazy(() => import('./pages/GoPayDepositPage'));
-const AuthPage = lazy(() => import('./pages/AuthPage'));
-const AffiliateLandingPage = lazy(() => import('./pages/AffiliateLanding'));
-const EnterpriseSupportCenter = lazy(() => import('./pages/EnterpriseSupportCenter'));
-const ClientSupportCenter = lazy(() => import('./pages/ClientSupportCenter'));
 
 
 function SupportModalWrapper({ user }: { user: User | null }) {
@@ -63,8 +63,6 @@ const RequireAuth = ({ children, user }: { children: React.ReactNode; user: User
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  console.log("Rendering App component. Loading:", loading, "User:", user?.email);
   const [tfaRequired, setTfaRequired] = useState(false);
   const [tfaPassed, setTfaPassed] = useState(false);
   const [tfaCode, setTfaCode] = useState('');
@@ -392,61 +390,118 @@ export default function App() {
   useEffect(() => {
     let syncInProgress = false;
     
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       
       if (u && !syncInProgress) {
         syncInProgress = true;
         
-        (async () => {
-          // Wait a bit to allow server to settle
-          await new Promise(resolve => setTimeout(resolve, 800));
-          
-          const safeFetch = async (url: string, options?: RequestInit) => {
-            try {
-              const res = await fetch(url, options);
-              const contentType = res.headers.get('content-type');
-              
-              if (res.status === 429) {
-                 return { error: 'Rate exceeded', status: 429 };
-              }
-
-              if (contentType && contentType.includes('application/json')) {
-                return await res.json();
-              } else {
-                const text = await res.text();
-                return { error: 'Invalid response format', status: res.status, raw: text };
-              }
-            } catch (e: any) {
-              return { error: e.message, status: 0 };
-            }
-          };
-
-          // Sync user
-          fetch('/api/user/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              uid: u.uid,
-              email: u.email,
-              displayName: u.displayName,
-              photoURL: u.photoURL,
-              referralCode: localStorage.getItem('referralCode'),
-              referralSubId: localStorage.getItem('referralSub'),
-              referralType: localStorage.getItem('referralType')
-            })
-          }).finally(() => { syncInProgress = false; });
-
-          // Check 2FA
+        // Wait a bit to allow server to settle
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        const safeFetch = async (url: string, options?: RequestInit) => {
           try {
-            const data = await safeFetch(`/api/user/check-2fa?uid=${u.uid}`);
-            if (data && !data.error) {
-               setTfaRequired(!!data.tfaEnabled);
+            const res = await fetch(url, options);
+            const contentType = res.headers.get('content-type');
+            
+            if (res.status === 429) {
+               console.warn(`Rate limit hit for ${url}. Response: Rate exceeded.`);
+               return { error: 'Rate exceeded', status: 429 };
             }
-          } catch (e) {}
-        })();
-      }
 
+            if (contentType && contentType.includes('application/json')) {
+              return await res.json();
+            } else {
+              const text = await res.text();
+              console.warn(`Non-JSON response from ${url}:`, text);
+              return { error: 'Invalid response format', status: res.status, raw: text };
+            }
+          } catch (e: any) {
+            console.error(`Fetch error for ${url}:`, e.message);
+            return { error: e.message, status: 0 };
+          }
+        };
+
+        // Health check
+        console.log("Starting health check...");
+        const healthData = await safeFetch('/api/health');
+        console.log("Health check response:", healthData);
+        if (healthData.status !== 'ok') {
+            console.error("Health check failed or returned unexpected status, delaying API calls");
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        console.log("Health check successful/proceeding, starting sync");
+
+        // Sync user
+        console.log("Starting user sync...");
+        safeFetch('/api/user/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: u.uid,
+            email: u.email,
+            displayName: u.displayName,
+            photoURL: u.photoURL,
+            referralCode: localStorage.getItem('referralCode'),
+            referralSubId: localStorage.getItem('referralSub'),
+            referralType: localStorage.getItem('referralType')
+          })
+        }).then(data => {
+          console.log("User sync response:", data);
+          if (data.success) console.log("Initial user sync successful");
+          else console.error("Initial user sync failed:", data);
+        }).finally(() => {
+          syncInProgress = false;
+        });
+
+        // Check 2FA
+        try {
+          const data = await safeFetch(`/api/user/check-2fa?uid=${u.uid}`);
+          if (data && !data.error) {
+            if (data.tfaEnabled) {
+              const hasPassed = sessionStorage.getItem(`tfa_passed_${u.uid}`);
+              if (!hasPassed) {
+                setTfaRequired(true);
+                setTfaMode(data.tfaMode || 'app');
+                setTfaSecretBase32(data.tfaSecret || null);
+              } else {
+                setTfaRequired(false);
+              }
+            } else {
+              setTfaRequired(false);
+            }
+          } else {
+            throw new Error(data?.error || "Server check failed");
+          }
+        } catch (err) {
+          console.warn("Server 2FA check failed, falling back to direct Firestore...");
+          try {
+             const userSnap = await getDoc(doc(db, 'users', u.uid));
+             if (userSnap.exists()) {
+                const data = userSnap.data();
+                if (data.tfaEnabled) {
+                   const hasPassed = sessionStorage.getItem(`tfa_passed_${u.uid}`);
+                   if (!hasPassed) {
+                     setTfaRequired(true);
+                     setTfaMode(data.tfaMode || 'app');
+                     setTfaSecretBase32(data.tfaSecret || null);
+                   } else {
+                     setTfaRequired(false);
+                   }
+                } else {
+                   setTfaRequired(false);
+                }
+             }
+          } catch (directErr) {
+             setTfaRequired(false);
+          }
+        }
+      } else if (!u) {
+        setTfaRequired(false);
+        setTfaPassed(false);
+        setTfaSecretBase32(null);
+      }
+      
       if (loading !== false) setLoading(false);
     });
 
@@ -658,7 +713,6 @@ export default function App() {
               <Route path="/deposit/doge" element={<RequireAuth user={user}><DogeDeposit /></RequireAuth>} />
               <Route path="/deposit/ltc" element={<RequireAuth user={user}><LtcDeposit /></RequireAuth>} />
               <Route path="/deposit/gopay" element={<RequireAuth user={user}><GoPayDepositPage /></RequireAuth>} />
-              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </AppBoundary>

@@ -17,7 +17,7 @@ import {
   increment,
   sendEmailVerification
 } from '../firebase';
-import { saveAuth } from '../lib/auth-client';
+import { saveAuth } from '../lib/auth-client.ts';
 import { getNextAffiliateId, getUserByAffiliateId } from '../lib/affiliate';
 import { Logo } from '../components/Logo';
 import { toast } from 'react-hot-toast';
@@ -145,7 +145,7 @@ export default function AuthPage() {
 
       // Fetch custom Google OAuth URL from backend
       const res = await fetch(`/api/auth/google/url?state=${stateStr}`);
-      const data = await res.json().catch(() => ({ error: `Server returned invalid response (Status: ${res.status})` }));
+      const data = await res.json();
       if (data.error || !data.url) {
         throw new Error(data.error || "Failed to generate Google login URL");
       }
@@ -226,32 +226,58 @@ export default function AuthPage() {
           return;
         }
 
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            email, 
-            password, 
-            fullName, 
-            referralCode: ref, 
-            referralSubId: sub, 
-            referralType: type 
-          })
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        const affiliateId = await getNextAffiliateId();
+
+        await setDoc(doc(db, 'users', user.uid), {
+          email: user.email,
+          displayName: fullName,
+          balance: 0.0,
+          demoBalance: 10000.0,
+          currency: currency,
+          affiliateId: affiliateId,
+          country: detectedCountry || 'Bangladesh',
+          countryCode: detectedCountryCode || 'BD',
+          createdAt: Date.now(),
+          isVerified: false,
+          referredBy: finalReferrerUid || null,
+          referredByUid: finalReferrerUid || null,
+          referralSubId: sub || null,
+          referralType: type || null
         });
 
-        let data;
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          data = await res.json();
-        } else {
-          const text = await res.text();
-          const serverHeader = res.headers.get('server') || 'unknown';
-          throw new Error(`Server error ${res.status} (${serverHeader}): ${text.substring(0, 300) || 'Empty response body.'}`);
+        // If referred, increment referrer's count
+        if (finalReferrerUid) {
+          try {
+            await updateDoc(doc(db, 'users', finalReferrerUid), {
+              referralCount: increment(1)
+            });
+          } catch (e) {
+            console.error("Failed to increment referral count", e);
+          }
         }
 
-        if (!res.ok) throw new Error(data.error || 'Registration failed');
-
-        saveAuth(data.token, data.user);
+        // Sync with SQL Backend
+        try {
+          await fetch('/api/user/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: user.uid,
+              email: user.email,
+              displayName: fullName,
+              nickname: fullName.split(' ')[0],
+              country: detectedCountry || 'Bangladesh',
+              countryCode: detectedCountryCode || 'BD',
+              referralCode: ref,
+              referralSubId: sub,
+              referralType: type
+            })
+          });
+        } catch (syncErr) {
+          console.error("Backend sync failed:", syncErr);
+        }
 
         // Clean up referral data
         localStorage.removeItem('referralCode');
@@ -260,33 +286,13 @@ export default function AuthPage() {
         localStorage.removeItem('referral_sub_id');
         localStorage.removeItem('referralType');
         localStorage.removeItem('referral_type');
-        localStorage.setItem('device_registered', 'true');
 
         toast.success("Registration successful!");
         setCharacterState('success');
         setTimeout(() => navigate('/trade'), 1500);
 
       } else {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-
-        let data;
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          data = await res.json();
-        } else {
-          const text = await res.text();
-          const serverHeader = res.headers.get('server') || 'unknown';
-          throw new Error(`Server error ${res.status} (${serverHeader}): ${text.substring(0, 300) || 'Empty response body.'}`);
-        }
-
-        if (!res.ok) throw new Error(data.error || 'Login failed');
-
-        saveAuth(data.token, data.user);
-
+        await signInWithEmailAndPassword(auth, email, password);
         toast.success("Welcome back!");
         setCharacterState('success');
         setTimeout(() => navigate('/trade'), 1500);
