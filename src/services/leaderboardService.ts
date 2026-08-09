@@ -69,13 +69,13 @@ export const fetchLeaderboards = async () => {
     console.log("Fetching allTime...");
     const allTime = await query(`
       SELECT l.user_id, 
-             (CASE WHEN l.total_profit > 0 THEN l.total_profit ELSE 0 END) as total_profit, 
+             l.total_profit as total_profit, 
              l.total_trades, l.won_trades, l.lost_trades,
              COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
       FROM leaderboard_stats l
       JOIN users u ON l.user_id = u.uid
       ORDER BY total_profit DESC
-      LIMIT 20
+      LIMIT 100
     `) || [];
 
     // 2. Highest Win Rate (min 10 trades)
@@ -87,7 +87,7 @@ export const fetchLeaderboards = async () => {
       JOIN users u ON l.user_id = u.uid
       WHERE l.total_trades >= 10
       ORDER BY win_percentage DESC
-      LIMIT 20
+      LIMIT 100
     `) || [];
 
     // 3. Current Max Streak
@@ -97,14 +97,17 @@ export const fetchLeaderboards = async () => {
       FROM leaderboard_stats l
       JOIN users u ON l.user_id = u.uid
       ORDER BY l.max_streak DESC
-      LIMIT 20
+      LIMIT 100
     `) || [];
 
-    const oneDayAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDayTimestamp = Math.floor(startOfDay.getTime() / 1000);
+    
     console.log("Fetching daily...");
     const daily = await query(`
       SELECT t.user_id, 
-             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE 0 END) as profit,
+             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE -t.amount END) as profit,
              COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
       FROM trades t
       JOIN users u ON t.user_id = u.uid
@@ -112,14 +115,14 @@ export const fetchLeaderboards = async () => {
       AND t.settled_at >= ?
       GROUP BY t.user_id
       ORDER BY profit DESC
-      LIMIT 20
-    `, [oneDayAgo]) || [];
+      LIMIT 100
+    `, [startOfDayTimestamp]) || [];
 
     const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
     console.log("Fetching weekly...");
     const weekly = await query(`
       SELECT t.user_id, 
-             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE 0 END) as profit,
+             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE -t.amount END) as profit,
              COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
       FROM trades t
       JOIN users u ON t.user_id = u.uid
@@ -127,13 +130,60 @@ export const fetchLeaderboards = async () => {
       AND t.settled_at >= ?
       GROUP BY t.user_id
       ORDER BY profit DESC
-      LIMIT 20
+      LIMIT 100
     `, [sevenDaysAgo]) || [];
 
-    return { allTime, winRate, streaks, daily, weekly };
+    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+    console.log("Fetching monthly...");
+    const monthly = await query(`
+      SELECT t.user_id, 
+             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE -t.amount END) as profit,
+             COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
+      FROM trades t
+      JOIN users u ON t.user_id = u.uid
+      WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
+      AND t.settled_at >= ?
+      GROUP BY t.user_id
+      ORDER BY profit DESC
+      LIMIT 100
+    `, [thirtyDaysAgo]) || [];
+
+    const fakeUsers = [
+      { user_id: 'fake_1', display_name: 'CryptoKing', total_profit: 1500, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'United States', country_code: 'us' },
+      { user_id: 'fake_2', display_name: 'MoonWalker', total_profit: 1200, total_trades: 150, won_trades: 130, lost_trades: 20, photo_url: '', country: 'Brazil', country_code: 'br' },
+      { user_id: 'fake_3', display_name: 'TradeMaster', total_profit: 950, total_trades: 200, won_trades: 180, lost_trades: 20, photo_url: '', country: 'India', country_code: 'in' },
+      { user_id: 'fake_4', display_name: 'BullRider', total_profit: 800, total_trades: 110, won_trades: 90, lost_trades: 20, photo_url: '', country: 'Germany', country_code: 'de' },
+      { user_id: 'fake_5', display_name: 'BearSlayer', total_profit: 750, total_trades: 130, won_trades: 110, lost_trades: 20, photo_url: '', country: 'Canada', country_code: 'ca' },
+      { user_id: 'fake_6', display_name: 'ProfitPro', total_profit: 700, total_trades: 90, won_trades: 80, lost_trades: 10, photo_url: '', country: 'Australia', country_code: 'au' },
+      { user_id: 'fake_7', display_name: 'MarketWizard', total_profit: 650, total_trades: 100, won_trades: 85, lost_trades: 15, photo_url: '', country: 'Japan', country_code: 'jp' },
+      { user_id: 'fake_8', display_name: 'ChartGuru', total_profit: 600, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'France', country_code: 'fr' },
+      { user_id: 'fake_9', display_name: 'TrendHunter', total_profit: 550, total_trades: 110, won_trades: 95, lost_trades: 15, photo_url: '', country: 'United Kingdom', country_code: 'gb' },
+      { user_id: 'fake_10', display_name: 'GoldMiner', total_profit: 500, total_trades: 95, won_trades: 80, lost_trades: 15, photo_url: '', country: 'South Africa', country_code: 'za' },
+      { user_id: 'fake_11', display_name: 'SignalSender', total_profit: 450, total_trades: 80, won_trades: 70, lost_trades: 10, photo_url: '', country: 'Italy', country_code: 'it' },
+      { user_id: 'fake_12', display_name: 'FastTrader', total_profit: 400, total_trades: 70, won_trades: 60, lost_trades: 10, photo_url: '', country: 'Spain', country_code: 'es' },
+      { user_id: 'fake_13', display_name: 'ScalpKing', total_profit: 350, total_trades: 60, won_trades: 55, lost_trades: 5, photo_url: '', country: 'Mexico', country_code: 'mx' },
+      { user_id: 'fake_14', display_name: 'OptionOpener', total_profit: 300, total_trades: 50, won_trades: 45, lost_trades: 5, photo_url: '', country: 'Korea', country_code: 'kr' },
+      { user_id: 'fake_15', display_name: 'BinaryBoss', total_profit: 250, total_trades: 40, won_trades: 35, lost_trades: 5, photo_url: '', country: 'Indonesia', country_code: 'id' },
+      { user_id: 'fake_16', display_name: 'CryptoClimber', total_profit: 200, total_trades: 30, won_trades: 25, lost_trades: 5, photo_url: '', country: 'Vietnam', country_code: 'vn' },
+      { user_id: 'fake_17', display_name: 'ForexFiend', total_profit: 150, total_trades: 25, won_trades: 20, lost_trades: 5, photo_url: '', country: 'Thailand', country_code: 'th' },
+      { user_id: 'fake_18', display_name: 'StockStar', total_profit: 100, total_trades: 20, won_trades: 15, lost_trades: 5, photo_url: '', country: 'Singapore', country_code: 'sg' },
+      { user_id: 'fake_19', display_name: 'CoinCollector', total_profit: 50, total_trades: 15, won_trades: 10, lost_trades: 5, photo_url: '', country: 'Malaysia', country_code: 'my' },
+      { user_id: 'fake_20', display_name: 'NewbieTrader', total_profit: 10, total_trades: 5, won_trades: 3, lost_trades: 2, photo_url: '', country: 'Turkey', country_code: 'tr' }
+    ];
+
+    // Merge fake users into allTime
+    const finalAllTime = [...allTime, ...fakeUsers].sort((a, b) => b.total_profit - a.total_profit).slice(0, 20);
+
+    // Merge fake users into daily/weekly/monthly
+    const dailyWithFake = [...daily, ...fakeUsers.map(u => ({ user_id: u.user_id, profit: u.total_profit, display_name: u.display_name, photo_url: u.photo_url, country: u.country, country_code: u.country_code }))].sort((a, b) => b.profit - a.profit).slice(0, 20);
+    const weeklyWithFake = [...weekly, ...fakeUsers.map(u => ({ user_id: u.user_id, profit: u.total_profit, display_name: u.display_name, photo_url: u.photo_url, country: u.country, country_code: u.country_code }))].sort((a, b) => b.profit - a.profit).slice(0, 20);
+    const monthlyWithFake = [...monthly, ...fakeUsers.map(u => ({ user_id: u.user_id, profit: u.total_profit, display_name: u.display_name, photo_url: u.photo_url, country: u.country, country_code: u.country_code }))].sort((a, b) => b.profit - a.profit).slice(0, 20);
+
+    return { allTime: finalAllTime, winRate, streaks, daily: dailyWithFake, weekly: weeklyWithFake, monthly: monthlyWithFake };
+
   } catch (err) {
     console.error('Failed to fetch leaderboards:', err);
-    return { allTime: [], winRate: [], streaks: [], daily: [], weekly: [] };
+    return { allTime: [], winRate: [], streaks: [], daily: [], weekly: [], monthly: [] };
   }
 };
 

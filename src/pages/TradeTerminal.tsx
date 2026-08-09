@@ -1215,20 +1215,6 @@ const TournamentLeaderboard = ({ tournamentId }: { tournamentId: string }) => {
 };
 
 const STORIES = [
-  { 
-    id: '0', 
-    title: 'Get to know the chart', 
-    description: "Chart is the key element of trading. Let's dive into its abilities", 
-    imageUrl: 'https://i.postimg.cc/fLngfrqx/Screenshot-20260803-165444.png',
-    link: '/news/chart-basics'
-  },
-  {
-    id: 'scale',
-    title: 'Scale',
-    description: 'Scroll up to zoom in, down — to zoom out',
-    imageUrl: 'https://i.postimg.cc/sx9Xgqqb/Screenshot-20260803-165447.png',
-    link: '/news/chart-scale'
-  },
   {
     id: 'market-overview',
     title: 'Market Overview',
@@ -4916,27 +4902,36 @@ const PROMOTED_ARTICLES = [
 
 
   const [leaderboards, setLeaderboards] = useState<any>({ daily: [], weekly: [], monthly: [], allTime: [] });
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   
-  useEffect(() => {
-    const loadLeaderboards = async (retries = 3) => {
-      try {
-        const res = await fetch('/api/leaderboard');
-        if (!res.ok) throw new Error('Network response was not ok');
-        const data = await res.json().catch(() => null);
-        if (data) setLeaderboards(data);
-      } catch (err) {
-        console.error('Failed to load leaderboards:', err);
-        if (retries > 0) {
-            setTimeout(() => loadLeaderboards(retries - 1), 2000);
-        }
+  const loadLeaderboards = async (retries = 3) => {
+    try {
+      setIsLoadingLeaderboard(true);
+      const res = await fetch('/api/leaderboard');
+      if (!res.ok) throw new Error('Network response was not ok');
+      const data = await res.json().catch(() => null);
+      if (data) setLeaderboards(data);
+    } catch (err) {
+      console.error('Failed to load leaderboards:', err);
+      if (retries > 0) {
+          setTimeout(() => loadLeaderboards(retries - 1), 2000);
       }
-    };
+    } finally {
+      setIsLoadingLeaderboard(false);
+    }
+  };
+
+  useEffect(() => {
     loadLeaderboards();
   }, []);
 
   const dynamicLeaderboard = React.useMemo(() => {
-    if (!leaderboards || !leaderboards.daily) return [];
+    if (!leaderboards) return [];
     
+    const sourceData = (leaderboards.daily || [])
+        .sort((a: any, b: any) => parseFloat(b.profit || b.total_profit || 0) - parseFloat(a.profit || a.total_profit || 0))
+        .slice(0, 20);
+
     const getCountryCode = (countryName: string) => {
         if (!countryName) return "bd";
         const mapping: Record<string, string> = {
@@ -4952,10 +4947,15 @@ const PROMOTED_ARTICLES = [
         return "bd";
     };
 
-    return leaderboards.daily.map((l: any, i: number) => {
+    return sourceData.map((l: any, i: number) => {
       const countryCode = (l.country_code || "").toLowerCase() || getCountryCode(l.country);
       const rawProfit = parseFloat(l.profit || l.total_profit || 0);
-      const profitVal = Math.max(0, isNaN(rawProfit) ? 0 : rawProfit);
+      const profitVal = isNaN(rawProfit) ? 0 : rawProfit;
+
+      const formattedProfit = profitVal >= 25000 
+          ? "25,000+" 
+          : profitVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          
       return {
         id: l.user_id,
         name: l.display_name || l.nickname || 'Trader',
@@ -4964,7 +4964,7 @@ const PROMOTED_ARTICLES = [
         flagUrl: `https://flagcdn.com/w40/${countryCode}.png`,
         isCurrentUser: currentUser && currentUser.uid === l.user_id,
         rank: i + 1,
-        formattedProfit: profitVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        formattedProfit
       };
     });
   }, [leaderboards, currentUser]);
@@ -8265,21 +8265,7 @@ const PROMOTED_ARTICLES = [
                 </div>
               </div>
 
-              {/* Period Selector */}
-              <div className="mb-6">
-                <div className="bg-[#1a1b1f] border border-[#2C2D33] rounded-[10px] px-4 py-2.5 flex items-center justify-between cursor-pointer hover:border-[#4B4C53] transition-all relative">
-                  <div className="flex flex-col">
-                     <span className="text-[11px] font-medium text-[#7b8390] mb-0 leading-none">
-                       Period
-                     </span>
-                     <span className="text-white text-[14px] font-medium mt-1 leading-none">
-                       1 day
-                     </span>
-                  </div>
-                  <ChevronDown size={18} className="text-[#a6aeb9]" />
-                </div>
-              </div>
-
+              
               {/* Table Header */}
               <div className="flex justify-between items-center mb-2 px-1">
                 <span className="text-[#7b8390] text-[12px] font-medium tracking-wide">
@@ -8292,7 +8278,10 @@ const PROMOTED_ARTICLES = [
 
               {/* Participants List */}
               <div className="flex flex-col gap-1">
-                {dynamicLeaderboard.map((trader, idx) => (
+                {isLoadingLeaderboard ? (
+                   <div className="text-center text-white py-4">Loading...</div>
+                ) : (
+                  dynamicLeaderboard.map((trader, idx) => (
                   <div
                     key={`leaderboard-trader-${trader.rank || idx}`}
                     className={`py-[10px] px-1 flex justify-between items-center border-b border-[#2C2D33]/40 last:border-0 transition-colors ${
@@ -8338,7 +8327,8 @@ const PROMOTED_ARTICLES = [
                       ${trader.formattedProfit}
                     </span>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>

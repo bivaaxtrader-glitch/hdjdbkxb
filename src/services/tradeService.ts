@@ -154,14 +154,16 @@ export async function settleTrade(tradeId: number, currentMarketPrice?: number) 
       // Sync trade settlement to Firestore
       if (adminDb) {
         try {
+          logger.info(`Attempting to sync trade ${tradeId} settlement to Firestore. New status: ${newStatus}`);
           await adminDb.collection('trades').doc(tradeId.toString()).update({
             status: newStatus,
             exitPrice: parseFloat(exitPrice.toString()),
             payoutAmount: payoutAmount.toNumber(),
             settledAt: Math.floor(Date.now() / 1000)
           });
+          logger.info(`Successfully synced trade ${tradeId} settlement to Firestore.`);
         } catch (fsErr: any) {
-          logger.warn(`Failed to sync trade ${tradeId} settlement to Firestore: ${fsErr.message}`);
+          logger.error(`Failed to sync trade ${tradeId} settlement to Firestore: ${fsErr.message}`);
         }
       }
 
