@@ -66,8 +66,45 @@ try { db.exec("ALTER TABLE users ADD COLUMN gender TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN dob TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN smart_mode_enabled INTEGER DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE users ADD COLUMN smart_mode_strategy TEXT DEFAULT 'auto_25_percent';"); } catch (e) {}
+try { db.exec("ALTER TABLE users ADD COLUMN manipulation_mode TEXT DEFAULT 'neutral';"); } catch (e) {}
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS tournaments (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  banner_url TEXT,
+  prize_pool NUMERIC DEFAULT 0,
+  entry_fee NUMERIC DEFAULT 0,
+  min_players INTEGER DEFAULT 1,
+  max_players INTEGER DEFAULT 0,
+  start_time INTEGER NOT NULL,
+  end_time INTEGER NOT NULL,
+  status TEXT DEFAULT 'scheduled',
+  is_locked INTEGER DEFAULT 0,
+  requirements TEXT,
+  created_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS tournament_participants (
+  tournament_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  score NUMERIC DEFAULT 0,
+  rank INTEGER,
+  joined_at INTEGER,
+  PRIMARY KEY (tournament_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_prizes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament_id TEXT NOT NULL,
+  rank_from INTEGER NOT NULL,
+  rank_to INTEGER NOT NULL,
+  prize_amount NUMERIC NOT NULL,
+  prize_type TEXT DEFAULT 'fixed'
+);
+
 CREATE TABLE IF NOT EXISTS leaderboard_stats (
   user_id TEXT PRIMARY KEY,
   total_profit NUMERIC DEFAULT 0,

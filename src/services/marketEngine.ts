@@ -5,6 +5,7 @@ import {
   currentCandles_real, currentCandles_demo,
   systemActive, globalManipulationMode,
   fetchAllRealPrices, initializeCandlesFromDB,
+  initializeUserManipulation,
   saveCandleToDB_v2, TIMEFRAMES, timeframeSecondsMap
 } from './marketService.ts';
 import { markets } from '../markets.ts';
@@ -12,7 +13,7 @@ import { settleExpiredTrades, updateTradeExposureCache } from './tradeService.ts
 import { updatePair } from './otcEngine.ts';
 import { liveApiService } from './liveApiService.ts';
 
-const TICK_INTERVAL = 1000;
+const TICK_INTERVAL = 200;
 
 export async function startMarketEngine() {
   console.log('🚀 Starting Market Engine...');
@@ -20,6 +21,9 @@ export async function startMarketEngine() {
   // Initialize candles from the database asynchronously in background
   initializeCandlesFromDB().catch(err => console.error("Error initializing candles:", err));
   
+  // Initialize user manipulation cache
+  initializeUserManipulation().catch(err => console.error("Error initializing user manipulation:", err));
+
   // Initial price fetch
   fetchAllRealPrices();
   setInterval(fetchAllRealPrices, 15000); // Sync with real prices every 15 seconds

@@ -397,40 +397,60 @@ export default function App() {
         syncInProgress = true;
         
         // Wait a bit to allow server to settle
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        const safeFetch = async (url: string, options?: RequestInit) => {
-          try {
-            const res = await fetch(url, options);
-            const contentType = res.headers.get('content-type');
-            
-            if (res.status === 429) {
-               console.warn(`Rate limit hit for ${url}. Response: Rate exceeded.`);
-               return { error: 'Rate exceeded', status: 429 };
-            }
+        const safeFetch = async (url: string, options?: RequestInit, retries = 3) => {
+          for (let i = 0; i < retries; i++) {
+            try {
+              const res = await fetch(url, options);
+              const contentType = res.headers.get('content-type');
+              
+              if (res.status === 429) {
+                 console.warn(`Rate limit hit for ${url}. Attempt ${i+1}.`);
+                 if (i < retries - 1) {
+                   await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                   continue;
+                 }
+                 return { error: 'Rate exceeded', status: 429 };
+              }
 
-            if (contentType && contentType.includes('application/json')) {
-              return await res.json();
-            } else {
-              const text = await res.text();
-              console.warn(`Non-JSON response from ${url}:`, text);
-              return { error: 'Invalid response format', status: res.status, raw: text };
+              if (contentType && contentType.includes('application/json')) {
+                return await res.json();
+              } else {
+                const text = await res.text();
+                if (res.ok) return { success: true, data: text };
+                return { error: 'Invalid response format', status: res.status, raw: text };
+              }
+            } catch (e: any) {
+              console.error(`Fetch attempt ${i+1} failed for ${url}:`, e.message);
+              if (i < retries - 1) {
+                await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                continue;
+              }
+              return { error: e.message, status: 0 };
             }
-          } catch (e: any) {
-            console.error(`Fetch error for ${url}:`, e.message);
-            return { error: e.message, status: 0 };
           }
         };
 
-        // Health check
+        // Health check with retry
         console.log("Starting health check...");
-        const healthData = await safeFetch('/api/health');
-        console.log("Health check response:", healthData);
-        if (healthData.status !== 'ok') {
-            console.error("Health check failed or returned unexpected status, delaying API calls");
-            await new Promise(resolve => setTimeout(resolve, 2000));
+        let healthData = { status: 'pending' };
+        for (let i = 0; i < 5; i++) {
+          const data = await safeFetch('/api/health');
+          if (data && data.status === 'ok') {
+            healthData = data;
+            break;
+          }
+          console.warn(`Health check attempt ${i+1} failed, retrying...`);
+          await new Promise(r => setTimeout(r, 1000));
         }
-        console.log("Health check successful/proceeding, starting sync");
+
+        if (healthData.status !== 'ok') {
+            console.warn("Health check failed after multiple attempts, proceeding with caution...");
+        } else {
+            console.log("Health check successful");
+        }
+        console.log("Proceeding with user sync");
 
         // Sync user
         console.log("Starting user sync...");

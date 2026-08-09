@@ -32,6 +32,7 @@ export const users = sqliteTable('users', {
   withdrawalOtp: text('withdrawal_otp'),
   withdrawalOtpExpiresAt: integer('withdrawal_otp_expires_at', { mode: 'number' }),
   totalLiveVolume: numeric('total_live_volume').default('0.00'),
+  manipulationMode: text('manipulation_mode').default('neutral'),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).defaultNow(),
   createdAt: integer('created_at', { mode: 'timestamp' }).defaultNow(),
 });

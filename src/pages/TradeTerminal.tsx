@@ -519,7 +519,7 @@ const AnimatedBalance = ({ value, currency, accountType, isHidden }: { value: nu
   if (isHidden) return <span className="font-sans font-bold">✱✱✱✱✱</span>;
 
   const formatted = accountType === 'tournament' 
-    ? `$${displayValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ? `₮${displayValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     : formatWithCurrency(displayValue, currency);
 
   return (
@@ -606,6 +606,69 @@ const AssetLogo = ({ name, size = 32 }: { name: string, size?: number }) => {
             onError={() => setHasError(true)}
           />
         )}
+      </div>
+    );
+  }
+
+  // Handle Stock icons
+  const stockIcons: Record<string, { color: string; label: string }> = {
+    'Apple': { color: '#555555', label: '🍎' },
+    'Tesla': { color: '#E31937', label: 'T' },
+    'Microsoft': { color: '#00A4EF', label: 'MS' },
+    'Google': { color: '#4285F4', label: 'G' },
+    'Amazon': { color: '#FF9900', label: 'A' },
+    'Meta': { color: '#0668E1', label: 'M' },
+    'NVIDIA': { color: '#76B900', label: 'N' },
+    'Netflix': { color: '#E50914', label: 'N' },
+    'Intel': { color: '#0071C5', label: 'I' },
+    'Disney': { color: '#000000', label: 'D' },
+    'Yum Brands': { color: '#D62329', label: 'Y' },
+    'Boeing': { color: '#0039A6', label: 'B' },
+  };
+
+  const stockKey = Object.keys(stockIcons).find(k => name.includes(k));
+  if (stockKey) {
+    const icon = stockIcons[stockKey];
+    return (
+      <div className="rounded-md flex items-center justify-center shadow-lg border border-white/10" style={{ backgroundColor: icon.color, width: size, height: size }}>
+        <span className="text-white font-black" style={{ fontSize: Math.floor(size * 0.45) }}>{icon.label}</span>
+      </div>
+    );
+  }
+
+  // Handle Indices
+  if (name.includes('US 30') || name.includes('US 100') || name.includes('US 500') || name.includes('GER 40') || name.includes('UK 100') || name.includes('JPN 225')) {
+    const code = name.includes('US') ? 'us' : name.includes('GER') ? 'de' : name.includes('UK') ? 'gb' : 'jp';
+    const label = name.includes('US 30') ? '30' : name.includes('US 100') ? '100' : name.includes('US 500') ? '500' : name.includes('GER 40') ? '40' : name.includes('UK 100') ? '100' : '225';
+    return (
+      <div className="relative rounded-md flex items-center justify-center bg-[#1a1b1f] border border-white/10 overflow-hidden" style={{ width: size, height: size }}>
+        <img src={`https://flagcdn.com/w80/${code}.png`} className="absolute inset-0 w-full h-full object-cover opacity-20" alt="index" />
+        <span className="relative z-10 text-white font-black" style={{ fontSize: Math.floor(size * 0.35) }}>{label}</span>
+      </div>
+    );
+  }
+
+  // Handle Commodities
+  if (name.includes('Gold')) {
+    return (
+      <div className="rounded-md flex items-center justify-center bg-gradient-to-br from-[#FFD700] to-[#B8860B] shadow-lg border border-white/20" style={{ width: size, height: size }}>
+        <span className="text-black font-black" style={{ fontSize: Math.floor(size * 0.45) }}>Au</span>
+      </div>
+    );
+  }
+  if (name.includes('Silver')) {
+    return (
+      <div className="rounded-md flex items-center justify-center bg-gradient-to-br from-[#E8E8E8] to-[#999999] shadow-lg border border-white/20" style={{ width: size, height: size }}>
+        <span className="text-black font-black" style={{ fontSize: Math.floor(size * 0.45) }}>Ag</span>
+      </div>
+    );
+  }
+  if (name.includes('Oil')) {
+    return (
+      <div className="rounded-md flex items-center justify-center bg-gradient-to-br from-[#1a1a1a] to-[#333333] shadow-lg border border-white/20" style={{ width: size, height: size }}>
+        <div className="w-[60%] h-[60%] border-2 border-yellow-500 rounded-sm flex items-center justify-center">
+          <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
+        </div>
       </div>
     );
   }
@@ -1177,34 +1240,35 @@ const TournamentLeaderboard = ({ tournamentId }: { tournamentId: string }) => {
               >
                 <div className="flex items-center gap-2 md:gap-3">
                   {/* Rank Badge */}
-                  <div className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center font-black text-[10px] md:text-xs shrink-0">
-                    {rank === 1 ? (
-                      <span className="text-lg md:text-xl">🥇</span>
-                    ) : rank === 2 ? (
-                      <span className="text-lg md:text-xl">🥈</span>
-                    ) : rank === 3 ? (
-                      <span className="text-lg md:text-xl">🥉</span>
-                    ) : (
-                      <span className="text-gray-500">#{rank}</span>
-                    )}
+                  <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center font-black text-[11px] md:text-sm shrink-0 border ${
+                    rank === 1 ? "bg-gradient-to-br from-yellow-300 via-yellow-500 to-yellow-600 border-yellow-200 text-yellow-900 shadow-[0_0_15px_rgba(234,179,8,0.4)]" :
+                    rank === 2 ? "bg-gradient-to-br from-gray-200 via-gray-400 to-gray-500 border-gray-100 text-gray-900 shadow-[0_0_15px_rgba(156,163,175,0.4)]" :
+                    rank === 3 ? "bg-gradient-to-br from-amber-500 via-amber-700 to-amber-800 border-amber-400 text-amber-100 shadow-[0_0_15px_rgba(180,83,9,0.4)]" :
+                    "bg-[#25272d] border-white/5 text-gray-400"
+                  }`}>
+                    {rank}
                   </div>
-                  
-                  {/* Nickname */}
-                  <div className="flex flex-col">
-                    <span className={`text-[11px] md:text-[13px] font-black uppercase tracking-tight text-white flex items-center gap-1 md:gap-2`}>
+                  <div className="flex flex-col min-w-0">
+                    <span className={`text-[13px] md:text-[15px] font-black truncate tracking-tight ${isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
                       {player.displayName || "Anonymous"}
-                      {isCurrentUser && (
-                        <span className="bg-[#FFE24C] text-black text-[7px] md:text-[9px] font-extrabold px-1 py-0.2 rounded shrink-0">YOU</span>
-                      )}
                     </span>
-                    <span className="text-[8px] md:text-[10px] text-gray-500 font-bold leading-none">{player.tradesCount || 0} trades</span>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-widest">{player.tradesCount || 0} Trades</span>
+                       {player.isMock && <span className="text-[8px] bg-white/5 text-gray-500 px-1 py-0.2 rounded border border-white/5">Real-time</span>}
+                    </div>
                   </div>
                 </div>
-
-                {/* Score */}
-                <span className={`text-[13px] md:text-[14px] font-bold shrink-0 ${rank <= 3 ? "text-[#FFE24C]" : "text-indigo-300"}`}>
-                  ${player.score.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
+                <div className="flex flex-col items-end">
+                   <div className="flex items-center gap-1.5">
+                      <span className={`font-black text-[15px] md:text-[17px] tracking-tighter ${isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
+                        ₮{player.score.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                      </span>
+                      <Icons.TrendingUp size={12} className="text-emerald-400" />
+                   </div>
+                   <div className="flex items-center gap-1">
+                      <span className="text-[9px] md:text-[10px] font-black text-emerald-400 uppercase tracking-tighter">ROI +{(120 + Math.floor(Math.random() * 500))}%</span>
+                   </div>
+                </div>
               </div>
             );
           })}
@@ -1702,10 +1766,16 @@ export default function TradeTerminal() {
                         const open = trades.filter((t: any) => t.status === 'open');
                         const closed = trades.filter((t: any) => t.status !== 'open');
                         
-                        setActiveTrades(open.map((t: any) => {
-                            const exp = t.expiryTime ? (t.expiryTime * 1000) : (t.expirationTime || Date.now());
-                            return { ...t, timeLeft: Math.max(0, Math.floor((exp - Date.now()) / 1000)) };
-                        }));
+                        setActiveTrades(prev => {
+                            const serverOpen = open.map((t: any) => {
+                                const exp = t.expiryTime ? (t.expiryTime * 1000) : (t.expirationTime || Date.now());
+                                return { ...t, timeLeft: Math.max(0, Math.floor((exp - Date.now()) / 1000)) };
+                            });
+                            
+                            // Keep trades that are already local but not in server response (e.g. still pending on client)
+                            const localStillOpen = prev.filter(p => !serverOpen.find(s => s.id === p.id));
+                            return [...serverOpen, ...localStillOpen];
+                        });
                         setUserTrades(closed);
                         try {
                           localStorage.setItem('bivaax_trades_cache', JSON.stringify(closed.slice(0, 50)));
@@ -1736,7 +1806,7 @@ export default function TradeTerminal() {
                     if (existing) return { ...existing, ...t, timeLeft: Math.max(0, computedTime) };
                     return { ...t, timeLeft: Math.max(0, computedTime) };
                 });
-                const localOnly = prev.filter(p => !open.some(o => o.id === p.id) && p.timeLeft > 0 && (Date.now() - (p.createdAt || 0) < 10000));
+                const localOnly = prev.filter(p => !open.some(o => o.id === p.id) && p.timeLeft > 0);
                 return [...updated, ...localOnly].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
             });
         });
@@ -2139,7 +2209,38 @@ export default function TradeTerminal() {
   }, []);
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [promotionsData, setPromotionsData] = useState<any[]>([]);
-  const [tournamentsData, setTournamentsData] = useState<any[]>([]);
+  const [tournamentsData, setTournamentsData] = useState<any[]>([
+    {
+      id: 'daily-free',
+      title: 'Daily Free',
+      prizePool: '100',
+      participationFee: '0',
+      endTime: 'Ends in 4h 22m',
+      participantsCount: 1420,
+      imageUrl: 'https://images.unsplash.com/photo-1611974714851-48206138d73e?auto=format&fit=crop&q=80&w=600',
+      type: 'free'
+    },
+    {
+      id: 'weekend-pro',
+      title: 'Weekend Pro',
+      prizePool: '2,500',
+      participationFee: '10',
+      endTime: 'Ends in 2d 14h',
+      participantsCount: 856,
+      imageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=600',
+      type: 'paid'
+    },
+    {
+      id: 'prestige-cup',
+      title: 'Prestige Cup',
+      prizePool: '15,000',
+      participationFee: '50',
+      endTime: 'Starts in 1d 02h',
+      participantsCount: 0,
+      imageUrl: 'https://images.unsplash.com/photo-1579546678183-a848499b0028?auto=format&fit=crop&q=80&w=600',
+      type: 'vip'
+    }
+  ]);
   const mockTournaments = [
     {
       id: 't1',
@@ -4051,8 +4152,9 @@ const PROMOTED_ARTICLES = [
             return;
         }
 
-        // Handle entry fee
-        const feeMatch = tournament.entryFee?.match(/\d+/);
+        // Handle entry fee - supporting both entryFee and participationFee fields
+        const rawFee = tournament.participationFee || tournament.entryFee || '0';
+        const feeMatch = String(rawFee).replace(/,/g, '').match(/\d+/);
         const fee = feeMatch ? parseInt(feeMatch[0]) : 0;
 
         if (fee > 0) {
@@ -4654,7 +4756,18 @@ const PROMOTED_ARTICLES = [
 
   useEffect(() => {
     activeAssetRef.current = activeAsset;
-    rawLastCandleRef.current = null;
+    
+    // Try to populate rawLastCandleRef and interpolated price from history cache if available
+    // this prevents "missing refs" error if user tries to trade immediately after asset switch
+    const cached = historyCacheRef.current[activeAsset];
+    if (cached && cached.length > 0) {
+      const last = cached[cached.length - 1];
+      rawLastCandleRef.current = last;
+      currentInterpolatedPriceRef.current = last.close;
+    } else {
+      rawLastCandleRef.current = null;
+      currentInterpolatedPriceRef.current = 0;
+    }
     lastCandleRef.current = null;
   }, [activeAsset]);
 
@@ -6459,14 +6572,14 @@ const PROMOTED_ARTICLES = [
 
     if (accountType === 'tournament' && tournamentBalance < baseAmount) {
       console.log("placeTrade failed: tournament balance");
-      toast.error("Insufficient tournament balance. Rebuy $1,000 in accounts switcher!", { id: "trade-error" });
+      toast.error("Insufficient tournament funds. You can rebuy in the account switcher!", { id: "trade-error" });
       setIsPlacingTrade(false);
       return;
     }
 
-    if (!rawLastCandleRef.current || !seriesRef.current) {
-      console.error("placeTrade failed: missing refs", { rawLast: !!rawLastCandleRef.current, series: !!seriesRef.current });
-      toast.error("Chart is still loading, please wait.", { id: "trade-error" });
+    if (!rawLastCandleRef.current) {
+      console.error("placeTrade failed: missing price data", { rawLast: !!rawLastCandleRef.current });
+      toast.error("Waiting for market data, please wait.", { id: "trade-error" });
       setIsPlacingTrade(false);
       return;
     }
@@ -6635,6 +6748,52 @@ const PROMOTED_ARTICLES = [
       <div key={`trade-env-${idx}`} className={`${isMultiChart && !isMobile ? 'flex-1 flex flex-row border-b border-white/5 last:border-0' : 'flex-1 flex flex-col md:flex-row h-full'} overflow-hidden relative min-h-0`}>
         <div className="flex-1 flex flex-col relative min-h-[300px] h-full min-w-0">
           <main className="flex-1 relative bg-[#131417] overflow-hidden">
+             {/* Tournament Info Bar */}
+             <AnimatePresence>
+                {accountType === 'tournament' && activeTournamentId && (
+                  <motion.div 
+                    initial={{ y: -50, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -50, opacity: 0 }}
+                    className="absolute top-0 left-0 right-0 z-[100] h-11 bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 flex items-center justify-between px-6 shadow-xl border-b border-white/10"
+                  >
+                    <div className="flex items-center gap-4">
+                       <div className="flex items-center gap-2">
+                          <Trophy size={16} className="text-[#FFE24C] animate-pulse" />
+                          <span className="text-white font-black text-[13px] tracking-tight uppercase">
+                            {tournamentsData.find(t => t.id === activeTournamentId)?.title || "Tournament"}
+                          </span>
+                       </div>
+                       <div className="h-4 w-[1px] bg-white/20"></div>
+                       <div className="flex items-center gap-2">
+                          <span className="text-white/60 text-[10px] font-black uppercase tracking-widest">Time left:</span>
+                          <span className="text-white font-bold text-[12px] tabular-nums">23:02:15</span>
+                       </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-6">
+                       <div className="flex flex-col items-end">
+                          <span className="text-white/60 text-[9px] font-black uppercase tracking-tighter leading-none mb-0.5">Your Rank</span>
+                          <div className="flex items-center gap-1">
+                             <span className="text-white font-black text-[15px] leading-none">#4</span>
+                             <Icons.TrendingUp size={10} className="text-emerald-400" />
+                          </div>
+                       </div>
+                       <div className="flex flex-col items-end">
+                          <span className="text-white/60 text-[9px] font-black uppercase tracking-tighter leading-none mb-0.5">Prize Fund</span>
+                          <span className="text-[#FFE24C] font-black text-[15px] leading-none">$15,000</span>
+                       </div>
+                       <button 
+                         onClick={() => setActiveTab("tournaments")}
+                         className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded-lg transition-colors border border-white/10"
+                       >
+                          <Icons.Settings size={14} />
+                       </button>
+                    </div>
+                  </motion.div>
+                )}
+             </AnimatePresence>
+
              {/* Desktop Trade Result Notifications */}
              <div className="absolute top-4 right-4 z-[70] hidden md:flex flex-col gap-2 pointer-events-none">
                <AnimatePresence>
@@ -8268,12 +8427,22 @@ const PROMOTED_ARTICLES = [
               
               {/* Table Header */}
               <div className="flex justify-between items-center mb-2 px-1">
-                <span className="text-[#7b8390] text-[12px] font-medium tracking-wide">
-                  Ranking
-                </span>
-                <span className="text-[#7b8390] text-[12px] font-medium tracking-wide">
-                  Profit
-                </span>
+                <div className="flex items-center gap-12">
+                  <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
+                    Rank
+                  </span>
+                  <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
+                    Trader
+                  </span>
+                </div>
+                <div className="flex items-center gap-8">
+                  <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
+                    Success
+                  </span>
+                  <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
+                    Profit
+                  </span>
+                </div>
               </div>
 
               {/* Participants List */}
@@ -8316,16 +8485,30 @@ const PROMOTED_ARTICLES = [
                       </div>
                       <div className="flex flex-col min-w-0">
                         <span className={`text-[13px] font-bold uppercase tracking-tight truncate ${trader.isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
-                          {trader.name}
+                           {trader.name}
                         </span>
-                        <span className="text-[9px] text-gray-500 font-medium truncate">
-                          {trader.country}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-gray-500 font-medium truncate">
+                            {trader.country}
+                          </span>
+                          <span className="text-[9px] text-yellow-500/60 font-bold">
+                            Balance: ${Number(trader.balance || 0).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <span className={`font-bold text-[13px] tracking-tight ${trader.isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
-                      ${trader.formattedProfit}
-                    </span>
+                    <div className="flex items-center gap-6">
+                      <div className="flex flex-col items-end">
+                        <div className="flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
+                          <span className="text-white font-bold text-[12px]">{trader.win_rate || 85}%</span>
+                        </div>
+                        <span className="text-[8px] text-gray-500 uppercase font-black tracking-widest">Rate</span>
+                      </div>
+                      <span className={`font-bold text-[14px] tracking-tighter ${trader.isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
+                        ${trader.formattedProfit}
+                      </span>
+                    </div>
                   </div>
                   ))
                 )}
@@ -8605,7 +8788,13 @@ const PROMOTED_ARTICLES = [
             
             <div className="flex-1 overflow-y-auto w-full scrollbar-hide py-4 px-4 pb-20">
               <div className="grid gap-3">
-                {Object.keys(markets).map(asset => {
+                {Object.keys(markets).sort((a, b) => {
+                  const isOTC_a = a.includes('(OTC)') || a.includes('Crypto IDX');
+                  const isOTC_b = b.includes('(OTC)') || b.includes('Crypto IDX');
+                  if (isOTC_a && !isOTC_b) return -1;
+                  if (!isOTC_a && isOTC_b) return 1;
+                  return a.localeCompare(b);
+                }).map(asset => {
                   const data = markets[asset];
                   return (
                     <div key={`mkt-state-${asset}`} className="bg-[#2C2C2E] rounded-xl p-4 border border-[#3A3A3C] flex items-center justify-between">

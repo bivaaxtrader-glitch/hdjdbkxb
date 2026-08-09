@@ -28,6 +28,7 @@ import { startMasterSimulation, seedMasterTraders } from './src/services/copyTra
 import { backupDatabase } from './src/db/backup';
 import authRouter from './src/api/auth';
 import apiRouter, { syncDatabaseFromFirestore } from './src/api/routes';
+import tournamentRouter, { seedTournaments } from './src/api/tournament';
 import logger from './src/lib/logger';
 
 async function startServer() {
@@ -81,6 +82,7 @@ async function startServer() {
 
   // API Routes
   app.use('/api/auth', authRouter);
+  app.use('/api', tournamentRouter);
   app.use('/api', apiRouter);
 
   // Catch-all for missing API endpoints to prevent returning HTML for API calls
@@ -184,6 +186,8 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
 
     // Seed master traders
     await seedMasterTraders();
+    // Seed tournaments
+    await seedTournaments();
     // Start Market Engine after listening
     startMarketEngine();
     // Start Copy Trading Simulation

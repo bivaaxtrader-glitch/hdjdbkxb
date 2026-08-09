@@ -40,6 +40,7 @@ export function mapUserForFrontend(user: any) {
     referredByUid: user.referred_by_uid || user.referredBy || user.referredByUid,
     smart_mode_enabled: user.smart_mode_enabled || user.smartModeEnabled ? 1 : 0,
     smart_mode_strategy: user.smart_mode_strategy || user.smartModeStrategy || 'balanced',
+    manipulationMode: user.manipulation_mode || user.manipulationMode || 'neutral',
     createdAt: user.created_at || user.createdAt || Date.now(),
     created_at: user.created_at || user.createdAt || Date.now(),
     updated_at: user.updated_at || user.updatedAt || Date.now()

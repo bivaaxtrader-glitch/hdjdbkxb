@@ -63,6 +63,31 @@ export const AssetLogo = ({ name, size = 32 }: { name: string, size?: number }) 
     'SHIB/USD': { color: '#FFA409', label: 'S', symbol: 'shib' },
   };
 
+  const stockIcons: Record<string, { color: string; label: string }> = {
+    'Apple': { color: '#555555', label: '' },
+    'Tesla': { color: '#E31937', label: 'T' },
+    'Microsoft': { color: '#00A4EF', label: 'M' },
+    'Google': { color: '#4285F4', label: 'G' },
+    'Amazon': { color: '#FF9900', label: 'A' },
+    'Meta': { color: '#0668E1', label: 'M' },
+    'NVIDIA': { color: '#76B900', label: 'N' },
+    'Netflix': { color: '#E50914', label: 'N' },
+    'Intel': { color: '#0071C5', label: 'I' },
+    'Disney': { color: '#113CCF', label: 'D' },
+    'Yum Brands': { color: '#C41230', label: 'Y' },
+  };
+
+  const indexIcons: Record<string, { color: string; label: string }> = {
+    'US 30': { color: '#1a1b1f', label: '30' },
+    'US 100': { color: '#1a1b1f', label: '100' },
+    'US 500': { color: '#1a1b1f', label: '500' },
+    'GER 40': { color: '#1a1b1f', label: '40' },
+    'UK 100': { color: '#1a1b1f', label: '100' },
+    'JPN 225': { color: '#1a1b1f', label: '225' },
+    'Gold': { color: '#FFD700', label: 'Au' },
+    'Oil': { color: '#333333', label: 'Oil' },
+  };
+
   const cryptoKey = Object.keys(cryptoIcons).find(k => name.includes(k));
   if (cryptoKey) {
     const icon = cryptoIcons[cryptoKey];
@@ -81,6 +106,34 @@ export const AssetLogo = ({ name, size = 32 }: { name: string, size?: number }) 
             onError={() => setHasError(true)}
           />
         )}
+      </div>
+    );
+  }
+
+  // Handle Stocks
+  const stockKey = Object.keys(stockIcons).find(k => name.includes(k));
+  if (stockKey) {
+    const icon = stockIcons[stockKey];
+    return (
+      <div 
+        className="rounded-lg flex items-center justify-center overflow-hidden bg-[#2A2C31] shadow-lg border border-white/10 transition-all"
+        style={{ backgroundColor: icon.color, width: size, height: size }}
+      >
+        <span className="text-white font-black" style={{ fontSize: Math.floor(size * 0.5) }}>{icon.label}</span>
+      </div>
+    );
+  }
+
+  // Handle Indices
+  const indexKey = Object.keys(indexIcons).find(k => name.includes(k));
+  if (indexKey) {
+    const icon = indexIcons[indexKey];
+    return (
+      <div 
+        className="rounded-lg flex items-center justify-center overflow-hidden bg-[#1a1b1f] shadow-lg border-2 border-yellow-500/50 transition-all"
+        style={{ width: size, height: size }}
+      >
+        <span className="text-yellow-500 font-black italic tracking-tighter" style={{ fontSize: Math.floor(size * 0.4) }}>{icon.label}</span>
       </div>
     );
   }
