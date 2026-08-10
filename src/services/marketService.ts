@@ -223,13 +223,8 @@ export function pruneHistoricalCandles() {
     
     if (totalDeleted > 0) {
       console.log(`🧹 Automated pruning complete: Deleted ${totalDeleted} obsolete historical candles.`);
-      // Run VACUUM to defragment SQLite database file
-      try {
-        db.prepare('VACUUM').run();
-        console.log('🧹 SQLite database VACUUM completed successfully.');
-      } catch (vacErr: any) {
-        console.warn('⚠️ SQLite VACUUM warning:', vacErr.message);
-      }
+      // VACUUM removed from here as it locks the database for too long and causes 499 errors.
+      // It is now run once daily in backupDatabase() instead.
     } else {
       console.log('🧹 Automated pruning complete: No obsolete candles found.');
     }
@@ -629,14 +624,16 @@ export async function initializeCandlesFromDB() {
   }
   console.log('✅ Candle storage initialized successfully!');
 
-  // Periodically prune historical candles every 1 hour (3,600,000 ms) to prevent database growth/corruption
-  setInterval(() => {
+  // Periodically prune historical candles every 1 hour (recursive timeout to prevent overlap)
+  const runPruning = () => {
     try {
       pruneHistoricalCandles();
     } catch (e: any) {
       console.error('Failed to run scheduled candle pruning:', e.message);
     }
-  }, 60 * 60 * 1000);
+    setTimeout(runPruning, 60 * 60 * 1000);
+  };
+  runPruning();
 }
 
 export let globalManipulationMode: 'neutral' | 'always_loss' | 'always_win' = 'neutral';

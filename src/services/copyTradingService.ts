@@ -73,11 +73,14 @@ export async function processCopyTrading(masterId: string, tradeData: { marketId
  * Start simulation of mock master traders to make the platform feel alive
  */
 export function startMasterSimulation() {
-  setInterval(async () => {
+  const runSimulation = async () => {
     try {
       // 1. Get mock masters
       const mockMasters = await query('SELECT * FROM master_traders') as any[];
-      if (!mockMasters || mockMasters.length === 0) return;
+      if (!mockMasters || mockMasters.length === 0) {
+        setTimeout(runSimulation, 30000);
+        return;
+      }
 
       // 2. Pick a random master to "trade"
       const master = mockMasters[Math.floor(Math.random() * mockMasters.length)];
@@ -102,7 +105,10 @@ export function startMasterSimulation() {
     } catch (err) {
       logger.error('Master simulation error:', err);
     }
-  }, 30000); // Every 30 seconds a random master trades
+    setTimeout(runSimulation, 30000); // Every 30 seconds a random master trades
+  };
+
+  runSimulation();
 }
 
 /**

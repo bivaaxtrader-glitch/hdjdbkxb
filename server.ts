@@ -37,6 +37,36 @@ async function startServer() {
   const PORT = 3000;
   const httpServer = createServer(app);
 
+  // Bot & Exploit Blocker Middleware - RUN FIRST to protect resources
+  const forbiddenPatterns = [
+    /\.php$/i,
+    /\.env$/i,
+    /\.git/i,
+    /wp-(admin|login|content|includes)/i,
+    /xmlrpc\.php/i,
+    /vapi/i,
+    /cgi-bin/i,
+    /\.jsp$/i,
+    /\.asp$/i,
+    /\.aspx$/i,
+    /admin\/(login|setup|config)/i,
+    /config\/(db|settings)/i,
+    /shell/i,
+    /backup/i,
+    /dump/i,
+    /myadmin/i,
+    /phpmyadmin/i
+  ];
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isBotScan = forbiddenPatterns.some(pattern => pattern.test(req.path));
+    if (isBotScan) {
+      // Quietly block and avoid expensive logging/processing
+      return res.status(403).send('Forbidden');
+    }
+    next();
+  });
+
   // Health check endpoints
   app.get('/health', (req, res) => { res.status(200).send('OK'); });
   app.get('/api/health', (req, res) => { 
@@ -173,6 +203,11 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
   // Schedule Daily Backup (Every 24 hours)
   setInterval(backupDatabase, 24 * 60 * 60 * 1000);
   // backupDatabase(); // Disabled for faster startup
+
+  // Set server timeout to 30 seconds to prevent hanging connections from exhausting resources
+  httpServer.timeout = 30000;
+  httpServer.keepAliveTimeout = 65000;
+  httpServer.headersTimeout = 66000;
 
   httpServer.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running on http://localhost:${PORT}`);

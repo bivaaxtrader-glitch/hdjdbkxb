@@ -35,35 +35,43 @@ export async function startMarketEngine() {
   //   console.error("Live API Start Error:", e);
   // }
 
-  // Settle expired trades every 2 seconds
-  setInterval(async () => {
-    if (!systemActive) return;
-    try {
-      await updateTradeExposureCache();
-      await settleExpiredTrades();
-    } catch (e) {
-      console.error('Settlement error:', e);
-    }
-  }, 2000);
-
-  // Main Ticker Loop (500ms)
-  setInterval(async () => {
-    if (!systemActive) return;
-
-    const io = getIO();
-    const nowSec = Math.floor(Date.now() / 1000);
-
-    const tickDataReal: Record<string, any> = {};
-
-    Object.keys(markets).forEach(pair => {
-      const realTick = updatePair(pair, 'real', nowSec);
-      if (realTick) {
-        tickDataReal[pair] = realTick;
+  // Settle expired trades every 2 seconds (using recursive timeout to prevent overlap)
+  const runSettlement = async () => {
+    if (systemActive) {
+      try {
+        await updateTradeExposureCache();
+        await settleExpiredTrades();
+      } catch (e) {
+        console.error('Settlement error:', e);
       }
-    });
+    }
+    setTimeout(runSettlement, 2000);
+  };
+  runSettlement();
 
-    // Broadcast market states (ticks)
-    io.emit('market_ticks', tickDataReal);
-  }, TICK_INTERVAL);
+  // Main Ticker Loop (using recursive timeout)
+  const runTicker = async () => {
+    if (systemActive) {
+      try {
+        const io = getIO();
+        const nowSec = Math.floor(Date.now() / 1000);
+        const tickDataReal: Record<string, any> = {};
+
+        Object.keys(markets).forEach(pair => {
+          const realTick = updatePair(pair, 'real', nowSec);
+          if (realTick) {
+            tickDataReal[pair] = realTick;
+          }
+        });
+
+        // Broadcast market states (ticks)
+        io.emit('market_ticks', tickDataReal);
+      } catch (tickErr) {
+        console.error('Ticker loop error:', tickErr);
+      }
+    }
+    setTimeout(runTicker, TICK_INTERVAL);
+  };
+  runTicker();
 }
 
