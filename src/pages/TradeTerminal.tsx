@@ -1507,6 +1507,16 @@ export default function TradeTerminal() {
       setPromotionsData(promosSnap.docs.map((d: any) => ({id: d.id, ...d.data()})));
       setTournamentsData(tourneysSnap.docs.map((d: any) => ({id: d.id, ...d.data()})));
       
+      try {
+        const tRes = await fetch('/api/tournaments');
+        const tData = await tRes.json();
+        if (tData.success && tData.tournaments) {
+          setTournamentsData(tData.tournaments);
+        }
+      } catch(err) {
+        console.warn("Failed to fetch API tournaments", err);
+      }
+      
       const deps = depMethodsSnap.docs.map((d: any) => ({id: d.id, ...d.data()}));
       
       setDepositMethods(deps);
@@ -2271,7 +2281,6 @@ export default function TradeTerminal() {
       return localStorage.getItem('bivax_active_tournament_id') || null;
     } catch(e) { return null; }
   });
-
   useEffect(() => {
     try {
       if (activeTournamentId) {
@@ -2282,7 +2291,7 @@ export default function TradeTerminal() {
     } catch(e) {}
   }, [activeTournamentId]);
 
-  const [tournamentBalance, setTournamentBalance] = useState(1000.0);
+  const [tournamentBalance, setTournamentBalance] = useState(10000.0);
   useEffect(() => {
     userRegistrationsRef.current = userRegistrations;
   }, [userRegistrations]);
@@ -2295,20 +2304,29 @@ export default function TradeTerminal() {
     
     const fetchRegistrations = async () => {
       try {
-        const fetchPromises = tournamentsData.map(async (t) => {
-          const docRef = doc(db, 'tournaments', t.id, 'participants', currentUser!.uid);
-          const snap = await getDoc(docRef);
-          return snap.exists() ? t.id : null;
+        const token = await currentUser.getIdToken();
+        const res = await fetch('/api/tournaments/user/active', {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        const results = await Promise.all(fetchPromises);
-        const registeredIds = results.filter(id => id !== null) as string[];
-        setUserRegistrations(prev => {
-          if (prev.length === registeredIds.length && prev.every((id, idx) => id === registeredIds[idx])) {
-            return prev;
+        const data = await res.json();
+        
+        if (data.success && data.tournaments) {
+          const registeredIds = data.tournaments.map((t: any) => t.tournament_id);
+          setUserRegistrations(prev => {
+            if (prev.length === registeredIds.length && prev.every((id, idx) => id === registeredIds[idx])) {
+              return prev;
+            }
+            return registeredIds;
+          });
+          
+          const activeTournamentIdStr = localStorage.getItem('bivax_active_tournament_id') || null;
+          if (activeTournamentIdStr) {
+            const currentT = data.tournaments.find((t: any) => t.tournament_id === activeTournamentIdStr);
+            if (currentT && currentT.score !== undefined) {
+               setTournamentBalance(currentT.score);
+            }
           }
-          return registeredIds;
-        });
+        }
       } catch (err) {
         console.warn("Participant fetch error:", err);
       }
@@ -2317,23 +2335,7 @@ export default function TradeTerminal() {
     fetchRegistrations();
   }, [currentUser?.uid, tournamentsData]);
 
-  useEffect(() => {
-    if (!currentUser?.uid || !activeTournamentId) return;
-    
-    const fetchBalance = async () => {
-      try {
-        const participantRef = doc(db, 'tournaments', activeTournamentId, 'participants', currentUser.uid);
-        const snap = await getDoc(participantRef);
-        if (snap.exists()) {
-          setTournamentBalance(snap.data().score || 1000.0);
-        }
-      } catch (err) {
-        console.warn("Error fetching tournament balance:", err);
-      }
-    };
-    
-    fetchBalance();
-  }, [currentUser?.uid, activeTournamentId]);
+  
 
 
 
@@ -4144,53 +4146,39 @@ const PROMOTED_ARTICLES = [
     if (!auth.currentUser) return;
     
     try {
-        const participantDocRef = doc(db, 'tournaments', tournament.id, 'participants', auth.currentUser.uid);
-        const participantDoc = await getDoc(participantDocRef);
-        
-        if (participantDoc.exists()) {
-            toast.error("You are already registered for this tournament!");
-            return;
-        }
-
-        // Handle entry fee - supporting both entryFee and participationFee fields
-        const rawFee = tournament.participationFee || tournament.entryFee || '0';
-        const feeMatch = String(rawFee).replace(/,/g, '').match(/\d+/);
-        const fee = feeMatch ? parseInt(feeMatch[0]) : 0;
-
-        if (fee > 0) {
-            const userDocRef = doc(db, 'users', auth.currentUser.uid);
-            const userDoc = await getDoc(userDocRef);
-            if (!userDoc.exists() || (userDoc.data().balance || 0) < fee) {
-                toast.error("Insufficient balance for entry fee!");
-                return;
+        const token = await auth.currentUser.getIdToken();
+        const res = await fetch(`/api/tournaments/${tournament.id}/join`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
             }
-            await updateDoc(userDocRef, { balance: increment(-fee) });
-        }
-
-        await setDoc(participantDocRef, {
-            uid: auth.currentUser.uid,
-            displayName: nickname || auth.currentUser.email?.split('@')[0] || "Trader",
-            score: 1000.0,
-            tradesCount: 0,
-            joinedAt: Date.now()
         });
-
-        // Increment tournament participants count (swallow permission errors gracefully)
-        try {
-            const tournamentDocRef = doc(db, 'tournaments', tournament.id);
-            await updateDoc(tournamentDocRef, {
-                participantsCount: increment(1)
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            setUserRegistrations(prev => [...prev, tournament.id]);
+            setActiveTournamentId(tournament.id);
+            setAccountType("tournament");
+            setTournamentBalance(10000.0);
+            toast.success(`Registered successfully! Switched to "${tournament.title}" Tournament Trading.`);
+            
+            // Re-sync user to update real balance
+            const syncRes = await fetch('/api/user/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: auth.currentUser?.uid })
             });
-        } catch (e) {
-            console.warn("Could not increment participants count on global tournament doc:", e);
+            if (syncRes.ok) {
+                const syncData = await syncRes.json();
+                if (syncData.user) {
+                    setRealBalance(syncData.user.real_balance);
+                }
+            }
+        } else {
+            toast.error(data.error || "Registration failed. Please try again.");
         }
-
-        setUserRegistrations(prev => [...prev, tournament.id]);
-        setActiveTournamentId(tournament.id);
-        setAccountType("tournament");
-        setTournamentBalance(1000.0);
-
-        toast.success(`Registered successfully! Switched to "${tournament.title}" Tournament Trading.`);
     } catch (error) {
         console.error("Registration failed:", error);
         toast.error("Registration failed. Please try again.");
@@ -5065,9 +5053,7 @@ const PROMOTED_ARTICLES = [
       const rawProfit = parseFloat(l.profit || l.total_profit || 0);
       const profitVal = isNaN(rawProfit) ? 0 : rawProfit;
 
-      const formattedProfit = profitVal >= 25000 
-          ? "25,000+" 
-          : profitVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const formattedProfit = profitVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
           
       return {
         id: l.user_id,
@@ -5247,6 +5233,12 @@ const PROMOTED_ARTICLES = [
       clearTimeout(fallbackTimer);
       console.log("Socket connected successfully, requesting initial data...");
       setChartLoading(true);
+      
+      const token = localStorage.getItem('bivax_token');
+      if (token) {
+        socket.emit('authenticate', token);
+      }
+      
       socket.emit('request_initial_data', { asset: activeAssetRef.current, timeframe: timeframeRef.current, accountType: accountTypeRef.current, userId: auth.currentUser?.uid });
     });
 
@@ -6841,14 +6833,9 @@ const PROMOTED_ARTICLES = [
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 z-[160] bg-[#131417]/80 backdrop-blur-md flex flex-col items-center justify-center gap-4"
+                    className="absolute inset-0 z-[160] bg-[#131417] flex flex-col items-center justify-center gap-4"
                   >
-                    <div className="relative">
-                      <div className="w-12 h-12 border-[3px] border-[#FFE24C]/10 border-t-[#FFE24C] rounded-full animate-spin" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 bg-[#FFE24C] rounded-full animate-pulse" />
-                      </div>
-                    </div>
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#FFE24C]"></div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -6998,14 +6985,7 @@ const PROMOTED_ARTICLES = [
           {/* Professional Rotating Loader Overlay */}
           {(!contentReady || isLoading) && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#131417]">
-               <div className="flex flex-col items-center gap-5">
-                  <div className="relative">
-                    <div className="w-16 h-16 border-[4px] border-white/5 border-t-yellow-500 rounded-full animate-spin"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-10 h-10 border-[2px] border-white/5 border-b-cyan-500 rounded-full animate-spin-reverse"></div>
-                    </div>
-                  </div>
-               </div>
+               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#FFE24C]"></div>
             </div>
           )}
           
@@ -8435,14 +8415,9 @@ const PROMOTED_ARTICLES = [
                     Trader
                   </span>
                 </div>
-                <div className="flex items-center gap-8">
-                  <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
-                    Success
-                  </span>
-                  <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
-                    Profit
-                  </span>
-                </div>
+                <span className="text-[#7b8390] text-[11px] font-medium tracking-wide uppercase">
+                  Profit
+                </span>
               </div>
 
               {/* Participants List */}
@@ -8487,28 +8462,14 @@ const PROMOTED_ARTICLES = [
                         <span className={`text-[13px] font-bold uppercase tracking-tight truncate ${trader.isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
                            {trader.name}
                         </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px] text-gray-500 font-medium truncate">
-                            {trader.country}
-                          </span>
-                          <span className="text-[9px] text-yellow-500/60 font-bold">
-                            Balance: ${Number(trader.balance || 0).toLocaleString()}
-                          </span>
-                        </div>
+                        <span className="text-[9px] text-gray-500 font-medium truncate">
+                          {trader.country}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-6">
-                      <div className="flex flex-col items-end">
-                        <div className="flex items-center gap-1">
-                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
-                          <span className="text-white font-bold text-[12px]">{trader.win_rate || 85}%</span>
-                        </div>
-                        <span className="text-[8px] text-gray-500 uppercase font-black tracking-widest">Rate</span>
-                      </div>
-                      <span className={`font-bold text-[14px] tracking-tighter ${trader.isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
-                        ${trader.formattedProfit}
-                      </span>
-                    </div>
+                    <span className={`font-bold text-[14px] tracking-tighter ${trader.isCurrentUser ? 'text-[#FFE24C]' : 'text-white'}`}>
+                      ${trader.formattedProfit}
+                    </span>
                   </div>
                   ))
                 )}

@@ -123,14 +123,26 @@ export const db = {
         }
       }
     }),
-    get: async () => {
+    async get(this: any) {
       try {
         const token = getAuthToken();
         const user = JSON.parse(localStorage.getItem('bivax_user') || '{}');
         const isAdmin = !!user.is_admin;
         
         let endpoint = `/api/${name}`;
-        if (name === 'news') {
+        const params = new URLSearchParams();
+        if (this && this._constraints) {
+          this._constraints.forEach((c: any) => {
+            if (c && c.type === 'where') {
+              params.append(c.field, String(c.value));
+            }
+          });
+        }
+        
+        const qStr = params.toString();
+        if (qStr) {
+          endpoint += `?${qStr}`;
+        } else if (name === 'news') {
           endpoint = `/api/news?type=collection`;
         } else if (isAdmin && (name === 'users' || name === 'trades' || name === 'transactions')) {
           endpoint = `/api/admin/${name}`;
@@ -406,8 +418,14 @@ export const onSnapshot = (ref: any, cb: any, errCb?: any) => {
   ref.get().then((s: any) => cb(s)).catch((e: any) => errCb && errCb(e));
   return () => {};
 };
-export const query = (ref: any, ...args: any[]) => ref;
-export const where = (...args: any[]) => ({});
+export const where = (field: string, op: string, value: any) => {
+  return { type: 'where', field, op, value };
+};
+export const query = (ref: any, ...constraints: any[]) => {
+  const newRef = Object.create(ref);
+  newRef._constraints = [...(ref._constraints || []), ...constraints];
+  return newRef;
+};
 export const orderBy = (...args: any[]) => ({});
 export const limit = (n: number) => ({});
 export const serverTimestamp = () => Date.now();

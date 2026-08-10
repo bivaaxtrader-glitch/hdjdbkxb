@@ -18,6 +18,8 @@ import AppBoundary from './components/AppBoundary';
 import DocsPage from './pages/DocsPage';
 import ProfilePage from './pages/Profile';
 import AffiliatePage from './pages/Affiliate';
+import { Tournaments } from './pages/Tournaments';
+import { TournamentDetails } from './pages/TournamentDetails';
 import Homepage from './pages/Homepage';
 import TradeTerminal from './pages/TradeTerminal';
 import AdminDashboard from './pages/AdminDashboard';
@@ -391,138 +393,142 @@ export default function App() {
     let syncInProgress = false;
     
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      
-      if (u && !syncInProgress) {
-        syncInProgress = true;
+      try {
+        setUser(u);
         
-        // Wait a bit to allow server to settle
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const safeFetch = async (url: string, options?: RequestInit, retries = 3) => {
-          for (let i = 0; i < retries; i++) {
-            try {
-              const res = await fetch(url, options);
-              const contentType = res.headers.get('content-type');
-              
-              if (res.status === 429) {
-                 console.warn(`Rate limit hit for ${url}. Attempt ${i+1}.`);
-                 if (i < retries - 1) {
-                   await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-                   continue;
-                 }
-                 return { error: 'Rate exceeded', status: 429 };
-              }
+        if (u && !syncInProgress) {
+          syncInProgress = true;
+          
+          // Wait a bit to allow server to settle
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const safeFetch = async (url: string, options?: RequestInit, retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+              try {
+                const res = await fetch(url, options);
+                const contentType = res.headers.get('content-type');
+                
+                if (res.status === 429) {
+                   console.warn(`Rate limit hit for ${url}. Attempt ${i+1}.`);
+                   if (i < retries - 1) {
+                     await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                     continue;
+                   }
+                   return { error: 'Rate exceeded', status: 429 };
+                }
 
-              if (contentType && contentType.includes('application/json')) {
-                return await res.json();
-              } else {
-                const text = await res.text();
-                if (res.ok) return { success: true, data: text };
-                return { error: 'Invalid response format', status: res.status, raw: text };
+                if (contentType && contentType.includes('application/json')) {
+                  return await res.json();
+                } else {
+                  const text = await res.text();
+                  if (res.ok) return { success: true, data: text };
+                  return { error: 'Invalid response format', status: res.status, raw: text };
+                }
+              } catch (e: any) {
+                console.error(`Fetch attempt ${i+1} failed for ${url}:`, e.message);
+                if (i < retries - 1) {
+                  await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                  continue;
+                }
+                return { error: e.message, status: 0 };
               }
-            } catch (e: any) {
-              console.error(`Fetch attempt ${i+1} failed for ${url}:`, e.message);
-              if (i < retries - 1) {
-                await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-                continue;
-              }
-              return { error: e.message, status: 0 };
             }
+          };
+
+          // Health check with retry
+          console.log("Starting health check...");
+          let healthData = { status: 'pending' };
+          for (let i = 0; i < 5; i++) {
+            const data = await safeFetch('/api/health');
+            if (data && data.status === 'ok') {
+              healthData = data;
+              break;
+            }
+            console.warn(`Health check attempt ${i+1} failed, retrying...`);
+            await new Promise(r => setTimeout(r, 1000));
           }
-        };
 
-        // Health check with retry
-        console.log("Starting health check...");
-        let healthData = { status: 'pending' };
-        for (let i = 0; i < 5; i++) {
-          const data = await safeFetch('/api/health');
-          if (data && data.status === 'ok') {
-            healthData = data;
-            break;
+          if (healthData.status !== 'ok') {
+              console.warn("Health check failed after multiple attempts, proceeding with caution...");
+          } else {
+              console.log("Health check successful");
           }
-          console.warn(`Health check attempt ${i+1} failed, retrying...`);
-          await new Promise(r => setTimeout(r, 1000));
-        }
+          console.log("Proceeding with user sync");
 
-        if (healthData.status !== 'ok') {
-            console.warn("Health check failed after multiple attempts, proceeding with caution...");
-        } else {
-            console.log("Health check successful");
-        }
-        console.log("Proceeding with user sync");
+          // Sync user
+          console.log("Starting user sync...");
+          safeFetch('/api/user/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: u.uid,
+              email: u.email,
+              displayName: u.displayName,
+              photoURL: u.photoURL,
+              referralCode: localStorage.getItem('referralCode'),
+              referralSubId: localStorage.getItem('referralSub'),
+              referralType: localStorage.getItem('referralType')
+            })
+          }).then(data => {
+            console.log("User sync response:", data);
+            if (data.success) console.log("Initial user sync successful");
+            else console.error("Initial user sync failed:", data);
+          }).finally(() => {
+            syncInProgress = false;
+          });
 
-        // Sync user
-        console.log("Starting user sync...");
-        safeFetch('/api/user/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            uid: u.uid,
-            email: u.email,
-            displayName: u.displayName,
-            photoURL: u.photoURL,
-            referralCode: localStorage.getItem('referralCode'),
-            referralSubId: localStorage.getItem('referralSub'),
-            referralType: localStorage.getItem('referralType')
-          })
-        }).then(data => {
-          console.log("User sync response:", data);
-          if (data.success) console.log("Initial user sync successful");
-          else console.error("Initial user sync failed:", data);
-        }).finally(() => {
-          syncInProgress = false;
-        });
-
-        // Check 2FA
-        try {
-          const data = await safeFetch(`/api/user/check-2fa?uid=${u.uid}`);
-          if (data && !data.error) {
-            if (data.tfaEnabled) {
-              const hasPassed = sessionStorage.getItem(`tfa_passed_${u.uid}`);
-              if (!hasPassed) {
-                setTfaRequired(true);
-                setTfaMode(data.tfaMode || 'app');
-                setTfaSecretBase32(data.tfaSecret || null);
+          // Check 2FA
+          try {
+            const data = await safeFetch(`/api/user/check-2fa?uid=${u.uid}`);
+            if (data && !data.error) {
+              if (data.tfaEnabled) {
+                const hasPassed = sessionStorage.getItem(`tfa_passed_${u.uid}`);
+                if (!hasPassed) {
+                  setTfaRequired(true);
+                  setTfaMode(data.tfaMode || 'app');
+                  setTfaSecretBase32(data.tfaSecret || null);
+                } else {
+                  setTfaRequired(false);
+                }
               } else {
                 setTfaRequired(false);
               }
             } else {
-              setTfaRequired(false);
+              throw new Error(data?.error || "Server check failed");
             }
-          } else {
-            throw new Error(data?.error || "Server check failed");
-          }
-        } catch (err) {
-          console.warn("Server 2FA check failed, falling back to direct Firestore...");
-          try {
-             const userSnap = await getDoc(doc(db, 'users', u.uid));
-             if (userSnap.exists()) {
-                const data = userSnap.data();
-                if (data.tfaEnabled) {
-                   const hasPassed = sessionStorage.getItem(`tfa_passed_${u.uid}`);
-                   if (!hasPassed) {
-                     setTfaRequired(true);
-                     setTfaMode(data.tfaMode || 'app');
-                     setTfaSecretBase32(data.tfaSecret || null);
-                   } else {
+          } catch (err) {
+            console.warn("Server 2FA check failed, falling back to direct Firestore...");
+            try {
+               const userSnap = await getDoc(doc(db, 'users', u.uid));
+               if (userSnap.exists()) {
+                  const data = userSnap.data();
+                  if (data.tfaEnabled) {
+                     const hasPassed = sessionStorage.getItem(`tfa_passed_${u.uid}`);
+                     if (!hasPassed) {
+                       setTfaRequired(true);
+                       setTfaMode(data.tfaMode || 'app');
+                       setTfaSecretBase32(data.tfaSecret || null);
+                     } else {
+                       setTfaRequired(false);
+                     }
+                  } else {
                      setTfaRequired(false);
-                   }
-                } else {
-                   setTfaRequired(false);
-                }
-             }
-          } catch (directErr) {
-             setTfaRequired(false);
+                  }
+               }
+            } catch (directErr) {
+               setTfaRequired(false);
+            }
           }
+        } else if (!u) {
+          setTfaRequired(false);
+          setTfaPassed(false);
+          setTfaSecretBase32(null);
         }
-      } else if (!u) {
-        setTfaRequired(false);
-        setTfaPassed(false);
-        setTfaSecretBase32(null);
+      } catch (err) {
+        console.error("Error in onAuthStateChanged auth callback handler:", err);
+      } finally {
+        if (loading !== false) setLoading(false);
       }
-      
-      if (loading !== false) setLoading(false);
     });
 
     // Capture referral code from URL
@@ -707,7 +713,8 @@ export default function App() {
               <Route path="/promotions" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/calendar" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
 
-              <Route path="/tournaments" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/tournaments" element={<RequireAuth user={user}>{<Tournaments />}</RequireAuth>} />
+              <Route path="/tournaments/:id" element={<RequireAuth user={user}>{<TournamentDetails />}</RequireAuth>} />
               <Route path="/education" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/statuses" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/help-center" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />

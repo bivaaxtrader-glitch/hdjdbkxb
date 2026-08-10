@@ -1049,7 +1049,7 @@ export default function AffiliatePage() {
 
   const stats = {
      leads: referrals.length,
-     conversions: referrals.filter(r => (r.balance || 0) > 0 || (r.demoBalance || 0) > 0).length,
+     conversions: referrals.filter(r => (r.balance || 0) > 0).length,
      totalVolume: referrals.reduce((acc, r) => acc + (r.tradeVolume || 0), 0),
      networkSize: referrals.reduce((acc, r) => acc + (r.referralCount || 0), 0)
   };

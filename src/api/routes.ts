@@ -2342,10 +2342,9 @@ router.post('/trades/place',
   body('direction').isIn(['up', 'down']),
   body('duration').isInt({ min: 1 }),
   body('entryPrice').isNumeric().toFloat(),
-  body('isDemo').isBoolean(),
   validate,
   async (req: AuthRequest, res) => {
-    const { marketId, amount, direction, duration, entryPrice, isDemo } = req.body;
+    const { marketId, amount, direction, duration, entryPrice, isDemo, accountType, tournamentId } = req.body;
   const uid = req.user!.uid;
 
   const nowSec = Math.floor(Date.now() / 1000);
@@ -2357,8 +2356,19 @@ router.post('/trades/place',
     await transaction(async (conn) => {
       // 1. Check balance with lock
       const user = await get('SELECT real_balance, demo_balance FROM users WHERE uid = ?', [uid], conn) as any;
-      const balanceField = isDemo ? 'demo_balance' : 'real_balance';
-      const currentBalance = new Big(user[balanceField] || 0);
+      
+      let currentBalance;
+      const isTournament = accountType === 'tournament' && tournamentId;
+      
+      if (isTournament) {
+        const participant = await get('SELECT score FROM tournament_participants WHERE tournament_id = ? AND user_id = ?', [tournamentId, uid], conn) as any;
+        if (!participant) throw new Error('Not joined in this tournament');
+        currentBalance = new Big(participant.score || 0);
+      } else {
+        const balanceField = (isDemo || accountType === 'demo') ? 'demo_balance' : 'real_balance';
+        currentBalance = new Big(user[balanceField] || 0);
+      }
+      
       const tradeAmount = new Big(amount);
 
       if (currentBalance.lt(tradeAmount)) {
@@ -2367,14 +2377,19 @@ router.post('/trades/place',
 
       // 2. Deduct balance
       const newBalance = currentBalance.minus(tradeAmount).toFixed(2);
-      await run(`UPDATE users SET ${balanceField} = ? WHERE uid = ?`, [newBalance, uid], conn);
+      if (isTournament) {
+        await run(`UPDATE tournament_participants SET score = ? WHERE tournament_id = ? AND user_id = ?`, [newBalance, tournamentId, uid], conn);
+      } else {
+        const balanceField = (isDemo || accountType === 'demo') ? 'demo_balance' : 'real_balance';
+        await run(`UPDATE users SET ${balanceField} = ? WHERE uid = ?`, [newBalance, uid], conn);
+      }
 
       // 3. Insert trade
       const expiryTime = Math.floor((Date.now() + duration * 1000) / 1000);
       await run(
-        `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uid, marketId, amount.toString(), direction, entryPrice.toString(), duration, expiryTime, isDemo ? 1 : 0, 'open'],
+        `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status, account_type, tournament_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uid, marketId, amount.toString(), direction, entryPrice.toString(), duration, expiryTime, (isDemo || accountType === 'demo') ? 1 : 0, 'open', accountType || (isDemo ? 'demo' : 'real'), isTournament ? tournamentId : null],
         conn
       );
 
@@ -2698,7 +2713,7 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
       return res.status(404).json({ error: 'Deposit request not found.' });
     }
     const depositData = depositDoc.data();
-    if (depositData?.status === 'success' || depositData?.status === 'approved' || depositData?.status === 'rejected' || depositData?.status === 'completed') {
+    if (depositData?.processedByServer === true) {
       return res.status(400).json({ error: 'This deposit has already been processed.' });
     }
 
@@ -2799,7 +2814,10 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
         }
     }
     // Also update the Firestore deposit request status
-    await adminDb.collection('deposits').doc(id).update({ status: isSuccessOrApproved ? 'success' : status });
+    await adminDb.collection('deposits').doc(id).update({ 
+      status: isSuccessOrApproved ? 'success' : status,
+      processedByServer: true
+    });
       
       // 2. Send Email Notification
       const user = await get('SELECT email, display_name FROM users WHERE uid = ?', [userId]) as any;
@@ -3221,6 +3239,31 @@ router.post('/admin/transactions/reject', requireAuth, async (req: AuthRequest, 
 
 // Aliases for compatibility
 router.get('/users', requireAuth, async (req: AuthRequest, res) => {
+  const referredByUid = req.query.referredByUid as string;
+  const affiliateId = req.query.affiliateId as string;
+  const referralCode = req.query.referralCode as string;
+  const uid = req.query.uid as string;
+
+  if (referredByUid) {
+    const referredUsers = await query('SELECT * FROM users WHERE referred_by_uid = ?', [referredByUid]);
+    return res.json(referredUsers.map(mapUserForFrontend));
+  }
+
+  if (affiliateId) {
+    const matched = await get('SELECT * FROM users WHERE referral_code = ?', [affiliateId]);
+    return res.json(matched ? [mapUserForFrontend(matched)] : []);
+  }
+
+  if (referralCode) {
+    const matched = await get('SELECT * FROM users WHERE referral_code = ?', [referralCode]);
+    return res.json(matched ? [mapUserForFrontend(matched)] : []);
+  }
+
+  if (uid) {
+    const matched = await get('SELECT * FROM users WHERE uid = ?', [uid]);
+    return res.json(matched ? [mapUserForFrontend(matched)] : []);
+  }
+
   const user = await get('SELECT * FROM users WHERE uid = ?', [req.user!.uid]);
   res.json([mapUserForFrontend(user)]);
 });
@@ -3236,13 +3279,111 @@ router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // --- Settings & Config ---
+const defaultSettings = {
+  maintenanceMode: false,
+  minDeposit: 10,
+  minWithdraw: 15,
+  payoutRates: { default: 82, crypto: 85, stocks: 75 },
+  binancePayQrCode: "https://i.postimg.cc/Gt5SP1L4/IMG-20260804-141135.png",
+  binancePayEnabled: true,
+  usdtTrc20Address: "TD73cKwhFQ3i5e43TYyoyMPijvkU4uHVwi",
+  usdtTrc20QrCode: "https://i.postimg.cc/ZKN9zFGL/IMG-20260804-151047.png",
+  usdtTrc20Enabled: true,
+  ethAddress: "0x8e01631855cf57fa2da27ff30c181cca137aefb5",
+  ethQrCode: "https://i.postimg.cc/T3WzTQGD/IMG-20260804-151727.png",
+  ethEnabled: true,
+  btcAddress: "0x8e01631855cf57fa2da27ff30c181cca137aefb5",
+  btcQrCode: "https://i.postimg.cc/GpKwd7Gr/IMG-20260804-235328.png",
+  btcEnabled: true,
+  tonAddress: "UQCCpPsMUQJZK9DEzR-C51gJ13vBtSfPKNm53h1Wxys3Bof5",
+  tonQrCode: "https://i.postimg.cc/TYcfV9hD/IMG-20260805-120710.png",
+  tonEnabled: true,
+  dogeAddress: "DQxycdGAx3Je27YSAc87WJ7ANq9McALh4U",
+  dogeQrCode: "https://i.postimg.cc/cCgtKzdX/IMG-20260805-121203.png",
+  dogeEnabled: true,
+  ltcAddress: "LQ41bM2B892pfDX1suYe15hmsDuozgyZfU",
+  ltcQrCode: "https://i.postimg.cc/9FCX4MCs/IMG-20260805-125156.png",
+  ltcEnabled: true,
+};
+
 router.get('/app_config/settings', async (req, res) => {
-  res.json({
-    maintenanceMode: false,
-    minDeposit: 10,
-    minWithdraw: 15,
-    payoutRates: { default: 82, crypto: 85, stocks: 75 }
-  });
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.cookies?.token;
+    let isAdmin = false;
+    
+    if (token) {
+      try {
+        const { verifyToken } = await import('../lib/auth-server.ts');
+        let decoded = verifyToken(token);
+        if (!decoded) {
+          const jwt = await import('jsonwebtoken');
+          const payload = jwt.default.decode(token) as any;
+          if (payload) {
+            decoded = {
+              uid: payload.uid || payload.sub || payload.user_id,
+              email: payload.email,
+              isAdmin: !!payload.isAdmin || !!payload.admin
+            } as any;
+          }
+        }
+        if (decoded) {
+          const dbUser = await get('SELECT is_admin, email FROM users WHERE uid = ? OR email = ?', [decoded.uid, decoded.email]) as any;
+          const userEmail = (dbUser?.email || decoded.email)?.toLowerCase().trim();
+          const hardcodedAdminEmails = [
+            'bivaaxtrader@gmail.com',
+            'hamproosapport@gmail.com',
+            'hamproosupport@gmail.com',
+            (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
+          ].filter(Boolean);
+
+          if ((dbUser && dbUser.is_admin) || (userEmail && hardcodedAdminEmails.includes(userEmail))) {
+            isAdmin = true;
+          }
+        }
+      } catch (e) {
+        // ignore auth errors
+      }
+    }
+
+    const docSnap = await adminDb.collection('app_config').doc('settings').get();
+    const data = docSnap.exists ? docSnap.data() : {};
+    
+    const responseData = {
+      ...defaultSettings,
+      ...data
+    };
+
+    if (!isAdmin) {
+      // Strip sensitive SMTP credentials and keys for safety
+      delete responseData.smtpHost;
+      delete responseData.smtpPort;
+      delete responseData.smtpUser;
+      delete responseData.smtpPass;
+      delete responseData.smtpFromEmail;
+      delete responseData.smtpFromName;
+      delete responseData.fmpApiKey;
+    }
+
+    res.json(responseData);
+  } catch (err: any) {
+    logger.error('Error fetching settings:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/app_config/settings', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user?.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+
+    await adminDb.collection('app_config').doc('settings').set(req.body, { merge: true });
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error('Error saving app_config settings:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- News & Newsletter ---

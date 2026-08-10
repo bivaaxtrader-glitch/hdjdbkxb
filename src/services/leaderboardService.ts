@@ -153,26 +153,26 @@ export const fetchLeaderboards = async () => {
     `, [thirtyDaysAgo]) || [];
 
     const fakeUsers = [
-      { user_id: 'fake_1', display_name: 'CryptoKing', total_profit: 1542.67, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'United States', country_code: 'us', balance: 12450.50 },
-      { user_id: 'fake_2', display_name: 'MoonWalker', total_profit: 1289.45, total_trades: 150, won_trades: 130, lost_trades: 20, photo_url: '', country: 'Brazil', country_code: 'br', balance: 8940.20 },
-      { user_id: 'fake_3', display_name: 'TradeMaster', total_profit: 967.82, total_trades: 200, won_trades: 180, lost_trades: 20, photo_url: '', country: 'India', country_code: 'in', balance: 5670.80 },
-      { user_id: 'fake_4', display_name: 'BullRider', total_profit: 812.15, total_trades: 110, won_trades: 90, lost_trades: 20, photo_url: '', country: 'Germany', country_code: 'de', balance: 14500.00 },
-      { user_id: 'fake_5', display_name: 'BearSlayer', total_profit: 765.90, total_trades: 130, won_trades: 110, lost_trades: 20, photo_url: '', country: 'Canada', country_code: 'ca', balance: 3200.50 },
-      { user_id: 'fake_6', display_name: 'ProfitPro', total_profit: 712.33, total_trades: 90, won_trades: 80, lost_trades: 10, photo_url: '', country: 'Australia', country_code: 'au', balance: 6780.00 },
-      { user_id: 'fake_7', display_name: 'MarketWizard', total_profit: 658.74, total_trades: 100, won_trades: 85, lost_trades: 15, photo_url: '', country: 'Japan', country_code: 'jp', balance: 1240.00 },
-      { user_id: 'fake_8', display_name: 'ChartGuru', total_profit: 604.21, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'France', country_code: 'fr', balance: 4500.00 },
-      { user_id: 'fake_9', display_name: 'TrendHunter', total_profit: 559.08, total_trades: 110, won_trades: 95, lost_trades: 15, photo_url: '', country: 'United Kingdom', country_code: 'gb', balance: 980.00 },
-      { user_id: 'fake_10', display_name: 'GoldMiner', total_profit: 512.55, total_trades: 95, won_trades: 80, lost_trades: 15, photo_url: '', country: 'South Africa', country_code: 'za', balance: 2340.00 },
-      { user_id: 'fake_11', display_name: 'SignalSender', total_profit: 467.92, total_trades: 80, won_trades: 70, lost_trades: 10, photo_url: '', country: 'Italy', country_code: 'it', balance: 5600.00 },
-      { user_id: 'fake_12', display_name: 'FastTrader', total_profit: 412.34, total_trades: 70, won_trades: 60, lost_trades: 10, photo_url: '', country: 'Spain', country_code: 'es', balance: 3200.00 },
-      { user_id: 'fake_13', display_name: 'ScalpKing', total_profit: 367.88, total_trades: 60, won_trades: 55, lost_trades: 5, photo_url: '', country: 'Mexico', country_code: 'mx', balance: 1500.00 },
-      { user_id: 'fake_14', display_name: 'OptionOpener', total_profit: 312.45, total_trades: 50, won_trades: 45, lost_trades: 5, photo_url: '', country: 'Korea', country_code: 'kr', balance: 850.00 },
-      { user_id: 'fake_15', display_name: 'BinaryBoss', total_profit: 265.71, total_trades: 40, won_trades: 35, lost_trades: 5, photo_url: '', country: 'Indonesia', country_code: 'id', balance: 450.00 },
-      { user_id: 'fake_16', display_name: 'CryptoClimber', total_profit: 212.89, total_trades: 30, won_trades: 25, lost_trades: 5, photo_url: '', country: 'Vietnam', country_code: 'vn', balance: 1200.00 },
-      { user_id: 'fake_17', display_name: 'ForexFiend', total_profit: 167.34, total_trades: 25, won_trades: 20, lost_trades: 5, photo_url: '', country: 'Thailand', country_code: 'th', balance: 500.00 },
-      { user_id: 'fake_18', display_name: 'StockStar', total_profit: 112.56, total_trades: 20, won_trades: 15, lost_trades: 5, photo_url: '', country: 'Singapore', country_code: 'sg', balance: 2500.00 },
-      { user_id: 'fake_19', display_name: 'CoinCollector', total_profit: 67.42, total_trades: 15, won_trades: 10, lost_trades: 5, photo_url: '', country: 'Malaysia', country_code: 'my', balance: 150.00 },
-      { user_id: 'fake_20', display_name: 'NewbieTrader', total_profit: 22.15, total_trades: 5, won_trades: 3, lost_trades: 2, photo_url: '', country: 'Turkey', country_code: 'tr', balance: 100.00 }
+      { user_id: 'fake_1', display_name: 'CryptoKing', total_profit: 224537.45, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'United States', country_code: 'us', balance: 12450.50 },
+      { user_id: 'fake_2', display_name: 'MoonWalker', total_profit: 185429.67, total_trades: 150, won_trades: 130, lost_trades: 20, photo_url: '', country: 'Brazil', country_code: 'br', balance: 8940.20 },
+      { user_id: 'fake_3', display_name: 'TradeMaster', total_profit: 142055.23, total_trades: 200, won_trades: 180, lost_trades: 20, photo_url: '', country: 'India', country_code: 'in', balance: 5670.80 },
+      { user_id: 'fake_4', display_name: 'BullRider', total_profit: 112581.18, total_trades: 110, won_trades: 90, lost_trades: 20, photo_url: '', country: 'Germany', country_code: 'de', balance: 14500.00 },
+      { user_id: 'fake_5', display_name: 'BearSlayer', total_profit: 89417.84, total_trades: 130, won_trades: 110, lost_trades: 20, photo_url: '', country: 'Canada', country_code: 'ca', balance: 3200.50 },
+      { user_id: 'fake_6', display_name: 'ProfitPro', total_profit: 68512.39, total_trades: 90, won_trades: 80, lost_trades: 10, photo_url: '', country: 'Australia', country_code: 'au', balance: 6780.00 },
+      { user_id: 'fake_7', display_name: 'MarketWizard', total_profit: 52436.71, total_trades: 100, won_trades: 85, lost_trades: 15, photo_url: '', country: 'Japan', country_code: 'jp', balance: 1240.00 },
+      { user_id: 'fake_8', display_name: 'ChartGuru', total_profit: 42519.82, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'France', country_code: 'fr', balance: 4500.00 },
+      { user_id: 'fake_9', display_name: 'TrendHunter', total_profit: 33814.95, total_trades: 110, won_trades: 95, lost_trades: 15, photo_url: '', country: 'United Kingdom', country_code: 'gb', balance: 980.00 },
+      { user_id: 'fake_10', display_name: 'GoldMiner', total_profit: 26581.42, total_trades: 95, won_trades: 80, lost_trades: 15, photo_url: '', country: 'South Africa', country_code: 'za', balance: 2340.00 },
+      { user_id: 'fake_11', display_name: 'SignalSender', total_profit: 21245.33, total_trades: 80, won_trades: 70, lost_trades: 10, photo_url: '', country: 'Italy', country_code: 'it', balance: 5600.00 },
+      { user_id: 'fake_12', display_name: 'FastTrader', total_profit: 18419.67, total_trades: 70, won_trades: 60, lost_trades: 10, photo_url: '', country: 'Spain', country_code: 'es', balance: 3200.00 },
+      { user_id: 'fake_13', display_name: 'ScalpKing', total_profit: 15632.14, total_trades: 60, won_trades: 55, lost_trades: 5, photo_url: '', country: 'Mexico', country_code: 'mx', balance: 1500.00 },
+      { user_id: 'fake_14', display_name: 'OptionOpener', total_profit: 13247.58, total_trades: 50, won_trades: 45, lost_trades: 5, photo_url: '', country: 'Korea', country_code: 'kr', balance: 850.00 },
+      { user_id: 'fake_15', display_name: 'BinaryBoss', total_profit: 11119.33, total_trades: 40, won_trades: 35, lost_trades: 5, photo_url: '', country: 'Indonesia', country_code: 'id', balance: 450.00 },
+      { user_id: 'fake_16', display_name: 'CryptoClimber', total_profit: 9243.85, total_trades: 30, won_trades: 25, lost_trades: 5, photo_url: '', country: 'Vietnam', country_code: 'vn', balance: 1200.00 },
+      { user_id: 'fake_17', display_name: 'ForexFiend', total_profit: 7418.91, total_trades: 25, won_trades: 20, lost_trades: 5, photo_url: '', country: 'Thailand', country_code: 'th', balance: 500.00 },
+      { user_id: 'fake_18', display_name: 'StockStar', total_profit: 5812.44, total_trades: 20, won_trades: 15, lost_trades: 5, photo_url: '', country: 'Singapore', country_code: 'sg', balance: 2500.00 },
+      { user_id: 'fake_19', display_name: 'CoinCollector', total_profit: 4419.62, total_trades: 15, won_trades: 10, lost_trades: 5, photo_url: '', country: 'Malaysia', country_code: 'my', balance: 150.00 },
+      { user_id: 'fake_20', display_name: 'NewbieTrader', total_profit: 3122.87, total_trades: 5, won_trades: 3, lost_trades: 2, photo_url: '', country: 'Turkey', country_code: 'tr', balance: 100.00 }
     ];
 
     // Merge fake users into allTime

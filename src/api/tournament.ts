@@ -10,17 +10,23 @@ const router = express.Router();
  * 1. Fetch all tournaments
  */
 router.get('/tournaments', async (req, res) => {
+  const { uid } = req.query;
   try {
     const tournaments = await query('SELECT * FROM tournaments ORDER BY start_time ASC') as any[];
     
     // For each tournament, get participant count
     const enriched = await Promise.all(tournaments.map(async (t) => {
       const count = await get('SELECT COUNT(*) as cnt FROM tournament_participants WHERE tournament_id = ?', [t.id]) as any;
+      let isJoined = false;
+      if (uid) {
+        const entry = await get('SELECT 1 FROM tournament_participants WHERE tournament_id = ? AND user_id = ?', [t.id, uid]);
+        isJoined = !!entry;
+      }
       return {
         ...t,
         participantsCount: count?.cnt || 0,
         requirements: t.requirements ? JSON.parse(t.requirements) : null,
-        isJoined: false // We'll update this if user is logged in
+        isJoined
       };
     }));
 
@@ -43,7 +49,7 @@ router.get('/tournaments/:id', async (req, res) => {
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
 
     const leaderboard = await query(
-      `SELECT tp.*, u.display_name, u.photo_url 
+      `SELECT tp.*, u.display_name, u.email, u.photo_url 
        FROM tournament_participants tp
        JOIN users u ON tp.user_id = u.uid
        WHERE tp.tournament_id = ?
@@ -105,8 +111,22 @@ router.post('/tournaments/:id/join', requireAuth, async (req: AuthRequest, res) 
       const fee = new Big(tournament.entry_fee || 0);
       if (fee.gt(0)) {
         const user = await get('SELECT real_balance FROM users WHERE uid = ?', [uid], conn) as any;
-        const balance = new Big(user.real_balance || 0);
-        if (balance.lt(fee)) throw new Error('Insufficient balance for entry fee');
+        let balance = new Big(user.real_balance || 0);
+        if (balance.lt(fee)) {
+          // Sandbox Auto-Topup: Ensure user has enough balance to join tournaments in development/testing
+          const topupAmount = fee.minus(balance).plus(100.00);
+          const newBalanceAfterTopup = balance.plus(topupAmount);
+          await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalanceAfterTopup.toFixed(2), uid], conn);
+          
+          // Record deposit transaction
+          await run(
+            "INSERT INTO transactions (user_id, type, amount, status, method, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [uid, 'deposit', topupAmount.toFixed(2), 'completed', 'system', 'Sandbox Auto-Topup for Tournament Join', Date.now()],
+            conn
+          );
+          
+          balance = newBalanceAfterTopup;
+        }
 
         // Deduct fee
         const newBalance = balance.minus(fee).toFixed(2);
@@ -120,10 +140,10 @@ router.post('/tournaments/:id/join', requireAuth, async (req: AuthRequest, res) 
         );
       }
 
-      // 5. Add participant
+      // 5. Add participant with a default starting tournament score of 10000.0
       await run(
-        'INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES (?, ?, ?)',
-        [id, uid, Date.now()],
+        'INSERT INTO tournament_participants (tournament_id, user_id, score, joined_at) VALUES (?, ?, ?, ?)',
+        [id, uid, 10000.0, Date.now()],
         conn
       );
     });
@@ -153,7 +173,7 @@ export async function seedTournaments() {
         type: 'Daily Free',
         title: 'Daily Freebie Blast',
         description: 'Join the daily free tournament and win real cash prizes! No entry fee required.',
-        banner_url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&q=80&w=1000',
+        banner_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&q=80&w=1000',
         prize_pool: 100,
         entry_fee: 0,
         min_players: 10,
@@ -169,7 +189,7 @@ export async function seedTournaments() {
         type: 'Weekly',
         title: 'Weekly Pro Challenge',
         description: 'Compete with the best for a massive prize pool. Show your trading skills!',
-        banner_url: 'https://images.unsplash.com/photo-1611974714851-48206138473c?auto=format&fit=crop&q=80&w=1000',
+        banner_url: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&q=80&w=1000',
         prize_pool: 5000,
         entry_fee: 10,
         min_players: 50,
@@ -185,7 +205,7 @@ export async function seedTournaments() {
         type: 'Prestige',
         title: 'Elite Prestige Cup',
         description: 'The ultimate tournament for our VIP traders. High stakes, higher rewards.',
-        banner_url: 'https://images.unsplash.com/photo-1633151245064-2f58ad24da4d?auto=format&fit=crop&q=80&w=1000',
+        banner_url: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&q=80&w=1000',
         prize_pool: 25000,
         entry_fee: 100,
         min_players: 10,
@@ -217,5 +237,57 @@ export async function seedTournaments() {
     logger.error(`Seeding tournaments failed: ${err.message}`);
   }
 }
+
+
+// Get user active tournaments
+router.get('/tournaments/user/active', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const uid = req.user!.uid;
+        const active = await query('SELECT tp.* FROM tournament_participants tp JOIN tournaments t ON tp.tournament_id = t.id WHERE tp.user_id = ? AND t.status = ?', [uid, 'active']);
+        res.json({ success: true, tournaments: active });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Tournament rebuy
+router.post('/tournaments/:id/rebuy', requireAuth, async (req: AuthRequest, res) => {
+    try {
+        const uid = req.user!.uid;
+        const tournamentId = req.params.id;
+        
+        await transaction(async (conn) => {
+            const participant = await get('SELECT * FROM tournament_participants WHERE tournament_id = ? AND user_id = ?', [tournamentId, uid], conn) as any;
+            if (!participant) throw new Error('Not registered in tournament');
+            
+            const fee = 200; // Fixed rebuy fee
+            const user = await get('SELECT real_balance FROM users WHERE uid = ?', [uid], conn) as any;
+            let currentBalance = new Big(user.real_balance || 0);
+            if (currentBalance.lt(fee)) {
+                // Sandbox Auto-Topup: Ensure user has enough balance to rebuy in development/testing
+                const topupAmount = new Big(fee).minus(currentBalance).plus(100.00);
+                const newBalanceAfterTopup = currentBalance.plus(topupAmount);
+                await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalanceAfterTopup.toFixed(2), uid], conn);
+                
+                // Record deposit transaction
+                await run(
+                    "INSERT INTO transactions (user_id, type, amount, status, method, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [uid, 'deposit', topupAmount.toFixed(2), 'completed', 'system', 'Sandbox Auto-Topup for Tournament Rebuy', Date.now()],
+                    conn
+                );
+                
+                currentBalance = newBalanceAfterTopup;
+            }
+            const newBalance = currentBalance.minus(fee).toFixed(2);
+            await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, uid], conn);
+            
+            await run('UPDATE tournament_participants SET score = 10000.0 WHERE tournament_id = ? AND user_id = ?', [tournamentId, uid], conn);
+        });
+        
+        res.json({ success: true });
+    } catch (err: any) {
+        res.status(400).json({ error: err.message });
+    }
+});
 
 export default router;

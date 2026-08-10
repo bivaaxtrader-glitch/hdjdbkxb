@@ -1146,7 +1146,7 @@ export default function AdminDashboard() {
                                 <div className="flex items-center gap-4 w-full lg:w-auto">
                                     <div className="relative">
                                         <div className="w-12 h-12 rounded-[18px] bg-[#15161d] border border-white/5 flex items-center justify-center text-yellow-500 font-black text-lg shadow-inner group-hover:scale-105 transition-transform">
-                                            {u.email?.[0].toUpperCase()}
+                                            {u.email?.[0]?.toUpperCase() || '?'}
                                         </div>
                                         {u.kycStatus === 'verified' && (
                                             <div className="absolute -bottom-1 -right-1 bg-green-500 text-black rounded-full p-0.5 border-2 border-[#0a0a0f]">
@@ -3203,7 +3203,7 @@ export default function AdminDashboard() {
                                        <div key={`${aff.id}-${i}`} className="bg-[#15161d] border border-white/5 p-5 rounded-3xl flex items-center justify-between group hover:border-yellow-500/20 transition-all">
                                            <div className="flex items-center gap-4">
                                                <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-yellow-500 font-black shadow-inner">
-                                                   {aff.email?.[0].toUpperCase()}
+                                                   {aff.email?.[0]?.toUpperCase() || '?'}
                                                </div>
                                                <div>
                                                    <p className="font-bold text-white text-sm">{aff.email}</p>
@@ -3687,7 +3687,7 @@ export default function AdminDashboard() {
                     <div className="px-6 py-5 md:px-10 md:py-8 border-b border-white/5 flex items-center justify-between bg-black/40 backdrop-blur-md sticky top-0 z-20">
                         <div className="flex items-center gap-4 md:gap-6 min-w-0">
                             <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-yellow-500/20 to-yellow-600/5 border border-yellow-500/20 flex items-center justify-center text-yellow-500 font-black text-xl md:text-2xl flex-shrink-0">
-                                {selectedUserDetail.email?.[0].toUpperCase()}
+                                {selectedUserDetail.email?.[0]?.toUpperCase() || '?'}
                             </div>
                             <div className="space-y-0.5 min-w-0">
                                 <h3 className="text-xl md:text-2xl font-black text-white tracking-tight leading-none truncate pr-4">{selectedUserDetail.email}</h3>
