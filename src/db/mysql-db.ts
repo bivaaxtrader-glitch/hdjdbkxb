@@ -301,6 +301,21 @@ CREATE INDEX IF NOT EXISTS active_copies_user_id_idx ON active_copies (user_id);
 CREATE INDEX IF NOT EXISTS transactions_user_id_idx ON transactions (user_id);
 CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS login_history_user_id_idx ON login_history (user_id);
+CREATE TABLE IF NOT EXISTS historical_candles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  market TEXT NOT NULL,
+  type TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  open NUMERIC NOT NULL,
+  high NUMERIC NOT NULL,
+  low NUMERIC NOT NULL,
+  close NUMERIC NOT NULL,
+  volume NUMERIC NOT NULL,
+  openTime INTEGER NOT NULL,
+  closeTime INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS historical_candles_unique_idx ON historical_candles (market, type, timeframe, openTime);
 CREATE INDEX IF NOT EXISTS historical_candles_lookup_idx ON historical_candles (market, type, timeframe, openTime DESC);
 `);
 

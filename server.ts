@@ -27,7 +27,7 @@ import { startMarketEngine } from './src/services/marketEngine';
 import { startMasterSimulation, seedMasterTraders } from './src/services/copyTradingService';
 import { backupDatabase } from './src/db/backup';
 import authRouter from './src/api/auth';
-import apiRouter, { syncDatabaseFromFirestore } from './src/api/routes';
+import apiRouter, { syncDatabaseFromFirestore, seedDefaultPages } from './src/api/routes';
 import tournamentRouter, { seedTournaments } from './src/api/tournament';
 import logger from './src/lib/logger';
 
@@ -50,7 +50,7 @@ async function startServer() {
     /\.asp$/i,
     /\.aspx$/i,
     /admin\/(login|setup|config)/i,
-    /config\/(?:db|settings)(?!\/)/i,
+    /\bconfig\/(?:db|settings)(?!\/)/i,
     /shell/i,
     /backup/i,
     /dump/i,
@@ -238,6 +238,7 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
       try {
         await seedMasterTraders();
         await seedTournaments();
+        await seedDefaultPages();
       } catch (err) {}
 
       // 3. Start Market Engine (starts price generation ticker)

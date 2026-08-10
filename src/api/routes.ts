@@ -4118,4 +4118,30 @@ router.post('/:collection', async (req, res) => {
   }
 });
 
+export async function seedDefaultPages() {
+  if (!adminDb) return;
+  const pages = [
+    { id: 'about_us', title: 'About Us', content: '<h1>About Us</h1><p>Welcome to Bivaax Trade.</p>' },
+    { id: 'client_agreement', title: 'Client Agreement', content: '<h1>Client Agreement</h1><p>Terms and conditions...</p>' },
+    { id: 'regulations', title: 'Regulations', content: '<h1>Regulations</h1><p>Our regulatory compliance...</p>' }
+  ];
+
+  try {
+    for (const page of pages) {
+      const pageRef = adminDb.collection('pages').doc(page.id);
+      const doc = await pageRef.get();
+      if (!doc.exists) {
+        await pageRef.set({
+          ...page,
+          updatedAt: Date.now(),
+          createdAt: Date.now()
+        });
+        logger.info(`✅ Seeded page: ${page.id}`);
+      }
+    }
+  } catch (err) {
+    logger.error('Error seeding pages:', err);
+  }
+}
+
 export default router;
