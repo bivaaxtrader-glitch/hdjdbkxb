@@ -2,8 +2,8 @@ import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { get, query } from '../db/mysql-db.ts';
 import logger from '../lib/logger.ts';
 
-// Model selection: Use gemini-2.0-flash for stable and efficient support tasks.
-const MODEL_NAME = 'gemini-2.0-flash';
+// Model selection: Use gemini-3.6-flash for stable and efficient support tasks.
+const MODEL_NAME = 'gemini-3.6-flash';
 
 let aiClient: GoogleGenAI | null = null;
 

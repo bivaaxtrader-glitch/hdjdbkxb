@@ -763,8 +763,8 @@ async function syncUserTransactions(userId: string) {
 export async function syncGlobalTransactionsFromFirestore() {
   if (!adminDb) return;
   try {
-    // 1. Sync Deposits
-    const depositsSnap = await adminDb.collection('deposits').get();
+    // 1. Sync Deposits (with safety limit to keep boot synchronization fast)
+    const depositsSnap = await adminDb.collection('deposits').limit(500).get();
     for (const doc of depositsSnap.docs) {
       const data = doc.data();
       const firestoreId = doc.id;
@@ -809,8 +809,8 @@ export async function syncGlobalTransactionsFromFirestore() {
       }
     }
 
-    // 2. Sync Withdrawals
-    const withdrawalsSnap = await adminDb.collection('withdrawals').get();
+    // 2. Sync Withdrawals (with safety limit to keep boot synchronization fast)
+    const withdrawalsSnap = await adminDb.collection('withdrawals').limit(500).get();
     for (const doc of withdrawalsSnap.docs) {
       const data = doc.data();
       const firestoreId = doc.id;
@@ -862,7 +862,8 @@ export async function syncGlobalTransactionsFromFirestore() {
 export async function syncKYCRequestsFromFirestore() {
   if (!adminDb) return;
   try {
-    const snapshot = await adminDb.collection('kycRequests').get();
+    // Limit to latest 200 KYC requests to keep boot sync safe and fast
+    const snapshot = await adminDb.collection('kycRequests').limit(200).get();
     if (snapshot.empty) return;
 
     for (const doc of snapshot.docs) {
@@ -898,7 +899,8 @@ export async function syncKYCRequestsFromFirestore() {
 export async function syncTradesFromFirestore() {
   if (!adminDb) return;
   try {
-    const snapshot = await adminDb.collection('trades').get();
+    // Limit to latest 500 trades to keep boot-time synchronization bounded and extremely fast
+    const snapshot = await adminDb.collection('trades').limit(500).get();
     if (snapshot.empty) return;
 
     for (const doc of snapshot.docs) {
@@ -1011,6 +1013,67 @@ export async function ensureSeedAdminUser() {
   }
 }
 
+export async function seedPromoServer() {
+  if (!adminDb) return;
+  try {
+    const newsSnap = await adminDb.collection('news').where('title', '==', '50% Deposit Bonus').get();
+    
+    const promoContent = `Promo Code: BIVAAXFAST50
+
+Offer Details:
+• Get 50% Bonus on your Deposit
+• Fast Bonus Credit
+• Secure & Trusted Platform
+• Instant Deposit Processing
+• Limited Time Offer
+
+Trade Smart. Earn Big.`;
+
+    if (newsSnap.empty) {
+      await adminDb.collection('news').add({
+        title: "50% Deposit Bonus",
+        description: "Boost Your Trading with Every Deposit!",
+        content: promoContent,
+        imageUrl: "https://i.postimg.cc/FHrDvXtr/file-0000000087d081fabe530d525061bcac.png",
+        emoji: "🚀",
+        date: new Date().toLocaleDateString(),
+        ctaText: "DEPOSIT NOW",
+        actionType: "deposit",
+        actionValue: "BIVAAXFAST50",
+        isPlatformNews: true,
+        reactions: 100,
+        badReactions: 0
+      });
+      logger.info("News Promo seeded successfully on server");
+    } else {
+      const docId = newsSnap.docs[0].id;
+      await adminDb.collection('news').doc(docId).update({
+        description: "Boost Your Trading with Every Deposit!",
+        content: promoContent,
+        isPlatformNews: true,
+        actionType: "deposit",
+        actionValue: "BIVAAXFAST50",
+        ctaText: "DEPOSIT NOW",
+        imageUrl: "https://i.postimg.cc/FHrDvXtr/file-0000000087d081fabe530d525061bcac.png"
+      });
+    }
+
+    const promoSnap = await adminDb.collection('promos').where('code', '==', 'BIVAAXFAST50').get();
+    if (promoSnap.empty) {
+      await adminDb.collection('promos').add({
+        code: 'BIVAAXFAST50',
+        bonusPercentage: 50,
+        isActive: true,
+        isBonusActive: true,
+        expiryDate: new Date().getTime() + (1000 * 60 * 60 * 24 * 30) // 30 days
+      });
+      logger.info("Promo code seeded successfully on server");
+    }
+  } catch (err: any) {
+    logger.error(`Error seeding promo on server: ${err.message}`);
+  }
+}
+
 export async function syncDatabaseFromFirestore() {
   if (!adminDb) {
     logger.warn('[syncDatabaseFromFirestore] adminDb is not initialized. Skipping boot sync.');
@@ -1050,6 +1113,10 @@ export async function syncDatabaseFromFirestore() {
 
     // Ensure the seed admin exists and is up to date
     await ensureSeedAdminUser();
+
+    // Run news and promo seeding securely from server-side
+    logger.info('📣 Seeding news and promos on server...');
+    await seedPromoServer();
 
     logger.info('✅ Boot-time synchronization completed successfully.');
   } catch (err: any) {

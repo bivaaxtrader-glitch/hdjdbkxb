@@ -34,6 +34,17 @@ export const formatWithCurrency = (amount: number, currencyCode: string = 'USD')
   })}`;
 };
 
+export const formatCurrencyOnly = (amount: number, currencyCode: string = 'USD') => {
+  const currency = currencies.find(c => c.code === currencyCode) || currencies[0];
+  const num = Number(amount || 0);
+  const decimals = ['USD', 'USDT', 'EUR', 'GBP'].includes(currency.code) ? 2 : (Math.abs(num) < 10 ? 2 : 0);
+  
+  return `${currency.symbol}${num.toLocaleString('en-US', { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  })}`;
+};
+
 export const convertToBase = (amount: number, currencyCode: string = 'USD') => {
   const currency = currencies.find(c => c.code === currencyCode) || currencies[0];
   return amount / (currency.rate || 1);

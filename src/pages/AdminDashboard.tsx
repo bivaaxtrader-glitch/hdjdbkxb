@@ -64,6 +64,13 @@ export default function AdminDashboard() {
   const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
   const [isProcessingAffPayout, setIsProcessingAffPayout] = useState<Record<string, boolean>>({});
   const [signals, setSignals] = useState<any[]>([]);
+  const [userCurrency, setUserCurrency] = useState(() => {
+    try {
+      return localStorage.getItem('user_display_currency') || 'BDT';
+    } catch (e) {
+      return 'BDT';
+    }
+  });
   const [masterTraders, setMasterTraders] = useState<any[]>([]);
   const [kycRequests, setKycRequests] = useState<any[]>([]);
   const [appConfig, setAppConfig] = useState<any>({});
@@ -299,6 +306,26 @@ export default function AdminDashboard() {
       console.warn("Admin static data fetch issue:", err);
     }
   };
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const userSub = onSnapshot(doc(db, 'users', user.uid), (userDoc) => {
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (data.currency) {
+              setUserCurrency(data.currency);
+              try {
+                localStorage.setItem('user_display_currency', data.currency);
+              } catch (e) {}
+            }
+          }
+        });
+        return () => userSub();
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
   const fetchLists = async () => {
     try {
@@ -1015,7 +1042,7 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                      {[
                          { id: 'liq', label: 'Active Users', val: Array.isArray(users) ? users.length : 0, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-                         { id: 'bal', label: 'Total Balances', val: `৳${(Array.isArray(users) ? users : []).reduce((acc, u) => acc + (u.balance || 0), 0).toLocaleString()}`, icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
+                         { id: 'bal', label: 'Total Balances', val: formatWithCurrency((Array.isArray(users) ? users : []).reduce((acc, u) => acc + (u.balance || 0), 0), userCurrency), icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
                          { id: 'dep', label: 'Pending Deposits', val: Array.isArray(depositRequests) ? depositRequests.filter(d => d.status === 'pending').length : 0, icon: CreditCard, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
                          { id: 'with', label: 'Pending Withdrawals', val: Array.isArray(withdrawals) ? withdrawals.filter(w => w.status === 'pending').length : 0, icon: Wallet, color: 'text-red-500', bg: 'bg-red-500/10' },
                      ].map((s) => (
@@ -1046,14 +1073,14 @@ export default function AdminDashboard() {
                                   {depositRequests.filter(d => d.status === 'pending').slice(0, 5).map(d => (
                                       <tr key={d.id} className="border-t border-white/5">
                                           <td className="py-4 text-white">Deposit</td>
-                                          <td className="py-4 text-white">৳{d.amount}</td>
+                                          <td className="py-4 text-white">{formatWithCurrency(d.amount, d.currency || 'BDT')}</td>
                                           <td className="py-4 text-yellow-500">Pending</td>
                                       </tr>
                                   ))}
                                   {withdrawals.filter(w => w.status === 'pending').slice(0, 5).map(w => (
                                       <tr key={w.id} className="border-t border-white/5">
                                           <td className="py-4 text-white">Withdrawal</td>
-                                          <td className="py-4 text-white">৳{w.amount}</td>
+                                          <td className="py-4 text-white">{formatWithCurrency(w.amount, w.currency || 'BDT')}</td>
                                           <td className="py-4 text-yellow-500">Pending</td>
                                       </tr>
                                   ))}
@@ -1185,11 +1212,11 @@ export default function AdminDashboard() {
                                     <div className="grid grid-cols-2 lg:flex lg:flex-row gap-4 lg:gap-8 w-full lg:w-auto">
                                         <div className="flex flex-col gap-1 min-w-[90px]">
                                             <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest leading-none">Capital</p>
-                                            <p className="font-mono font-black text-white text-sm md:text-base">৳{(u.balance || 0).toLocaleString()}</p>
+                                            <p className="font-mono font-black text-white text-sm md:text-base">{formatWithCurrency(u.balance || 0, u.currency || 'BDT')}</p>
                                         </div>
                                         <div className="flex flex-col gap-1 min-w-[90px]">
                                             <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest leading-none">Simulation</p>
-                                            <p className="font-mono font-black text-gray-500 text-sm md:text-base">৳{(u.demoBalance || 0).toLocaleString()}</p>
+                                            <p className="font-mono font-black text-gray-500 text-sm md:text-base">{formatWithCurrency(u.demoBalance || 0, u.currency || 'BDT')}</p>
                                         </div>
                                         <div className="flex flex-col gap-1">
                                             <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest leading-none">Activity</p>
@@ -1323,7 +1350,7 @@ export default function AdminDashboard() {
                                         <div className="flex items-center gap-8 w-full lg:w-auto">
                                             <div className="text-right">
                                                 <p className="text-[9px] font-bold text-gray-500 uppercase">Amount</p>
-                                                <p className="text-2xl font-black text-red-500">-৳{w.amount}</p>
+                                                <p className="text-2xl font-black text-red-500">-{formatWithCurrency(w.amount, w.currency || 'BDT')}</p>
                                             </div>
                                             {w.status === 'pending' || w.status === 'approved' ? (
                                                 <div className="flex gap-2 text-center items-center justify-center">
@@ -1802,6 +1829,7 @@ export default function AdminDashboard() {
                                     updateMarket={updateMarket} 
                                     appConfig={appConfig}
                                     fetchMarketState={fetchMarketState}
+                                    userCurrency={userCurrency}
                                 />
                             ))}
                     </div>
@@ -1899,7 +1927,7 @@ export default function AdminDashboard() {
                        </div>
                        <div className="grid grid-cols-2 gap-6">
                            <div className="space-y-4">
-                               <label className="text-[10px] font-black uppercase text-gray-500">Min Deposit (৳)</label>
+                               <label className="text-[10px] font-black uppercase text-gray-500">Min Deposit ({getCurrencySymbol(userCurrency)})</label>
                                <input 
                                  type="number" value={appConfig.minDeposit} onChange={e => setAppConfig({...appConfig, minDeposit: Number(e.target.value)})}
                                  className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none"
@@ -3087,7 +3115,7 @@ export default function AdminDashboard() {
                        {[
                            { label: 'Total Partners', val: affiliateStats.totalAffiliates, icon: Users, color: 'text-indigo-500' },
                            { label: 'Network Referrals', val: affiliateStats.totalReferrals, icon: Share, color: 'text-emerald-500' },
-                           { label: 'Platform Rev-Share', val: `৳${affiliateStats.totalCommission.toLocaleString()}`, icon: DollarSign, color: 'text-yellow-500' },
+                           { label: 'Platform Rev-Share', val: formatWithCurrency(affiliateStats.totalCommission, userCurrency), icon: DollarSign, color: 'text-yellow-500' },
                        ].map((s, i) => (
                            <div key={`aff-stat-${i}`} className="bg-[#0a0a0f] border border-white/5 p-8 rounded-[40px] space-y-4">
                                <div className="w-12 h-12 rounded-2xl bg-[#15161d] flex items-center justify-center border border-white/5">
@@ -3226,7 +3254,7 @@ export default function AdminDashboard() {
                                                </div>
                                            </div>
                                            <div className="text-right">
-                                               <p className="font-black text-indigo-500 text-sm">৳{(aff.tradeVolume || 0).toLocaleString()}</p>
+                                               <p className="font-black text-indigo-500 text-sm">{formatWithCurrency(aff.tradeVolume || 0, aff.currency || 'BDT')}</p>
                                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest whitespace-nowrap">Volume Gen</p>
                                            </div>
                                        </div>
@@ -3575,7 +3603,7 @@ export default function AdminDashboard() {
                                </div>
                                <div className="pt-2">
                                    <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">Life Profit</p>
-                                   <p className="text-xl font-black text-yellow-500">৳{(master.totalProfit || 0).toLocaleString()}</p>
+                                   <p className="text-xl font-black text-yellow-500">{formatWithCurrency(master.totalProfit || 0, master.currency || 'BDT')}</p>
                                </div>
                            </div>
                        ))}
@@ -3745,7 +3773,7 @@ export default function AdminDashboard() {
                                                 <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Capital Pool</h4>
                                             </div>
                                             <div className="space-y-1">
-                                                <p className="text-3xl font-black text-white font-mono leading-none">৳{selectedUserDetail.balance?.toLocaleString() || '0'}</p>
+                                                <p className="text-3xl font-black text-white font-mono leading-none">{formatWithCurrency(selectedUserDetail.balance || 0, selectedUserDetail.currency || 'BDT')}</p>
                                                 <p className="text-[9px] text-gray-600 font-bold uppercase">Settled Real Balance</p>
                                             </div>
                                         </div>
@@ -3757,7 +3785,7 @@ export default function AdminDashboard() {
                                                 <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Simulation Node</h4>
                                             </div>
                                             <div className="space-y-1">
-                                                <p className="text-3xl font-black text-white font-mono leading-none">৳{selectedUserDetail.demoBalance?.toLocaleString() || '10,000'}</p>
+                                                <p className="text-3xl font-black text-white font-mono leading-none">{formatWithCurrency(selectedUserDetail.demoBalance || 10000, selectedUserDetail.currency || 'BDT')}</p>
                                                 <p className="text-[9px] text-gray-600 font-bold uppercase">Training Environment</p>
                                             </div>
                                         </div>
@@ -3783,7 +3811,7 @@ export default function AdminDashboard() {
                                             <div className="grid grid-cols-2 gap-y-8 gap-x-4">
                                                 <div className="space-y-1">
                                                     <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Total Exposure</p>
-                                                    <p className="text-lg font-black text-white font-mono">৳{(selectedUserDetail.totalLiveVolume || 0).toLocaleString()}</p>
+                                                    <p className="text-lg font-black text-white font-mono">{formatWithCurrency(selectedUserDetail.totalLiveVolume || 0, selectedUserDetail.currency || 'BDT')}</p>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Successful Trades</p>
@@ -3867,7 +3895,7 @@ export default function AdminDashboard() {
                                                                 </td>
                                                                 <td className="p-6">
                                                                     <div className="flex flex-col">
-                                                                        <span className="text-sm font-black text-white font-mono">৳{t.amount.toLocaleString()}</span>
+                                                                        <span className="text-sm font-black text-white font-mono">{formatWithCurrency(t.amount, selectedUserDetail.currency || 'BDT')}</span>
                                                                         <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest mt-0.5">{t.accountType} Layer</span>
                                                                     </div>
                                                                 </td>
@@ -3907,7 +3935,7 @@ export default function AdminDashboard() {
                                             <div className="flex items-end justify-between gap-4">
                                                 <div className="space-y-1">
                                                     <p className="text-xs text-gray-600 font-bold uppercase tracking-widest">Real Capital Pool</p>
-                                                    <p className="text-4xl font-black text-white font-mono">৳{selectedUserDetail.balance?.toLocaleString() || '0'}</p>
+                                                    <p className="text-4xl font-black text-white font-mono">{formatWithCurrency(selectedUserDetail.balance || 0, selectedUserDetail.currency || 'BDT')}</p>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
@@ -3940,7 +3968,7 @@ export default function AdminDashboard() {
                                             <div className="flex items-end justify-between gap-4">
                                                 <div className="space-y-1">
                                                     <p className="text-xs text-gray-600 font-bold uppercase tracking-widest">Demo Learning Fund</p>
-                                                    <p className="text-4xl font-black text-white font-mono">৳{selectedUserDetail.demoBalance?.toLocaleString() || '10,000'}</p>
+                                                    <p className="text-4xl font-black text-white font-mono">{formatWithCurrency(selectedUserDetail.demoBalance || 10000, selectedUserDetail.currency || 'BDT')}</p>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
@@ -3997,7 +4025,7 @@ export default function AdminDashboard() {
                                                                 </td>
                                                                 <td className="p-6">
                                                                     <span className={`text-sm font-black font-mono ${tx.type === 'Deposit' ? 'text-white' : 'text-gray-400'}`}>
-                                                                        {tx.type === 'Deposit' ? '+' : '-'}৳{(tx.amount || 0).toLocaleString()}
+                                                                        {tx.type === 'Deposit' ? '+' : '-'}{formatWithCurrency(tx.amount || 0, selectedUserDetail.currency || 'BDT')}
                                                                     </span>
                                                                 </td>
                                                                 <td className="p-6">
@@ -4537,7 +4565,7 @@ export default function AdminDashboard() {
                                   </div>
                                   <div className="grid grid-cols-2 gap-4">
                                       <div className="space-y-1">
-                                          <label className="text-[10px] font-black uppercase text-gray-500">Min Investment (৳)</label>
+                                          <label className="text-[10px] font-black uppercase text-gray-500">Min Investment ({getCurrencySymbol(userCurrency)})</label>
                                           <input type="number" value={editingItem?.minInvestment || 0} onChange={e => setEditingItem({...editingItem, minInvestment: Number(e.target.value)})} className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none focus:border-yellow-500" />
                                       </div>
                                       <div className="space-y-1">

@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trophy, Users, Clock, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { formatWithCurrency, convertToBase } from '../lib/currencies';
 
 interface TournamentDetail {
   id: string;
@@ -49,6 +50,33 @@ export const TournamentDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [userCurrency, setUserCurrency] = useState(() => {
+    try {
+      return localStorage.getItem('user_display_currency') || 'BDT';
+    } catch (e) {
+      return 'BDT';
+    }
+  });
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const userSub = onSnapshot(doc(db, 'users', user.uid), (userDoc) => {
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (data.currency) {
+              setUserCurrency(data.currency);
+              try {
+                localStorage.setItem('user_display_currency', data.currency);
+              } catch (e) {}
+            }
+          }
+        });
+        return () => userSub();
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -185,13 +213,13 @@ export const TournamentDetails: React.FC = () => {
           <div className="bg-[#2A2C33] rounded-2xl p-6 border border-white/5 shadow-lg">
              <h3 className="text-gray-400 text-sm uppercase tracking-wider font-semibold mb-1">Prize Fund</h3>
              <div className="text-4xl font-black text-yellow-500 mb-6">
-               ৳{tournament.prize_pool.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+               {formatWithCurrency(convertToBase(tournament.prize_pool, 'BDT'), userCurrency)}
              </div>
 
              <div className="space-y-4 mb-6">
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-gray-400">Entry fee</span>
-                  <span className="font-bold">{tournament.entry_fee > 0 ? `৳${tournament.entry_fee}` : 'Free'}</span>
+                  <span className="font-bold">{tournament.entry_fee > 0 ? formatWithCurrency(convertToBase(tournament.entry_fee, 'BDT'), userCurrency) : 'Free'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-gray-400">Status</span>
@@ -274,7 +302,7 @@ export const TournamentDetails: React.FC = () => {
                              {p.score.toLocaleString()}
                           </td>
                           <td className="py-4 px-4 text-right font-bold text-green-500">
-                             {prize ? `৳${prize.prize_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}
+                             {prize ? formatWithCurrency(convertToBase(prize.prize_amount, 'BDT'), userCurrency) : '-'}
                           </td>
                         </tr>
                       )})}
@@ -294,7 +322,7 @@ export const TournamentDetails: React.FC = () => {
                         {p.rank_from === p.rank_to ? `Place ${p.rank_from}` : `Places ${p.rank_from} - ${p.rank_to}`}
                       </div>
                       <div className="text-xl font-bold text-yellow-500">
-                        ৳{p.prize_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        {formatWithCurrency(convertToBase(p.prize_amount, 'BDT'), userCurrency)}
                       </div>
                     </div>
                   ))}

@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Lock, Loader2, Trophy } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { formatWithCurrency, convertToBase } from '../lib/currencies';
 
 interface Tournament {
   id: string;
@@ -29,6 +31,33 @@ export const Tournaments: React.FC = () => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [userCurrency, setUserCurrency] = useState(() => {
+    try {
+      return localStorage.getItem('user_display_currency') || 'BDT';
+    } catch (e) {
+      return 'BDT';
+    }
+  });
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const userSub = onSnapshot(doc(db, 'users', user.uid), (userDoc) => {
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (data.currency) {
+              setUserCurrency(data.currency);
+              try {
+                localStorage.setItem('user_display_currency', data.currency);
+              } catch (e) {}
+            }
+          }
+        });
+        return () => userSub();
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -137,7 +166,7 @@ export const Tournaments: React.FC = () => {
                 <div className="p-4 flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-xs mb-1">Prize fund</p>
-                    <p className="text-yellow-500 font-bold text-xl">৳{t.prize_pool.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    <p className="text-yellow-500 font-bold text-xl">{formatWithCurrency(convertToBase(t.prize_pool, 'BDT'), userCurrency)}</p>
                   </div>
                   <button className="bg-[#FFDD33] hover:bg-[#F0C800] text-black font-bold py-2 px-5 rounded text-sm transition-colors shadow-sm">
                     Read more

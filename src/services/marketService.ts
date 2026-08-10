@@ -183,6 +183,61 @@ export function isMarketClosedAt(pair: string, timestampSec: number): boolean {
   return false;
 }
 
+export function pruneHistoricalCandles() {
+  console.log('🧹 Running automated historical candles pruning...');
+  try {
+    const pairKeys = Object.keys(markets);
+    let totalDeleted = 0;
+
+    for (const pair of pairKeys) {
+      for (const type of ['real', 'demo']) {
+        for (const tf of TIMEFRAMES) {
+          const limit = 1000;
+          
+          // Use a fast check to see if we exceed the limit
+          const countResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, tf) as any;
+          const count = countResult ? countResult.count : 0;
+          
+          if (count > limit) {
+            // Find the cutoff openTime of the 1000th latest candle
+            const cutoffRow = db.prepare(`
+              SELECT openTime FROM historical_candles 
+              WHERE market = ? AND type = ? AND timeframe = ?
+              ORDER BY openTime DESC
+              LIMIT 1 OFFSET ?
+            `).get(pair, type, tf, limit - 1) as any;
+            
+            if (cutoffRow) {
+              const cutoff = cutoffRow.openTime;
+              const result = db.prepare(`
+                DELETE FROM historical_candles 
+                WHERE market = ? AND type = ? AND timeframe = ? AND openTime < ?
+              `).run(pair, type, tf, cutoff);
+              
+              totalDeleted += result.changes;
+            }
+          }
+        }
+      }
+    }
+    
+    if (totalDeleted > 0) {
+      console.log(`🧹 Automated pruning complete: Deleted ${totalDeleted} obsolete historical candles.`);
+      // Run VACUUM to defragment SQLite database file
+      try {
+        db.prepare('VACUUM').run();
+        console.log('🧹 SQLite database VACUUM completed successfully.');
+      } catch (vacErr: any) {
+        console.warn('⚠️ SQLite VACUUM warning:', vacErr.message);
+      }
+    } else {
+      console.log('🧹 Automated pruning complete: No obsolete candles found.');
+    }
+  } catch (err: any) {
+    console.error('❌ Failed to prune historical candles:', err.message);
+  }
+}
+
 export async function initializeCandlesFromDB() {
   console.log('📦 Initializing candle storage from database...');
   
@@ -207,6 +262,13 @@ export async function initializeCandlesFromDB() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_candles_market_type_tf_opentime 
     ON historical_candles (market, type, timeframe, openTime)
   `).run();
+
+  // Run initial pruning to keep database extremely compact and fast right from startup
+  try {
+    pruneHistoricalCandles();
+  } catch (pruneErr: any) {
+    console.error('Error during startup candle pruning:', pruneErr.message);
+  }
 
   const pairKeys = Object.keys(markets);
   
@@ -566,6 +628,15 @@ export async function initializeCandlesFromDB() {
     }
   }
   console.log('✅ Candle storage initialized successfully!');
+
+  // Periodically prune historical candles every 1 hour (3,600,000 ms) to prevent database growth/corruption
+  setInterval(() => {
+    try {
+      pruneHistoricalCandles();
+    } catch (e: any) {
+      console.error('Failed to run scheduled candle pruning:', e.message);
+    }
+  }, 60 * 60 * 1000);
 }
 
 export let globalManipulationMode: 'neutral' | 'always_loss' | 'always_win' = 'neutral';

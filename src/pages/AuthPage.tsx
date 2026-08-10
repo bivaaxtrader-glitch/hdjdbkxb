@@ -22,6 +22,7 @@ import { getNextAffiliateId, getUserByAffiliateId } from '../lib/affiliate';
 import { Logo } from '../components/Logo';
 import { toast } from 'react-hot-toast';
 import SEO from '../components/SEO';
+import { currencies } from '../lib/currencies';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function AuthPage() {
@@ -32,7 +33,7 @@ export default function AuthPage() {
   // Determine if login or register based on URL path
   const isRegisterPath = location.pathname === '/register' || location.pathname === '/signup';
   
-  const [view, setView] = useState<'login' | 'register' | 'forgot_password'>(
+  const [view, setView] = useState<'login' | 'register' | 'forgot_password' | 'verify_otp' | 'reset_password'>(
     isRegisterPath ? 'register' : 'login'
   );
   const [showPassword, setShowPassword] = useState(false);
@@ -40,7 +41,42 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [currency, setCurrency] = useState('৳');
+  
+  // New states for custom 4-digit OTP password reset workflow
+  const [otpCode, setOtpCode] = useState<string[]>(['', '', '', '']);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const handleOtpChange = (index: number, val: string) => {
+    const cleaned = val.replace(/[^0-9]/g, '');
+    const newOtp = [...otpCode];
+    newOtp[index] = cleaned.substring(cleaned.length - 1);
+    setOtpCode(newOtp);
+
+    // Auto-focus next input if a number is typed
+    if (cleaned && index < 3) {
+      const nextInput = document.getElementById(`otp-input-${index + 1}`);
+      nextInput?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-input-${index - 1}`);
+      prevInput?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').trim().replace(/[^0-9]/g, '');
+    if (pastedData.length >= 4) {
+      const newOtp = [pastedData[0], pastedData[1], pastedData[2], pastedData[3]];
+      setOtpCode(newOtp);
+      document.getElementById('otp-input-3')?.focus();
+    }
+  };
+  const [currency, setCurrency] = useState('BDT');
   const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
   const [detectedCountryCode, setDetectedCountryCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -216,8 +252,55 @@ export default function AuthPage() {
 
     try {
       if (view === 'forgot_password') {
-        await sendPasswordResetEmail(auth, email);
-        setSuccessMsg("Password reset email sent! Please check your inbox.");
+        const response = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to request OTP');
+        
+        setSuccessMsg("A 4-digit OTP code has been sent to your email!");
+        setView('verify_otp');
+      } else if (view === 'verify_otp') {
+        const otpStr = otpCode.join('');
+        if (otpStr.length < 4) throw new Error('Please enter the full 4-digit OTP code');
+        
+        const response = await fetch('/api/auth/verify-reset-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, otp: otpStr })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Invalid or expired OTP code');
+        
+        setSuccessMsg("OTP verified successfully! Please choose a new password.");
+        setView('reset_password');
+      } else if (view === 'reset_password') {
+        if (!newPassword || newPassword.length < 6) {
+          throw new Error('Password must be at least 6 characters');
+        }
+        if (newPassword !== confirmPassword) {
+          throw new Error('Passwords do not match');
+        }
+        
+        const otpStr = otpCode.join('');
+        const response = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, token: otpStr, password: newPassword })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to reset password');
+        
+        toast.success("Password reset successful! Please log in with your new password.");
+        setSuccessMsg("Password reset successful! Please log in.");
+        
+        // Reset states
+        setPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setOtpCode(['', '', '', '']);
         setView('login');
       } else if (view === 'register') {
         if (!fullName.trim()) {
@@ -345,12 +428,20 @@ export default function AuthPage() {
               animate={{ opacity: 1, y: 0 }}
               className="text-white font-black text-3xl drop-shadow-md"
             >
-              {view === 'login' ? 'Welcome Back' : view === 'register' ? 'Join Bivaax' : 'Reset Password'}
+              {view === 'login' 
+                ? 'Welcome Back' 
+                : view === 'register' 
+                ? 'Join Bivaax' 
+                : view === 'verify_otp'
+                ? 'Verify OTP'
+                : view === 'reset_password'
+                ? 'New Password'
+                : 'Reset Password'}
             </motion.h2>
           </div>
           
           {/* Header tabs for toggling Register vs Login */}
-          {view !== 'forgot_password' && (
+          {(view === 'login' || view === 'register') && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -409,7 +500,7 @@ export default function AuthPage() {
             )}
 
             {/* Social Authentication buttons */}
-            {view !== 'forgot_password' && (
+            {(view === 'login' || view === 'register') && (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -449,179 +540,333 @@ export default function AuthPage() {
 
             {/* General Fields */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              {view === 'register' && (
-                <motion.div 
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.45 }}
-                  className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden"
-                >
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Full Name"
-                    required
-                    className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
-                  />
-                </motion.div>
-              )}
-              
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 }}
-                className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden"
-              >
-                <input
-                  type="email"
-                  value={email}
-                  onFocus={() => setFocusedField('email')}
-                  onBlur={() => setFocusedField(null)}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  required
-                  className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
-                />
-              </motion.div>
-              
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.6 }}
-                className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden flex items-center pr-3"
-              >
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onFocus={() => setFocusedField('password')}
-                  onBlur={() => setFocusedField(null)}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  required={view !== 'forgot_password'}
-                  minLength={6}
-                  className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
-                />
-                {view !== 'forgot_password' && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-gray-400 hover:text-white transition-colors focus:outline-none"
-                  >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                  </button>
-                )}
-              </motion.div>
-
-              {view === 'register' && (
-                <p className="text-[12px] text-gray-400 leading-snug">
-                  8-64 characters. Latin letters, numbers or special symbols. Ensure you don't use this password anywhere else
-                </p>
-              )}
-
-              {/* Currency Selector */}
-              {view === 'register' && (
-                <div className="flex gap-3 mt-1">
-                  {['€', '$', '৳'].map(sym => (
-                    <button
-                      key={sym}
-                      type="button"
-                      onClick={() => setCurrency(sym)}
-                      className={`flex-1 h-[52px] rounded-xl border-[1.5px] font-bold text-[19px] transition-colors flex items-center justify-center ${
-                        currency === sym 
-                          ? 'border-[#ffcf00] text-[#ffcf00] bg-[#ffcf00]/5' 
-                          : 'border-[#4a4c52] text-white bg-transparent hover:border-gray-500'
-                      }`}
+              {(view === 'login' || view === 'register' || view === 'forgot_password') && (
+                <>
+                  {view === 'register' && (
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.45 }}
+                      className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden"
                     >
-                      {sym}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {view === 'login' && (
-                <div className="flex justify-start">
-                  <button 
-                    type="button"
-                    onClick={() => setView('forgot_password')} 
-                    className="text-gray-400 text-[13px] hover:text-[#ffcf00] transition-colors underline decoration-gray-600 hover:decoration-[#ffcf00] underline-offset-4 font-semibold"
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Full Name"
+                        required
+                        className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
+                      />
+                    </motion.div>
+                  )}
+                  
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.5 }}
+                    className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden"
                   >
-                    Forgot my password
-                  </button>
-                </div>
-              )}
-
-              {view === 'forgot_password' && (
-                <div className="flex justify-start">
-                  <button 
-                    type="button"
-                    onClick={() => setView('login')} 
-                    className="text-gray-400 text-[13px] hover:text-[#ffcf00] transition-colors underline decoration-gray-600 hover:decoration-[#ffcf00] underline-offset-4 font-semibold"
-                  >
-                    Back to login
-                  </button>
-                </div>
-              )}
-
-              {view === 'register' && (
-                <label className="flex items-start gap-3 mt-2 cursor-pointer group select-none">
-                  <div className="relative flex items-center justify-center mt-0.5 shrink-0">
-                    <input 
-                      type="checkbox" 
-                      checked={agreed}
-                      onChange={(e) => setAgreed(e.target.checked)}
-                      className="appearance-none w-5 h-5 border-[1.5px] border-[#ffcf00] rounded-[6px] bg-transparent checked:bg-[#ffcf00] transition-all cursor-pointer"
+                    <input
+                      type="email"
+                      value={email}
+                      onFocus={() => setFocusedField('email')}
+                      onBlur={() => setFocusedField(null)}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Email"
+                      required
+                      className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
                     />
-                    {agreed && (
-                      <svg className="absolute w-3 h-3 text-black pointer-events-none" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M1 5L4.5 8.5L11 1.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+                  </motion.div>
+                  
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.6 }}
+                    className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden flex items-center pr-3"
+                  >
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Password"
+                      required={view !== 'forgot_password'}
+                      minLength={6}
+                      className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
+                    />
+                    {view !== 'forgot_password' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-gray-400 hover:text-white transition-colors focus:outline-none"
+                      >
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
                     )}
-                  </div>
-                  <span className="text-[13px] sm:text-[14px] text-gray-300 leading-snug transition-colors">
-                    I accept the terms of the <span className="underline decoration-gray-500 underline-offset-2 hover:text-white">Client Agreement</span> and <span className="underline decoration-gray-500 underline-offset-2 hover:text-white">Privacy Policy</span> and confirm being adult
-                  </span>
-                </label>
+                  </motion.div>
+
+                  {view === 'register' && (
+                    <p className="text-[12px] text-gray-400 leading-snug">
+                      8-64 characters. Latin letters, numbers or special symbols. Ensure you don't use this password anywhere else
+                    </p>
+                  )}
+
+                  {/* Currency Selector */}
+                  {view === 'register' && (
+                    <div className="flex gap-3 mt-1">
+                      {['USDT', 'USD', 'BDT'].map(code => {
+                        const cur = currencies.find(c => c.code === code);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => setCurrency(code)}
+                            className={`flex-1 h-[52px] rounded-xl border-[1.5px] font-bold text-[19px] transition-colors flex items-center justify-center ${
+                              currency === code 
+                                ? 'border-[#ffcf00] text-[#ffcf00] bg-[#ffcf00]/5' 
+                                : 'border-[#4a4c52] text-white bg-transparent hover:border-gray-500'
+                            }`}
+                          >
+                            {cur?.symbol || '$'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {view === 'login' && (
+                    <div className="flex justify-start">
+                      <button 
+                        type="button"
+                        onClick={() => setView('forgot_password')} 
+                        className="text-gray-400 text-[13px] hover:text-[#ffcf00] transition-colors underline decoration-gray-600 hover:decoration-[#ffcf00] underline-offset-4 font-semibold"
+                      >
+                        Forgot my password
+                      </button>
+                    </div>
+                  )}
+
+                  {view === 'forgot_password' && (
+                    <div className="flex justify-start">
+                      <button 
+                        type="button"
+                        onClick={() => setView('login')} 
+                        className="text-gray-400 text-[13px] hover:text-[#ffcf00] transition-colors underline decoration-gray-600 hover:decoration-[#ffcf00] underline-offset-4 font-semibold"
+                      >
+                        Back to login
+                      </button>
+                    </div>
+                  )}
+
+                  {view === 'register' && (
+                    <label className="flex items-start gap-3 mt-2 cursor-pointer group select-none">
+                      <div className="relative flex items-center justify-center mt-0.5 shrink-0">
+                        <input 
+                          type="checkbox" 
+                          checked={agreed}
+                          onChange={(e) => setAgreed(e.target.checked)}
+                          className="appearance-none w-5 h-5 border-[1.5px] border-[#ffcf00] rounded-[6px] bg-transparent checked:bg-[#ffcf00] transition-all cursor-pointer"
+                        />
+                        {agreed && (
+                          <svg className="absolute w-3 h-3 text-black pointer-events-none" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M1 5L4.5 8.5L11 1.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </div>
+                      <span className="text-[13px] sm:text-[14px] text-gray-300 leading-snug transition-colors">
+                        I accept the terms of the <span className="underline decoration-gray-500 underline-offset-2 hover:text-white">Client Agreement</span> and <span className="underline decoration-gray-500 underline-offset-2 hover:text-white">Privacy Policy</span> and confirm being adult
+                      </span>
+                    </label>
+                  )}
+
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.8 }}
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-[#ffcf00] hover:bg-[#e6bb00] disabled:opacity-50 active:scale-[0.98] text-[#1c1d22] font-semibold text-[16px] py-4.5 rounded-xl mt-4 transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ffcf00]/10 font-bold"
+                  >
+                    {loading ? (
+                      <span className="w-5 h-5 border-2 border-[#1c1d22] border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      view === 'login' ? 'Log in' : view === 'register' ? 'Register' : 'Reset password'
+                    )}
+                  </motion.button>
+                  
+                  {view === 'login' && (
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/5 text-[14px]">
+                      <span className="text-gray-400">No account?</span>
+                      <button 
+                        type="button"
+                        onClick={() => handleToggleView('register')}
+                        className="bg-[#3a3c42] hover:bg-[#4a4c52] active:scale-95 text-white px-5 py-2.5 rounded-xl transition-all font-semibold text-[13px]"
+                      >
+                        Register
+                      </button>
+                    </div>
+                  )}
+
+                  {view === 'register' && (
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/5 text-[14px]">
+                      <span className="text-gray-400">Already a member?</span>
+                      <button 
+                        type="button"
+                        onClick={() => handleToggleView('login')}
+                        className="bg-[#3a3c42] hover:bg-[#4a4c52] active:scale-95 text-white px-5 py-2.5 rounded-xl transition-all font-semibold text-[13px]"
+                      >
+                        Log In
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
 
-              <motion.button
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.8 }}
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#ffcf00] hover:bg-[#e6bb00] disabled:opacity-50 active:scale-[0.98] text-[#1c1d22] font-semibold text-[16px] py-4.5 rounded-xl mt-4 transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ffcf00]/10 font-bold"
-              >
-                {loading ? (
-                  <span className="w-5 h-5 border-2 border-[#1c1d22] border-t-transparent rounded-full animate-spin"></span>
-                ) : (
-                  view === 'login' ? 'Log in' : view === 'register' ? 'Register' : 'Reset password'
-                )}
-              </motion.button>
-              
-              {view === 'login' && (
-                <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/5 text-[14px]">
-                  <span className="text-gray-400">No account?</span>
-                  <button 
-                    type="button"
-                    onClick={() => handleToggleView('register')}
-                    className="bg-[#3a3c42] hover:bg-[#4a4c52] active:scale-95 text-white px-5 py-2.5 rounded-xl transition-all font-semibold text-[13px]"
+              {/* NEUMORPHIC EMBOSSED 4-DIGIT OTP UI */}
+              {view === 'verify_otp' && (
+                <div className="flex flex-col items-center">
+                  <p className="text-gray-400 text-[14px] text-center mb-6">Enter the 4-digit security code</p>
+                  
+                  <div className="flex gap-4.5 justify-center mb-8">
+                    {otpCode.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        id={`otp-input-${idx}`}
+                        type="text"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleOtpChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                        onPaste={handleOtpPaste}
+                        className="w-[62px] h-[62px] bg-[#22242c] border border-white/5 rounded-xl text-center text-white text-[28px] font-black focus:outline-none focus:ring-2 focus:ring-[#ffcf00] focus:border-transparent transition-all shadow-[inset_3px_3px_6px_rgba(0,0,0,0.8),inset_-1px_-1px_3px_rgba(255,255,255,0.05),0_4px_8px_rgba(0,0,0,0.4)]"
+                      />
+                    ))}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-[#ffcf00] hover:bg-[#e6bb00] disabled:opacity-50 active:scale-[0.98] text-[#1c1d22] font-black text-[16px] py-4.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ffcf00]/20"
                   >
-                    Register
+                    {loading ? (
+                      <span className="w-5 h-5 border-2 border-[#1c1d22] border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      'Verify Now'
+                    )}
                   </button>
+
+                  <div className="flex justify-between w-full mt-6 text-[13px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpCode(['', '', '', '']);
+                        setView('forgot_password');
+                        setError(null);
+                        setSuccessMsg(null);
+                      }}
+                      className="text-gray-400 hover:text-[#ffcf00] transition-colors underline decoration-gray-600 hover:decoration-[#ffcf00] underline-offset-4 font-semibold"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setError(null);
+                        setSuccessMsg(null);
+                        setLoading(true);
+                        try {
+                          const response = await fetch('/api/auth/forgot-password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email })
+                          });
+                          const data = await response.json();
+                          if (!response.ok) throw new Error(data.error || 'Failed to resend OTP');
+                          setSuccessMsg("A new 4-digit OTP code has been sent!");
+                        } catch (err: any) {
+                          setError(err.message || "Failed to resend code");
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="text-[#ffcf00] hover:text-[#e6bb00] transition-colors font-semibold"
+                    >
+                      Resend Code
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {view === 'register' && (
-                <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/5 text-[14px]">
-                  <span className="text-gray-400">Already a member?</span>
-                  <button 
-                    type="button"
-                    onClick={() => handleToggleView('login')}
-                    className="bg-[#3a3c42] hover:bg-[#4a4c52] active:scale-95 text-white px-5 py-2.5 rounded-xl transition-all font-semibold text-[13px]"
+              {/* NEW PASSWORD CREATION VIEW */}
+              {view === 'reset_password' && (
+                <div className="flex flex-col gap-4">
+                  <p className="text-gray-400 text-[13px] text-center mb-2 font-medium">Enter and confirm your new account password</p>
+
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden flex items-center pr-3"
                   >
-                    Log In
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New Password"
+                      required
+                      minLength={6}
+                      className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-gray-400 hover:text-white transition-colors focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </motion.div>
+
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="relative border border-[#4a4c52] rounded-xl bg-[#2d2f36] focus-within:border-[#ffcf00] focus-within:bg-[#32343c] transition-all duration-200 overflow-hidden flex items-center pr-3"
+                  >
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm New Password"
+                      required
+                      minLength={6}
+                      className="w-full bg-transparent px-4 py-4.5 text-white placeholder-gray-500 focus:outline-none text-[15px]"
+                    />
+                  </motion.div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-[#ffcf00] hover:bg-[#e6bb00] disabled:opacity-50 active:scale-[0.98] text-[#1c1d22] font-black text-[16px] py-4.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ffcf00]/20"
+                  >
+                    {loading ? (
+                      <span className="w-5 h-5 border-2 border-[#1c1d22] border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      'Reset Password'
+                    )}
                   </button>
+
+                  <div className="flex justify-start">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setView('login');
+                        setError(null);
+                        setSuccessMsg(null);
+                      }}
+                      className="text-gray-400 text-[13px] hover:text-[#ffcf00] transition-colors underline decoration-gray-600 hover:decoration-[#ffcf00] underline-offset-4 font-semibold"
+                    >
+                      Back to login
+                    </button>
+                  </div>
                 </div>
               )}
             </form>

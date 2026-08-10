@@ -12552,7 +12552,7 @@ const PROMOTED_ARTICLES = [
                   
                   <div className="p-4 w-full max-w-sm">
                       <div className="bg-white rounded-xl p-6 shadow-sm mb-4">
-                          <div className="text-3xl font-bold text-[#EC5300] text-center mb-1">৳1,250</div>
+                          <div className="text-3xl font-bold text-[#EC5300] text-center mb-1">{formatWithCurrency(convertToBase(1250, 'BDT'), userCurrency)}</div>
                           <div className="text-[10px] text-gray-500 text-center bg-gray-100 p-1 rounded">Please do not change the amount</div>
                       </div>
  
@@ -12655,7 +12655,7 @@ const PROMOTED_ARTICLES = [
                               if (isBinancePay) {
                                 url = `/Bivaaxpay?amount=${depositAmount}&currency=${selectedMethod?.currency || 'USDT'}&orderId=${orderId}&methodId=${selectedMethod?.id}`;
                               } else if (isUsdtTrc20) {
-                                const bdtAmount = userCurrency === 'BDT' ? Number(depositAmount) : Math.round(Number(depositAmount) * 120);
+                                const bdtAmount = userCurrency === 'BDT' ? Number(depositAmount) : Math.round(convertFromBase(Number(depositAmount), 'BDT'));
                                 const bdtFormatted = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(bdtAmount);
                                 url = `/deposit/usdt-trc20?amount=${depositAmount}&currency=USDT (TRC-20)&amountBdt=${bdtFormatted}&orderId=${orderId}&methodId=${selectedMethod?.id}`;
                               }
@@ -12696,7 +12696,7 @@ const PROMOTED_ARTICLES = [
                               }, 800);
                             } else if (["bkash", "nagad", "rocket", "upay"].some(n => (methodName).toLowerCase().includes(n))) {
                               const orderId = Math.floor(Math.random() * 100000000).toString();
-                              const bdtAmount = userCurrency === 'BDT' ? Number(depositAmount) : Math.round(Number(depositAmount) * 120);
+                              const bdtAmount = userCurrency === 'BDT' ? Number(depositAmount) : Math.round(convertFromBase(Number(depositAmount), 'BDT'));
                               
                               let url = `/mfs-deposit?amount=${bdtAmount}&currency=BDT&orderId=${orderId}&methodId=${selectedMethod?.id}`;
                               if (methodName.includes("bkash")) url = `/deposit/bkash?amount=${bdtAmount}&orderId=${orderId}&methodId=${selectedMethod?.id}`;
@@ -12728,8 +12728,8 @@ const PROMOTED_ARTICLES = [
                             <span>{depositStep === "methods" ? (selectedMethod ? "Proceed to amount" : "Repeat last deposit") : "Deposit"}</span>
                             {depositStep === "amount" && (
                               <span className="text-[13px] font-medium opacity-90 tracking-tight">
-                                {selectedMethod?.currency ? getCurrencySymbol(selectedMethod.currency) : (isCryptoDeposit ? "$" : "৳")}{Number(depositAmount).toLocaleString()}.00 
-                                {selectedMethod?.currency === "BDT" && ` (~${(Number(depositAmount) / 120).toFixed(2)} USDT)`}
+                                {getCurrencySymbol(userCurrency)}{Number(depositAmount).toLocaleString()}.00 
+                                {selectedMethod?.currency === "BDT" && ` (~${convertToBase(Number(depositAmount), 'BDT').toFixed(2)} USDT)`}
                               </span>
                             )}
                        </div>
@@ -15238,7 +15238,7 @@ const PROMOTED_ARTICLES = [
                        
                        <div className="mb-6 w-full px-1">
                           <div className="text-[12px] font-bold mb-2 flex justify-between">
-                            <span className="text-gray-900">৳4,250</span> <span className="text-gray-400">/ ৳42,000</span>
+                            <span className="text-gray-900">{formatWithCurrency(convertToBase(4250, 'BDT'), userCurrency)}</span> <span className="text-gray-400">/ {formatWithCurrency(convertToBase(42000, 'BDT'), userCurrency)}</span>
                           </div>
                           <div className="h-1.5 bg-gray-100 rounded-full w-full overflow-hidden">
                              <div className="h-full bg-yellow-400 w-[10%] rounded-full"></div>
@@ -15314,7 +15314,7 @@ const PROMOTED_ARTICLES = [
                        
                        <div className="mb-6 w-full px-1">
                           <div className="text-[12px] font-bold mb-2 flex justify-between">
-                            <span className="text-white">৳4,250</span> <span className="text-white/50">/ ৳85,000</span>
+                            <span className="text-white">{formatWithCurrency(convertToBase(4250, 'BDT'), userCurrency)}</span> <span className="text-white/50">/ {formatWithCurrency(convertToBase(85000, 'BDT'), userCurrency)}</span>
                           </div>
                           <div className="h-1.5 bg-black/20 rounded-full w-full overflow-hidden">
                              <div className="h-full bg-white w-[5%] rounded-full shadow-[0_0_10px_white]"></div>
@@ -15404,7 +15404,7 @@ const PROMOTED_ARTICLES = [
                        
                        <div className="mb-6 w-full px-1">
                           <div className="text-[12px] font-bold mb-2 flex justify-between">
-                            <span className="text-white">৳4,250</span> <span className="text-purple-200/60">/ ৳360,000</span>
+                            <span className="text-white">{formatWithCurrency(convertToBase(4250, 'BDT'), userCurrency)}</span> <span className="text-purple-200/60">/ {formatWithCurrency(convertToBase(360000, 'BDT'), userCurrency)}</span>
                           </div>
                           <div className="h-1.5 bg-purple-950/50 rounded-full w-full overflow-hidden">
                              <div className="h-full bg-purple-300 w-[2%] rounded-full shadow-[0_0_10px_#d8b4fe]"></div>

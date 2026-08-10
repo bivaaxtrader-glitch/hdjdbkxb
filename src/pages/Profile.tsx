@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import * as OTPAuth from 'otpauth';
 import QRCode from 'qrcode';
-import { currencies, formatWithCurrency } from '../lib/currencies';
+import { currencies, formatWithCurrency, formatCurrencyOnly } from '../lib/currencies';
 import { TimeZoneModal } from '../components/TimeZoneModal';
 
 // Unique 9-digit trade ID generated from user UID
@@ -1568,7 +1568,7 @@ export default function ProfilePage() {
                            <p className={`font-black text-base ${
                              tx.type === 'Deposit' ? 'text-emerald-600' : 'text-rose-600'
                            }`}>
-                             {tx.type === 'Deposit' ? '+' : '-'}{tx.currency === 'USDT' ? '$' : '৳'}{tx.amount.toLocaleString()}
+                             {tx.type === 'Deposit' ? '+' : '-'}{formatCurrencyOnly(tx.amount, tx.currency || 'BDT')}
                            </p>
                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded leading-none ${
                               tx.status === 'success' || tx.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :

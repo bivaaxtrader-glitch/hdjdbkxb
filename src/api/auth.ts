@@ -463,7 +463,7 @@ router.get('/google/callback', async (req, res) => {
 
 import { sendEmail } from '../lib/email.ts';
 
-// 5. Forgot Password
+// 5. Forgot Password (OTP based)
 router.post('/forgot-password', 
   body('email').isEmail().normalizeEmail(),
   validate,
@@ -472,13 +472,15 @@ router.post('/forgot-password',
     const user = await get('SELECT uid FROM users WHERE email = ?', [email]) as any;
     
     if (user) {
-      const token = crypto.randomBytes(32).toString('hex');
-      const expires = Date.now() + 3600000; // 1 hour
+      // Generate a highly secure 4-digit numeric OTP code
+      const otp = Math.floor(1000 + Math.random() * 9000).toString();
+      const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
       if (adminDb) {
         try {
           await adminDb.collection('password_resets').doc(email).set({
-            token,
+            token: otp,
+            otp: otp,
             expires,
             uid: user.uid
           });
@@ -488,18 +490,48 @@ router.post('/forgot-password',
         }
       }
 
-      const resetLink = `${process.env.APP_URL || 'https://bivaax.com'}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
-      
-      await sendEmail(email, 'Password Reset Request', `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h2>Password Reset Request</h2>
-          <p>You requested a password reset. Click the link below to reset your password.</p>
-          <a href="${resetLink}" style="background: #FFE24C; padding: 10px 20px; text-decoration: none; color: #1a1b23; border-radius: 5px;">Reset Password</a>
-          <p>This link expires in 1 hour.</p>
+      await sendEmail(email, 'Your Password Reset OTP Code - Bivaax Trade', `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 500px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
+            <div style="background-color: #ffffff; padding: 40px; border-radius: 12px; border: 1px solid #e1e8ed; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                <h2 style="color: #1a1b23; margin-top: 0; font-size: 24px; font-weight: 800;">Password Reset OTP</h2>
+                <p style="color: #64748b; font-size: 16px; line-height: 1.5;">You requested a password reset. Please use the following 4-digit security code to complete your password reset:</p>
+                <div style="font-size: 48px; font-weight: 900; color: #ffcf00; letter-spacing: 12px; margin: 30px 0; background: #1a1b23; padding: 25px; border-radius: 12px; border: 1.5px solid #ffcf00; display: inline-block;">${otp}</div>
+                <p style="color: #94a3b8; font-size: 13px;">This code will expire in 10 minutes. If you didn't request a password reset, please ignore this email or contact support.</p>
+                <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
+                <p style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Bivaax Trade Security</p>
+            </div>
         </div>
       `);
     }
-    res.json({ message: 'If an account exists with this email, a reset link has been sent.' });
+    // Return standard message to protect privacy
+    res.json({ success: true, message: 'If an account exists with this email, a 4-digit OTP has been sent.' });
+  }
+);
+
+// 5.25 Verify Reset OTP
+router.post('/verify-reset-otp',
+  body('email').isEmail().normalizeEmail(),
+  body('otp').notEmpty(),
+  validate,
+  async (req, res) => {
+    const { email, otp } = req.body;
+    
+    if (!adminDb) return res.status(500).json({ error: 'Database error' });
+    
+    try {
+        const doc = await adminDb.collection('password_resets').doc(email).get();
+        if (!doc.exists) return res.status(400).json({ error: 'Invalid or expired OTP code' });
+        
+        const data = doc.data();
+        if ((data!.token !== otp && data!.otp !== otp) || Date.now() > data!.expires) {
+            return res.status(400).json({ error: 'Invalid or expired OTP code' });
+        }
+        
+        res.json({ success: true, message: 'OTP verified successfully' });
+    } catch (err: any) {
+        logger.error(`Verify reset OTP error: ${err.message}`);
+        res.status(500).json({ error: 'Failed to verify OTP code' });
+    }
   }
 );
 
@@ -516,12 +548,12 @@ router.post('/reset-password',
 
     try {
         const doc = await adminDb.collection('password_resets').doc(email).get();
-        if (!doc.exists) return res.status(400).json({ error: 'Invalid or expired reset token' });
+        if (!doc.exists) return res.status(400).json({ error: 'Invalid or expired reset OTP' });
 
         const data = doc.data();
-        if (data!.token !== token || Date.now() > data!.expires) {
+        if (data!.token !== token && data!.otp !== token || Date.now() > data!.expires) {
             await adminDb.collection('password_resets').doc(email).delete();
-            return res.status(400).json({ error: 'Invalid or expired reset token' });
+            return res.status(400).json({ error: 'Invalid or expired reset OTP' });
         }
 
         const hashedPassword = await hashPassword(password);

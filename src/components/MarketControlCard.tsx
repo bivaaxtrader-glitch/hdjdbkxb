@@ -5,8 +5,9 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-hot-toast';
+import { getCurrencySymbol } from '../lib/currencies';
 
-export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMarketState }: any) => {
+export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMarketState, userCurrency = 'BDT' }: any) => {
     const [isAdvanced, setIsAdvanced] = useState(false);
     
     return (
@@ -23,7 +24,7 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                         </h4>
                         <div className="flex items-center gap-2 pt-1">
                             <span className="text-[11px] font-mono text-yellow-500 bg-yellow-500/5 px-1.5 py-0.5 rounded border border-yellow-500/10">
-                                ৳{data.price.toFixed(data.price < 1 ? 5 : 2)}
+                                {getCurrencySymbol(userCurrency)}{data.price.toFixed(data.price < 1 ? 5 : 2)}
                             </span>
                             <div className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${
                                 data.trend === 'up' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 
@@ -101,7 +102,7 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                 <div className="space-y-1.5">
                     <label className="text-[8px] font-black text-gray-600 uppercase tracking-widest">Min Stake</label>
                     <div className="flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-yellow-500/50 transition-colors">
-                        <span className="text-[10px] text-gray-500">৳</span>
+                        <span className="text-[10px] text-gray-500">{getCurrencySymbol(userCurrency)}</span>
                         <input 
                             type="number" 
                             value={data.minTrade || appConfig.globalMinTrade || 100}
@@ -113,7 +114,7 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                 <div className="space-y-1.5">
                     <label className="text-[8px] font-black text-gray-600 uppercase tracking-widest">Max Stake</label>
                     <div className="flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-yellow-500/50 transition-colors">
-                        <span className="text-[10px] text-gray-500">৳</span>
+                        <span className="text-[10px] text-gray-500">{getCurrencySymbol(userCurrency)}</span>
                         <input 
                             type="number" 
                             value={data.maxTrade || appConfig.globalMaxTrade || 50000}
@@ -227,7 +228,7 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                         <div className="space-y-3 p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
                             <div className="flex justify-between items-center text-[9px] font-black text-gray-500 uppercase tracking-widest">
                                 <span>Volume UP</span>
-                                <span className="text-green-500 font-mono text-[10px]">৳{(data.totalUp || 0).toLocaleString()}</span>
+                                <span className="text-green-500 font-mono text-[10px]">{getCurrencySymbol(userCurrency)}{(data.totalUp || 0).toLocaleString()}</span>
                             </div>
                             <div className="w-full h-1 bg-gray-900 rounded-full overflow-hidden">
                                 <div 
@@ -237,7 +238,7 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                             </div>
                             <div className="flex justify-between items-center text-[9px] font-black text-gray-500 uppercase tracking-widest">
                                 <span>Volume DOWN</span>
-                                <span className="text-red-500 font-mono text-[10px]">৳{(data.totalDown || 0).toLocaleString()}</span>
+                                <span className="text-red-500 font-mono text-[10px]">{getCurrencySymbol(userCurrency)}{(data.totalDown || 0).toLocaleString()}</span>
                             </div>
                             <button 
                                 onClick={() => {

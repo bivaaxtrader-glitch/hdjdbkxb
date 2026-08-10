@@ -6,6 +6,9 @@ import { AuthModal } from '../components/AuthModal';
 import NewsletterForm from '../components/NewsletterForm';
 import SEO from '../components/SEO';
 import { motion, AnimatePresence } from 'motion/react';
+import { auth, db } from '../firebase';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { formatWithCurrency, convertToBase } from '../lib/currencies';
 
 export default function Homepage() {
   const navigate = useNavigate();
@@ -17,6 +20,33 @@ export default function Homepage() {
   });
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   const [faqSearch, setFaqSearch] = useState('');
+  const [userCurrency, setUserCurrency] = useState(() => {
+    try {
+      return localStorage.getItem('user_display_currency') || 'BDT';
+    } catch (e) {
+      return 'BDT';
+    }
+  });
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const userSub = onSnapshot(doc(db, 'users', user.uid), (userDoc) => {
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (data.currency) {
+              setUserCurrency(data.currency);
+              try {
+                localStorage.setItem('user_display_currency', data.currency);
+              } catch (e) {}
+            }
+          }
+        });
+        return () => userSub();
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
   const faqData = [
     {
@@ -183,7 +213,7 @@ export default function Homepage() {
         </div>
 
         {/* Glowing Golden Network / Connecting Curves (দাগ) as requested by user */}
-        <svg className="absolute inset-0 w-full h-full opacity-50 pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+        <svg className="absolute inset-0 w-full h-full opacity-65 pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#ffcf00" stopOpacity="0.9" />
@@ -196,10 +226,23 @@ export default function Homepage() {
           <path d="M 150 220 Q 400 480 650 380 T 1150 450" fill="none" stroke="url(#goldGrad)" strokeWidth="1.5" />
           <path d="M 250 60 Q 550 550 850 80" fill="none" stroke="url(#goldGrad)" strokeWidth="1" strokeDasharray="6 6" />
           <path d="M 180 320 Q 520 650 920 380" fill="none" stroke="url(#goldGrad)" strokeWidth="1.5" />
+          
+          {/* Beautiful extra yellow curves to fill the right side (where user requested in the red box) */}
+          <path d="M 600 150 Q 850 350 1100 200 T 1500 400" fill="none" stroke="url(#goldGrad)" strokeWidth="1.6" strokeDasharray="5 5" />
+          <path d="M 750 250 Q 980 500 1200 320" fill="none" stroke="url(#goldGrad)" strokeWidth="1.3" />
+          <path d="M 550 380 Q 800 620 1050 480 T 1400 650" fill="none" stroke="url(#goldGrad)" strokeWidth="1.5" />
+          <path d="M 680 80 Q 900 480 1180 120" fill="none" stroke="url(#goldGrad)" strokeWidth="1.1" strokeDasharray="8 8" />
+          
           <circle cx="280" cy="190" r="3.5" fill="#ffcf00" opacity="0.8" />
           <circle cx="720" cy="280" r="4" fill="#ffcf00" opacity="0.9" />
           <circle cx="520" cy="420" r="3" fill="#ffcf00" opacity="0.7" />
           <circle cx="850" cy="200" r="3.5" fill="#ffcf00" opacity="0.8" />
+          
+          {/* Extra pulsing glow circles in the right region */}
+          <circle cx="950" cy="280" r="4" fill="#ffcf00" opacity="0.95" />
+          <circle cx="1120" cy="380" r="3" fill="#ffcf00" opacity="0.8" />
+          <circle cx="1060" cy="210" r="3.5" fill="#ffcf00" opacity="0.9" />
+          <circle cx="1280" cy="450" r="4" fill="#ffcf00" opacity="0.85" />
         </svg>
 
         <div className="max-w-6xl mx-auto text-center relative z-10 text-white">
@@ -308,13 +351,32 @@ export default function Homepage() {
       </motion.section>
 
       {/* Features Section */}
-      <section className="px-4 py-24 bg-[#1a1b20]">
+      <section className="px-4 py-24 bg-[#1a1b20] relative overflow-hidden">
+        {/* Glowing Golden Network / Connecting Curves (দাগ) */}
+        <svg className="absolute inset-0 w-full h-full opacity-45 pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="goldGradFeatures" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffcf00" stopOpacity="0.8" />
+              <stop offset="50%" stopColor="#ffae00" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#ffcf00" stopOpacity="0.12" />
+            </linearGradient>
+          </defs>
+          <path d="M -50 200 Q 250 50 600 300 T 1200 100" fill="none" stroke="url(#goldGradFeatures)" strokeWidth="1.3" strokeDasharray="3 3" />
+          <path d="M 100 400 Q 500 150 900 450" fill="none" stroke="url(#goldGradFeatures)" strokeWidth="1.6" />
+          <path d="M 200 100 Q 600 500 1000 200 T 1400 400" fill="none" stroke="url(#goldGradFeatures)" strokeWidth="1.1" />
+          
+          <circle cx="350" cy="180" r="3" fill="#ffcf00" opacity="0.6" />
+          <circle cx="850" cy="320" r="3.5" fill="#ffcf00" opacity="0.75" />
+          <circle cx="600" cy="220" r="2.5" fill="#ffcf00" opacity="0.5" />
+          <circle cx="1100" cy="250" r="3.5" fill="#ffcf00" opacity="0.7" />
+        </svg>
+
         <motion.div 
           initial={{ opacity: 0, y: 50 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="max-w-6xl mx-auto"
+          className="max-w-6xl mx-auto relative z-10"
         >
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-black mb-4 tracking-tighter">Professional <span className="text-[#ffcf00]">Trading Tools</span></h2>
@@ -345,13 +407,30 @@ export default function Homepage() {
           {/* Removed Copy Trading Highlights per user request */}
 
       {/* Why Choose Bivaax Section */}
-      <section className="px-4 py-24 border-t border-white/5">
+      <section className="px-4 py-24 border-t border-white/5 relative overflow-hidden">
+        {/* Glowing Golden Network / Connecting Curves (দাগ) */}
+        <svg className="absolute inset-0 w-full h-full opacity-45 pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="goldGradElite" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffcf00" stopOpacity="0.85" />
+              <stop offset="50%" stopColor="#ffae00" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#ffcf00" stopOpacity="0.1" />
+            </linearGradient>
+          </defs>
+          <path d="M 100 100 Q 400 400 800 200 T 1300 350" fill="none" stroke="url(#goldGradElite)" strokeWidth="1.5" />
+          <path d="M 0 300 Q 500 50 900 380" fill="none" stroke="url(#goldGradElite)" strokeWidth="1.2" strokeDasharray="4 4" />
+          
+          <circle cx="450" cy="250" r="3" fill="#ffcf00" opacity="0.6" />
+          <circle cx="950" cy="180" r="3.5" fill="#ffcf00" opacity="0.8" />
+          <circle cx="720" cy="310" r="2.5" fill="#ffcf00" opacity="0.5" />
+        </svg>
+
         <motion.div 
           initial={{ opacity: 0, y: 50 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="max-w-6xl mx-auto"
+          className="max-w-6xl mx-auto relative z-10"
         >
           <div className="flex flex-col lg:flex-row items-center gap-20">
              <div className="flex-1 space-y-8">
@@ -408,7 +487,7 @@ export default function Homepage() {
                    <div className="mt-12 flex items-center justify-between">
                       <div>
                         <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mb-1">Weekly Profit</p>
-                        <p className="text-3xl font-black text-white tracking-tighter">৳1,245,600</p>
+                        <p className="text-3xl font-black text-white tracking-tighter">{formatWithCurrency(convertToBase(1245600, 'BDT'), userCurrency)}</p>
                       </div>
                       <TrendingUp size={48} className="text-[#ffcf00] opacity-20" />
                    </div>
@@ -453,8 +532,24 @@ export default function Homepage() {
       </section>
 
       {/* Referral Program */}
-      <section className="bg-[#1c1d22] py-20 px-4">
-        <div className="max-w-md mx-auto bg-[#2c2d32] rounded-3xl overflow-hidden shadow-2xl">
+      <section className="bg-[#1c1d22] py-20 px-4 relative overflow-hidden">
+        {/* Glowing Golden Network / Connecting Curves (দাগ) */}
+        <svg className="absolute inset-0 w-full h-full opacity-30 pointer-events-none z-0" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="goldGradReferral" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffcf00" stopOpacity="0.75" />
+              <stop offset="50%" stopColor="#ffae00" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#ffcf00" stopOpacity="0.1" />
+            </linearGradient>
+          </defs>
+          <path d="M -50 150 Q 200 350 500 100 T 1100 250" fill="none" stroke="url(#goldGradReferral)" strokeWidth="1.2" strokeDasharray="5 5" />
+          <path d="M 100 50 Q 400 200 800 50" fill="none" stroke="url(#goldGradReferral)" strokeWidth="1" />
+          
+          <circle cx="300" cy="150" r="3.5" fill="#ffcf00" opacity="0.6" />
+          <circle cx="750" cy="80" r="2.5" fill="#ffcf00" opacity="0.5" />
+        </svg>
+
+        <div className="max-w-md mx-auto bg-[#2c2d32] rounded-3xl overflow-hidden shadow-2xl relative z-10">
           <div className="h-48 bg-gradient-to-br from-green-500/20 to-[#ffcf00]/20 flex items-center justify-center relative overflow-hidden">
             <UserPlus size={100} className="text-white/20 absolute -right-6 -bottom-6" />
             <TrendingUp size={80} className="text-[#ffcf00] z-10" />
