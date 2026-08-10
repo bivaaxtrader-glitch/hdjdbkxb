@@ -135,7 +135,7 @@ export default function CopyTrading({ hideHeader = false }: { hideHeader?: boole
                 }
             };
             fetchCopies();
-            const copiesInterval = setInterval(fetchCopies, 5000);
+            const copiesInterval = setInterval(fetchCopies, 10000); // Polling every 10s to reduce server load
 
             return () => {
                 userSub();

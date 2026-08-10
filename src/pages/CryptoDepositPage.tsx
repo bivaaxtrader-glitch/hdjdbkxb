@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import SEO from '../components/SEO';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { doc, getDoc, collection, addDoc } from '../firebase';
+import { doc, getDoc, collection, addDoc, updateDoc } from '../firebase';
 import { onAuthStateChanged } from '../firebase';
 import { db, auth } from '../firebase';
 import * as Icons from 'lucide-react';
@@ -32,6 +32,10 @@ export default function CryptoDepositPage() {
   const [qrUrl, setQrUrl] = useState('');
   const [isTxInputVisible, setIsTxInputVisible] = useState(false);
   const promoCode = searchParams.get('promoCode');
+
+  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
+  const [depositDocId, setDepositDocId] = useState<string | null>(null);
+  const hasAutoSubmitted = React.useRef(false);
 
   useEffect(() => {
     if (promoCode) {
@@ -77,6 +81,48 @@ export default function CryptoDepositPage() {
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (currentUser && activeAddress && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const autoSubmit = async () => {
+        try {
+          const method = methodConfig.name || 'USDT (TRC-20)';
+          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
+              type: 'Deposit',
+              amount: Number(amount),
+              method: method,
+              currency: currency,
+              status: 'pending',
+              trxId: 'Pending/Crypto',
+              orderId: baseOrderId,
+              timestamp: Date.now(),
+              category: 'Crypto'
+          });
+          setTransactionDocId(tDoc.id);
+  
+          const dDoc = await addDoc(collection(db, 'deposits'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email || '',
+              amount: Number(amount),
+              currency: currency,
+              method: method,
+              walletNumber: activeAddress,
+              trxId: 'Pending/Crypto',
+              status: 'pending',
+              timestamp: Date.now(),
+              orderId: baseOrderId
+          });
+          setDepositDocId(dDoc.id);
+          
+          console.log("Auto-submitted pending crypto deposit request:", dDoc.id);
+        } catch (err) {
+          console.error("Auto crypto deposit failed:", err);
+        }
+      };
+      autoSubmit();
+    }
+  }, [currentUser, activeAddress, amount, methodConfig]);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -245,21 +291,33 @@ export default function CryptoDepositPage() {
         orderId: baseOrderId
       };
 
-      // Add to user transactions subcollection
-      await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
-        type: 'Deposit',
-        amount: Number(amount),
-        method: depositData.method,
-        currency: currency,
-        status: 'pending',
-        trxId: cleanHash,
-        orderId: baseOrderId,
-        timestamp: Date.now(),
-        category: 'Crypto'
-      });
+      // Add or update in user transactions subcollection
+      if (currentUser && transactionDocId) {
+        await updateDoc(doc(db, `users/${currentUser.uid}/transactions`, transactionDocId), {
+          trxId: cleanHash
+        });
+      } else if (currentUser) {
+        await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
+          type: 'Deposit',
+          amount: Number(amount),
+          method: depositData.method,
+          currency: currency,
+          status: 'pending',
+          trxId: cleanHash,
+          orderId: baseOrderId,
+          timestamp: Date.now(),
+          category: 'Crypto'
+        });
+      }
 
-      // Add to global deposits collection for Admin dashboard
-      await addDoc(collection(db, 'deposits'), depositData);
+      // Add or update in global deposits collection for Admin dashboard
+      if (depositDocId) {
+        await updateDoc(doc(db, 'deposits', depositDocId), {
+          trxId: cleanHash
+        });
+      } else {
+        await addDoc(collection(db, 'deposits'), depositData);
+      }
 
       setIsSuccess(true);
       toast.success("Transaction verified on-chain!");

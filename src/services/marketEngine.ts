@@ -50,22 +50,51 @@ export async function startMarketEngine() {
   runSettlement();
 
   // Main Ticker Loop (using recursive timeout)
+  let tickCount = 0;
   const runTicker = async () => {
     if (systemActive) {
       try {
         const io = getIO();
-        const nowSec = Math.floor(Date.now() / 1000);
+        const marketKeys = Object.keys(markets);
+        const nowMs = Date.now();
+        const nowSec = Math.floor(nowMs / 1000);
         const tickDataReal: Record<string, any> = {};
+        
+        tickCount++;
+        const isSummaryTick = tickCount % 5 === 0; // Every 1 second (5 * 200ms)
 
-        Object.keys(markets).forEach(pair => {
+        for (const pair of marketKeys) {
+          const roomName = `market_${pair}_real`;
+          const room = io.sockets.adapter.rooms.get(roomName);
+          const hasListeners = room && room.size > 0;
+
+          // Optimization: If no one is watching, we can skip high-frequency updates
+          // and only update once per second (summary tick) to maintain history
+          if (!hasListeners && !isSummaryTick) continue;
+
           const realTick = updatePair(pair, 'real', nowSec);
           if (realTick) {
-            tickDataReal[pair] = realTick;
+            // Only emit to specific room if someone is actually watching that asset
+            if (hasListeners) {
+               io.to(roomName).emit('market_tick', { pair, ...realTick });
+            }
+            
+            if (isSummaryTick) {
+              tickDataReal[pair] = realTick;
+            }
           }
-        });
+          
+          // Yield to event loop if we've processed a batch of markets
+          if (marketKeys.indexOf(pair) % 40 === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+          }
+        }
 
-        // Broadcast market states (ticks)
-        io.emit('market_ticks', tickDataReal);
+        // Broadcast market summary (prices) less frequently to reduce global bandwidth
+        if (isSummaryTick) {
+          io.emit('market_ticks', tickDataReal);
+          tickCount = 0;
+        }
       } catch (tickErr) {
         console.error('Ticker loop error:', tickErr);
       }

@@ -11,6 +11,7 @@ if (!fs.existsSync(dataDir)) {
 }
 const dbPath = path.join(dataDir, 'database.sqlite');
 const db = getSafeDatabase(dbPath);
+export { db };
 
 // Enable WAL mode for better concurrency and to prevent database corruption
 db.pragma('journal_mode = WAL');
@@ -296,6 +297,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS pair_type_time_idx ON candles (pair, type, tim
 CREATE INDEX IF NOT EXISTS trades_user_id_idx ON trades (user_id);
 CREATE INDEX IF NOT EXISTS trades_settled_at_idx ON trades (settled_at);
 CREATE INDEX IF NOT EXISTS trades_status_idx ON trades (status);
+CREATE INDEX IF NOT EXISTS active_copies_user_id_idx ON active_copies (user_id);
+CREATE INDEX IF NOT EXISTS transactions_user_id_idx ON transactions (user_id);
+CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON audit_logs (user_id);
+CREATE INDEX IF NOT EXISTS login_history_user_id_idx ON login_history (user_id);
+CREATE INDEX IF NOT EXISTS historical_candles_lookup_idx ON historical_candles (market, type, timeframe, openTime DESC);
 `);
 
 // Auto-migrate missing columns for support system
@@ -343,29 +349,50 @@ addColIfMissing('ticket_messages', 'is_read INTEGER DEFAULT 0');
 // Helper to convert '?' placeholders (SQLite uses '?' so no change needed)
 // However, we might need to handle some MySQL specific syntax if it exists.
 
+const statementCache = new Map<string, any>();
+
 export async function query(sql: string, params: any[] = [], conn?: any) {
-  const statement = db.prepare(sql);
+  let statement = statementCache.get(sql);
+  if (!statement) {
+    statement = db.prepare(sql);
+    statementCache.set(sql, statement);
+  }
   return statement.all(...params);
 }
 
 export async function get(sql: string, params: any[] = [], conn?: any) {
-  const statement = db.prepare(sql);
+  let statement = statementCache.get(sql);
+  if (!statement) {
+    statement = db.prepare(sql);
+    statementCache.set(sql, statement);
+  }
   return statement.get(...params);
 }
 
 export async function run(sql: string, params: any[] = [], conn?: any) {
-  const statement = db.prepare(sql);
+  let statement = statementCache.get(sql);
+  if (!statement) {
+    statement = db.prepare(sql);
+    statementCache.set(sql, statement);
+  }
   return statement.run(...params);
 }
 
 export async function transaction<T>(fn: (connection: any) => Promise<T>): Promise<T> {
-  const execute = db.transaction(async (callback: any) => {
-    return await callback();
-  });
+  // better-sqlite3 transactions are synchronous. 
+  // For async compatibility, we use deferred execution if needed, 
+  // but most of our logic is already using await.
+  // We'll wrap the logic in a manual BEGIN/COMMIT block to support async.
   
-  // Note: better-sqlite3 transactions are synchronous by default, 
-  // but we provide an async-looking wrapper for compatibility.
-  return await fn(db);
+  db.prepare('BEGIN').run();
+  try {
+    const result = await fn(db);
+    db.prepare('COMMIT').run();
+    return result;
+  } catch (err) {
+    db.prepare('ROLLBACK').run();
+    throw err;
+  }
 }
 
 export default db;

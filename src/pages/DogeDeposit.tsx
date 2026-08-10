@@ -17,12 +17,60 @@ export default function DogeDeposit() {
   const [timeLeft, setTimeLeft] = useState(24 * 60 * 60); 
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
 
+  const [orderId] = useState(() => Math.floor(Math.random() * 100000000).toString());
+  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
+  const [depositDocId, setDepositDocId] = useState<string | null>(null);
+  const hasAutoSubmitted = React.useRef(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setCurrentUser(u);
     });
     return () => unsub();
   }, []);
+
+  const dogeWalletAddress = appConfig.dogeAddress || "DQxycdGAx3Je27YSAc87WJ7ANq9McALh4U";
+
+  useEffect(() => {
+    if (currentUser && dogeWalletAddress && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const autoSubmit = async () => {
+        try {
+          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
+              type: 'Deposit',
+              amount: Number(amountCrypto.replace(',', '')),
+              method: 'Dogecoin (DOGE)',
+              currency: 'DOGE',
+              status: 'Pending',
+              trxId: 'Pending/DOGE',
+              orderId: orderId,
+              timestamp: Date.now(),
+              category: 'Crypto'
+          });
+          setTransactionDocId(tDoc.id);
+  
+          const dDoc = await addDoc(collection(db, 'deposits'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email || '',
+              amount: Number(amountCrypto.replace(',', '')),
+              currency: 'DOGE',
+              method: 'Dogecoin (DOGE)',
+              walletNumber: dogeWalletAddress,
+              trxId: 'Pending/DOGE',
+              status: 'pending',
+              timestamp: Date.now(),
+              orderId: orderId
+          });
+          setDepositDocId(dDoc.id);
+          
+          console.log("Auto-submitted pending DOGE deposit request:", dDoc.id);
+        } catch (err) {
+          console.error("Auto DOGE deposit failed:", err);
+        }
+      };
+      autoSubmit();
+    }
+  }, [currentUser, dogeWalletAddress, amountCrypto]);
   
   useEffect(() => {
     const fetchConfig = async () => {
@@ -70,6 +118,10 @@ export default function DogeDeposit() {
      }
 
      setIsSubmitting(true);
+     setIsSuccess(true);
+     toast.success("Deposit request confirmed!");
+     setTimeout(() => { navigate('/trade'); }, 5000);
+     return;
      try {
          const baseOrderId = Math.floor(Math.random() * 100000000).toString();
          

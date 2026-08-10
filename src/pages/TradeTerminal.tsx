@@ -5266,6 +5266,9 @@ const PROMOTED_ARTICLES = [
         // Balance is updated in real-time authoritatively and instantly via Firestore onSnapshot / socket user_profile_update.
         // We do not modify the client balance state manually here to prevent any double-addition race conditions.
         if (!processedTradesRef.current.has(trade.id)) {
+            if (processedTradesRef.current.size > 1000) {
+              processedTradesRef.current.clear();
+            }
             processedTradesRef.current.add(trade.id);
         }
     });
@@ -5350,7 +5353,7 @@ const PROMOTED_ARTICLES = [
                                 const assetChanged = lastZoomedAssetRef.current !== layoutKey;
                                 
                                 if (assetChanged) {
-                                    chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 60), to: uniqueData.length + 8 });
+                                    chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 12), to: uniqueData.length + 2 });
                                     chartRef.current.timeScale().scrollToRealTime();
                                     lastZoomedAssetRef.current = layoutKey;
                                 } else if (currentRange && (currentRange.to - currentRange.from) > 0 && wasScrolledBack) {
@@ -5574,6 +5577,80 @@ const PROMOTED_ARTICLES = [
     socket.off("market_ticks", handleMarketTicks);
     socket.on("market_ticks", handleMarketTicks);
 
+    socket.off("market_tick", handleSingleMarketTick);
+    socket.on("market_tick", handleSingleMarketTick);
+
+  function handleSingleMarketTick(tick: any) {
+      if (tick.pair !== activeAssetRef.current) return;
+      
+      const activePair = activeAssetRef.current;
+      const timeframeSeconds = getTimeSeconds(timeframeRef.current);
+      const serverTime = tick.time || (Date.now() / 1000);
+      let bucketTime = Math.floor(serverTime - (serverTime % timeframeSeconds));
+      const newClose = tick.price;
+
+      if (!rawLastCandleRef.current) {
+          const serverCandle = tick.candle;
+          rawLastCandleRef.current = {
+              time: bucketTime as Time,
+              open: serverCandle?.open ?? newClose,
+              high: serverCandle?.high ?? (newClose * 1.0001),
+              low: serverCandle?.low ?? (newClose * 0.9999),
+              close: serverCandle?.close ?? newClose,
+              volume: serverCandle?.volume || 1
+          };
+          currentInterpolatedPriceRef.current = newClose;
+      }
+
+      if (rawLastCandleRef.current.time !== bucketTime && bucketTime > rawLastCandleRef.current.time) {
+          const prevClose = rawLastCandleRef.current.close;
+          const openPrice = tick.candle?.open ?? prevClose;
+          const highPrice = Math.max(openPrice, newClose, tick.candle?.high ?? newClose);
+          const lowPrice = Math.min(openPrice, newClose, tick.candle?.low ?? newClose);
+
+          const newCandle = {
+              time: bucketTime as Time,
+              open: openPrice,
+              high: highPrice,
+              low: lowPrice,
+              close: newClose,
+              volume: tick.candle?.volume || 1
+          };
+          
+          if (baseDataRef.current) {
+             const lastIdx = baseDataRef.current.length - 1;
+             if (lastIdx >= 0 && baseDataRef.current[lastIdx].time === rawLastCandleRef.current.time) {
+                 baseDataRef.current[lastIdx] = { ...rawLastCandleRef.current };
+             }
+             baseDataRef.current.push(newCandle);
+             if (baseDataRef.current.length > 5000) baseDataRef.current.shift();
+          }
+          rawLastCandleRef.current = newCandle;
+      } else {
+          rawLastCandleRef.current.close = newClose;
+          rawLastCandleRef.current.high = Math.max(rawLastCandleRef.current.high, newClose);
+          rawLastCandleRef.current.low = Math.min(rawLastCandleRef.current.low, newClose);
+          if (tick.candle?.volume) rawLastCandleRef.current.volume = tick.candle.volume;
+      }
+
+      targetPriceRef.current = newClose;
+
+      // Active Alerts Check for the active asset
+      if (newClose > 0 && alertsRef.current.length > 0) {
+          const activeAlerts = alertsRef.current.filter(a => a.asset === activePair && a.status === 'active');
+          if (activeAlerts.length > 0) {
+            activeAlerts.forEach(alert => {
+                let triggered = (alert.condition === 'above' && newClose >= alert.targetPrice) || (alert.condition === 'below' && newClose <= alert.targetPrice);
+                if (triggered) {
+                    alert.status = 'triggered';
+                    setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, status: 'triggered' } : a));
+                    toast.success(`Price hit ${alert.targetPrice.toFixed(5)}`, { icon: '🔔' });
+                }
+            });
+          }
+      }
+  }
+
   // Handle market ticks with elite internal interpolation
   function handleMarketTicks(ticks: any) {
       lastChartUpdateTimeRef.current = Date.now();
@@ -5616,86 +5693,13 @@ const PROMOTED_ARTICLES = [
         });
       }
 
-      // 2. ACTIVE ASSET CONTINUITY & CANDLE SYNC
-
+      // 2. ACTIVE ASSET CONTINUITY & CANDLE SYNC (Handled by handleSingleMarketTick for responsiveness)
       const tickData = ticks[activePair];
-      let newClose = 0;
       if (tickData) {
-        newClose = tickData.price;
-        const timeframeSeconds = getTimeSeconds(timeframeRef.current);
-        const serverTime = tickData.time || (Date.now() / 1000);
-        let bucketTime = Math.floor(serverTime - (serverTime % timeframeSeconds));
-
-        if (!rawLastCandleRef.current) {
-            const serverCandle = tickData.candle;
-            rawLastCandleRef.current = {
-                time: bucketTime as Time,
-                open: serverCandle?.open ?? newClose,
-                high: serverCandle?.high ?? (newClose * 1.0001),
-                low: serverCandle?.low ?? (newClose * 0.9999),
-                close: serverCandle?.close ?? newClose,
-                volume: serverCandle?.volume || 1
-            };
-            currentInterpolatedPriceRef.current = newClose;
-        }
-
-        if (rawLastCandleRef.current.time !== bucketTime && bucketTime > rawLastCandleRef.current.time) {
-            const prevClose = rawLastCandleRef.current.close;
-            const openPrice = tickData.candle?.open ?? prevClose;
-
-            const highPrice = Math.max(openPrice, newClose, tickData.candle?.high ?? newClose);
-            const lowPrice = Math.min(openPrice, newClose, tickData.candle?.low ?? newClose);
-
-            const newCandle = {
-                time: bucketTime as Time,
-                open: openPrice,
-                high: highPrice,
-                low: lowPrice,
-                close: newClose,
-                volume: tickData.candle?.volume || (10 + Math.random() * 90)
-            };
-            rawLastCandleRef.current = newCandle;
-            currentInterpolatedPriceRef.current = openPrice;
-            if (baseDataRef.current) {
-                const baseData = baseDataRef.current;
-                if (baseData.length > 0 && baseData[baseData.length - 1].time < bucketTime) {
-                    baseData.push({...newCandle});
-                    if (baseData.length > 5000) baseData.shift();
-                }
-            }
-        } else {
-            // Update the current candle with the latest tick price
-            const candle = rawLastCandleRef.current;
-            candle.close = newClose;
-            
-            // Smoother high/low updates for more realistic "market-like" shapes
-            if (tickData.candle) {
-               candle.high = Math.max(candle.high, tickData.candle.high, newClose);
-               candle.low = Math.min(candle.low, tickData.candle.low, newClose);
-               candle.volume = (candle.volume || 0) + (tickData.candle.volume || 1);
-            } else {
-               candle.high = Math.max(candle.high, newClose);
-               candle.low = Math.min(candle.low, newClose);
-            }
-        }
-
-        targetPriceRef.current = newClose;
-        if (!currentInterpolatedPriceRef.current) currentInterpolatedPriceRef.current = newClose;
+         targetPriceRef.current = tickData.price;
       }
 
-      // 3. ACTIVE ALERTS CHECK
-      if (newClose > 0 && currentAlerts.length > 0) {
-          currentAlerts.filter(a => a.asset === activePair && a.status === 'active').forEach(alert => {
-              let triggered = (alert.condition === 'above' && newClose >= alert.targetPrice) || (alert.condition === 'below' && newClose <= alert.targetPrice);
-              if (triggered) {
-                  alert.status = 'triggered';
-                  setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, status: 'triggered' } : a));
-                  toast.success(`Price hit ${alert.targetPrice.toFixed(5)}`, { icon: '🔔' });
-              }
-          });
-      }
-
-      // 4. TRADE PROCESSING Logic
+      // 3. TRADE PROCESSING Logic (Visual Countdown & Optimistic Settle)
       let tradesUpdated = false;
       const allTicks = ticks;
       const newActiveTrades = activeTradesRef.current.map(trade => {
@@ -5709,24 +5713,22 @@ const PROMOTED_ARTICLES = [
         return trade;
       }).filter(trade => {
         const tradeAsset = trade.asset;
-        const currentPriceForAsset = allTicks[tradeAsset]?.price || (tradeAsset === activePair ? newClose : null);
+        const currentPriceForAsset = allTicks[tradeAsset]?.price || (tradeAsset === activePair ? targetPriceRef.current : null);
 
         if (trade.timeLeft <= 0) {
-          // If we don't have a valid price for the asset yet, do not settle the trade.
-          // Fallbacking to entryPrice causes fake draws and refunds false-losses!
-          if (!currentPriceForAsset) {
-             return true; // Keep it in active trades
+          if (!currentPriceForAsset) return true;
+          
+          if (processedTradesRef.current.has(trade.id)) return false;
+          
+          // Prevent Set from growing indefinitely in long sessions
+          if (processedTradesRef.current.size > 1000) {
+            processedTradesRef.current.clear();
           }
-
-          // Prevent duplicate processing of the same trade ID
-          if (processedTradesRef.current.has(trade.id)) {
-             return false;
-          }
+          
           processedTradesRef.current.add(trade.id);
-          
           tradesUpdated = true;
+
           const settlePrice = currentPriceForAsset;
-          
           const diff = settlePrice - trade.entryPrice;
           const epsilon = 0.0000000001; 
           const isDraw = Math.abs(diff) < epsilon;
@@ -5734,114 +5736,42 @@ const PROMOTED_ARTICLES = [
           
           let won = false;
           if (!isDraw) {
-            if (dir === "up") {
-                won = settlePrice > trade.entryPrice;
-            } else {
-                won = settlePrice < trade.entryPrice;
-            }
+            won = dir === "up" ? settlePrice > trade.entryPrice : settlePrice < trade.entryPrice;
           }
 
-          const returnAmt = trade.amount * (trade.payout / 100 + 1);
-          
-          const isRecent = trade.expirationTime > (Date.now() - 10000); // Only toast if expired within last 10 seconds
-          
-          let tradeStatus = isDraw ? 'draw' : won ? 'won' : 'lost';
+          const payoutRate = trade.payoutRate || 80;
+          const returnAmt = trade.amount * (payoutRate / 100 + 1);
+          const tradeStatus = isDraw ? 'draw' : won ? 'won' : 'lost';
 
-          // Notify server that trade has settled authoritatively and securely
-          // This endpoint will update both the trade status and the user's balances atomically on the database.
-          const fetchWithRetry = (url: string, options: RequestInit, retries = 5, delay = 1500): Promise<Response> => {
-              return fetch(url, options).then(async (res) => {
-                  if (!res.ok) {
-                      const text = await res.text();
-                      throw new Error(`HTTP ${res.status}: ${text}`);
-                  }
-                  return res;
-              }).catch((err) => {
-                  if (retries > 0) {
-                      return new Promise<void>((resolve) => setTimeout(resolve, delay))
-                          .then(() => fetchWithRetry(url, options, retries - 1, delay * 1.5));
-                  }
-                  throw err;
-              });
-          };
-
-          fetchWithRetry('/api/trade/settle-secure', {
+          // Settle on server
+          fetch('/api/trade/settle-secure', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                  tradeId: trade.id,
-                  currentMarketPrice: settlePrice,
-                  tradeData: trade
-              })
-          }).then(async (response) => {
-              // Settle status and balances are handled securely on the server
-          }).catch(err => {
-              console.error("Secure single trade settlement request failed:", err);
-          });
-
-          // We rely on the server API to handle the actual database balance update 
-          // to avoid double payouts. We still sync the trade document locally for immediate UI response.
-          // Settle status is synchronized securely on the server.
-          // Local UI state is updated immediately below.
+              body: JSON.stringify({ tradeId: trade.id, currentMarketPrice: settlePrice, tradeData: trade })
+          }).catch(err => console.error("Settlement request failed:", err));
 
           if (won) {
-            updateBalance(returnAmt); // Optimistic UI update with zero delay
-            if (isRecent) {
-                // toast.success(`Trade Won! +${userCurrency}${returnAmt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
-                setTradeNotifications(prev => [{
-                    id: Math.random().toString(36).substr(2, 9),
-                    asset: trade.asset,
-                    amount: returnAmt,
-                    status: 'won',
-                    timestamp: Date.now()
-                }, ...prev]);
-            }
+            updateBalance(returnAmt);
             updateTournamentScore(returnAmt - trade.amount, true);
-          } else if (tradeStatus === 'draw') {
-            updateBalance(trade.amount); // Optimistic UI update with zero delay
-            if (isRecent) {
-                // toast.success(`Trade Closed (Draw). +${userCurrency}${trade.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
-                setTradeNotifications(prev => [{
-                    id: Math.random().toString(36).substr(2, 9),
-                    asset: trade.asset,
-                    amount: trade.amount,
-                    status: 'draw',
-                    timestamp: Date.now()
-                }, ...prev]);
-            }
+          } else if (isDraw) {
+            updateBalance(trade.amount);
             updateTournamentScore(0, false);
           } else {
-            if (isRecent) {
-                // toast.error(`Trade Lost. -${userCurrency}${trade.amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
-                setTradeNotifications(prev => [{
-                    id: Math.random().toString(36).substr(2, 9),
-                    asset: trade.asset,
-                    amount: trade.amount,
-                    status: 'lost',
-                    timestamp: Date.now()
-                }, ...prev]);
-            }
-            if (trade.accountType === 'real' && auth.currentUser) {
-               // Commission is now handled automatically by the server settler
-            }
             updateTournamentScore(-trade.amount, false);
           }
-          
+
           setUserTrades(prev => {
-            const settledTrade = { ...trade, status: tradeStatus, exitPrice: settlePrice, payoutAmount: won ? returnAmt : (tradeStatus === 'draw' ? trade.amount : 0) };
-            const next = [settledTrade, ...prev.filter(t => t.id !== trade.id)];
-            next.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            return next.slice(0, 100);
+            const settledTrade = { ...trade, status: tradeStatus, exitPrice: settlePrice, payoutAmount: won ? returnAmt : (isDraw ? trade.amount : 0) };
+            return [settledTrade, ...prev.filter(t => t.id !== trade.id)].slice(0, 100);
           });
           
           return false;
         }
         return true;
       });
-      
+
       if (tradesUpdated) {
-        activeTradesRef.current = newActiveTrades;
-        setActiveTrades(newActiveTrades);
+         setActiveTrades(newActiveTrades);
       }
     };
 
@@ -6441,7 +6371,7 @@ const PROMOTED_ARTICLES = [
               const assetChanged = lastZoomedAssetRef.current !== layoutKey;
               
               if (assetChanged || forceRecreate) {
-                  chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 60), to: uniqueData.length + 8 });
+                  chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 12), to: uniqueData.length + 2 });
                   chartRef.current.timeScale().scrollToRealTime();
                   lastZoomedAssetRef.current = layoutKey;
               } else if (hasZoom && wasScrolledBack) {

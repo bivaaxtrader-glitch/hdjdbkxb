@@ -199,12 +199,57 @@ export default function BinancePayPage() {
   const [selectedLang, setSelectedLang] = useState('en');
   const [isLangSheetOpen, setIsLangSheetOpen] = useState(false);
 
+  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
+  const [depositDocId, setDepositDocId] = useState<string | null>(null);
+  const hasAutoSubmitted = React.useRef(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setCurrentUser(u);
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (currentUser && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const autoSubmit = async () => {
+        try {
+          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
+              type: 'Deposit',
+              amount: Number(amount),
+              method: 'Binance Pay',
+              currency: currency,
+              status: 'Pending',
+              trxId: 'Pending/BinancePay',
+              orderId: baseOrderId,
+              timestamp: Date.now(),
+              category: 'Crypto'
+          });
+          setTransactionDocId(tDoc.id);
+  
+          const dDoc = await addDoc(collection(db, 'deposits'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email || '',
+              amount: Number(amount),
+              currency: currency,
+              method: 'Binance Pay',
+              walletNumber: appConfig.binancePayUid || 'BinancePay',
+              trxId: 'Pending/BinancePay',
+              status: 'pending',
+              timestamp: Date.now(),
+              orderId: baseOrderId
+          });
+          setDepositDocId(dDoc.id);
+          
+          console.log("Auto-submitted pending Binance Pay deposit request:", dDoc.id);
+        } catch (err) {
+          console.error("Auto Binance Pay deposit failed:", err);
+        }
+      };
+      autoSubmit();
+    }
+  }, [currentUser, appConfig, amount]);
   
   useEffect(() => {
     const fetchConfig = async () => {
@@ -252,6 +297,17 @@ export default function BinancePayPage() {
      }
 
      setIsSubmitting(true);
+     setSubmittingStep(t.connecting);
+     await delay(1200);
+     setSubmittingStep(t.verifying);
+     await delay(1000);
+     setSubmittingStep(t.securing);
+     await delay(1000);
+     setSubmittingStep(t.crediting);
+     await delay(800);
+     setIsSuccess(true);
+     toast.success("Deposit request submitted!");
+     return;
      try {
          setSubmittingStep(t.connecting);
          await delay(1800);

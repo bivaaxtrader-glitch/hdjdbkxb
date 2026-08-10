@@ -50,7 +50,7 @@ async function startServer() {
     /\.asp$/i,
     /\.aspx$/i,
     /admin\/(login|setup|config)/i,
-    /config\/(db|settings)/i,
+    /config\/(?:db|settings)(?!\/)/i,
     /shell/i,
     /backup/i,
     /dump/i,
@@ -208,25 +208,51 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
   httpServer.timeout = 30000;
   httpServer.keepAliveTimeout = 65000;
   httpServer.headersTimeout = 66000;
+  
+  // Monitor event loop lag to diagnose performance issues
+  setInterval(() => {
+    const start = Date.now();
+    setImmediate(() => {
+      const lag = Date.now() - start;
+      if (lag > 200) {
+        console.warn(`[PERF] Event loop lag detected: ${lag}ms`);
+      }
+    });
+  }, 5000);
 
-  httpServer.listen(PORT, "0.0.0.0", async () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Sync local database from Firestore on startup to restore all state (Users, Trades, Transactions, KYC)
-    try {
-      await syncDatabaseFromFirestore();
-    } catch (syncErr: any) {
-      console.error('Failed to sync database from Firestore on boot:', syncErr.message);
-    }
+    // Stagger startup tasks to keep the event loop responsive and avoid peak resource spikes
+    setTimeout(async () => {
+      console.log('🔄 Starting background synchronization and seeding...');
+      
+      // 1. Sync local database from Firestore (restores Users, Trades, etc.)
+      try {
+        await syncDatabaseFromFirestore();
+      } catch (syncErr: any) {
+        console.error('Failed to sync database from Firestore on boot:', syncErr.message);
+      }
 
-    // Seed master traders
-    await seedMasterTraders();
-    // Seed tournaments
-    await seedTournaments();
-    // Start Market Engine after listening
-    startMarketEngine();
-    // Start Copy Trading Simulation
-    startMasterSimulation();
+      // 2. Seed static data
+      try {
+        await seedMasterTraders();
+        await seedTournaments();
+      } catch (err) {}
+
+      // 3. Start Market Engine (starts price generation ticker)
+      setTimeout(() => {
+        console.log('📈 Starting Market Engine...');
+        startMarketEngine();
+        
+        // 4. Start Copy Trading Simulation
+        setTimeout(() => {
+          console.log('👥 Starting Copy Trading Simulation...');
+          startMasterSimulation();
+        }, 10000);
+      }, 5000);
+      
+    }, 2000);
   });
 }
 

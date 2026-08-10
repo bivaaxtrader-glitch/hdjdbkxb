@@ -58,18 +58,18 @@ export function saveCandleToDB(pair: string, type: 'real' | 'demo', candle: any)
 
 const lastSqliteWrite = new Map<string, number>();
 
-export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
-  try {
-    const nowMs = Date.now();
-    const nowSec = Math.floor(nowMs / 1000);
-    const isCompleted = candle.closeTime <= nowSec;
-    const cacheKey = `${pair}_${type}_${timeframe}`;
-    const lastWrite = lastSqliteWrite.get(cacheKey) || 0;
+let insertCandleStmt: any = null;
+const candleBuffer: any[] = [];
+let isFlushing = false;
 
-    // ONLY save to SQLite periodically (every 5 seconds) to reduce CPU load, or if the candle just completed
-    if (nowMs - lastWrite >= 5000 || isCompleted) {
-      lastSqliteWrite.set(cacheKey, nowMs);
-      db.prepare(`
+// Background task to flush the candle buffer using a high-performance transaction
+async function flushCandleBuffer() {
+  if (isFlushing || candleBuffer.length === 0) return;
+  isFlushing = true;
+  
+  try {
+    if (!insertCandleStmt) {
+      insertCandleStmt = db.prepare(`
         INSERT INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(market, type, timeframe, openTime) DO UPDATE SET
@@ -78,18 +78,69 @@ export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe
           close = excluded.close,
           volume = excluded.volume,
           closeTime = excluded.closeTime
-      `).run(
+      `);
+    }
+
+    const batch = candleBuffer.splice(0, 1000);
+    const runTx = db.transaction((rows) => {
+      for (const r of rows) {
+        insertCandleStmt.run(
+          r.pair,
+          r.type,
+          r.timeframe,
+          r.open,
+          r.high,
+          r.low,
+          r.close,
+          r.volume,
+          r.openTime,
+          r.closeTime
+        );
+      }
+    });
+    
+    runTx(batch);
+  } catch (err) {
+    console.error('Failed to flush candle buffer:', err);
+  } finally {
+    isFlushing = false;
+    if (candleBuffer.length > 0) {
+      setImmediate(flushCandleBuffer);
+    }
+  }
+}
+
+// Periodically flush the buffer every 500ms
+setInterval(flushCandleBuffer, 500);
+
+export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
+  try {
+    const nowMs = Date.now();
+    const nowSec = Math.floor(nowMs / 1000);
+    const isCompleted = candle.closeTime <= nowSec;
+    const cacheKey = `${pair}_${type}_${timeframe}`;
+    const lastWrite = lastSqliteWrite.get(cacheKey) || 0;
+
+    // ONLY buffer for save periodically (every 5 seconds) or if the candle just completed
+    if (nowMs - lastWrite >= 5000 || isCompleted) {
+      lastSqliteWrite.set(cacheKey, nowMs);
+      
+      candleBuffer.push({
         pair,
         type,
         timeframe,
-        Number(candle.open).toFixed(6),
-        Number(candle.high).toFixed(6),
-        Number(candle.low).toFixed(6),
-        Number(candle.close).toFixed(6),
-        Number(candle.volume).toFixed(2),
-        candle.openTime,
-        candle.closeTime
-      );
+        open: Number(candle.open).toFixed(6),
+        high: Number(candle.high).toFixed(6),
+        low: Number(candle.low).toFixed(6),
+        close: Number(candle.close).toFixed(6),
+        volume: Number(candle.volume).toFixed(2),
+        openTime: candle.openTime,
+        closeTime: candle.closeTime
+      });
+      
+      if (candleBuffer.length > 2000) {
+        flushCandleBuffer();
+      }
     }
 
     // Save only COMPLETED candles (1m+) to Firestore to significantly reduce write quota usage.
@@ -183,13 +234,16 @@ export function isMarketClosedAt(pair: string, timestampSec: number): boolean {
   return false;
 }
 
-export function pruneHistoricalCandles() {
+export async function pruneHistoricalCandles() {
   console.log('🧹 Running automated historical candles pruning...');
   try {
     const pairKeys = Object.keys(markets);
     let totalDeleted = 0;
 
     for (const pair of pairKeys) {
+      // Yield to event loop to prevent blocking during heavy pruning
+      await new Promise(resolve => setImmediate(resolve));
+      
       for (const type of ['real', 'demo']) {
         for (const tf of TIMEFRAMES) {
           const limit = 1000;
@@ -260,7 +314,7 @@ export async function initializeCandlesFromDB() {
 
   // Run initial pruning to keep database extremely compact and fast right from startup
   try {
-    pruneHistoricalCandles();
+    await pruneHistoricalCandles();
   } catch (pruneErr: any) {
     console.error('Error during startup candle pruning:', pruneErr.message);
   }
@@ -554,14 +608,17 @@ export async function initializeCandlesFromDB() {
             }
           }
 
-          // Load complete historical candles from DB up to 100,000 limit
+          // Load complete historical candles from DB
           const rows = db.prepare(`
             SELECT openTime as time, open, high, low, close, volume, openTime, closeTime
             FROM historical_candles
             WHERE market = ? AND type = ? AND timeframe = ?
             ORDER BY openTime DESC
-            LIMIT 1000
+            LIMIT 500
           `).all(pair, type, tf) as any[];
+
+          // Yield to event loop
+          await new Promise(resolve => setImmediate(resolve));
           
           const formattedRows = rows.map(r => ({
             time: r.time,
@@ -625,9 +682,9 @@ export async function initializeCandlesFromDB() {
   console.log('✅ Candle storage initialized successfully!');
 
   // Periodically prune historical candles every 1 hour (recursive timeout to prevent overlap)
-  const runPruning = () => {
+  const runPruning = async () => {
     try {
-      pruneHistoricalCandles();
+      await pruneHistoricalCandles();
     } catch (e: any) {
       console.error('Failed to run scheduled candle pruning:', e.message);
     }

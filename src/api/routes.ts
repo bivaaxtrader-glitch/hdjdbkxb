@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { get, query, run, transaction } from '../db/mysql-db.ts';
+import { db, get, query, run, transaction } from '../db/mysql-db.ts';
 import { requireAuth, AuthRequest } from '../middleware/jwtAuth.ts';
 import { createAuditLog } from '../lib/audit.ts';
 import logger from '../lib/logger.ts';
@@ -763,96 +763,110 @@ async function syncUserTransactions(userId: string) {
 export async function syncGlobalTransactionsFromFirestore() {
   if (!adminDb) return;
   try {
-    // 1. Sync Deposits (with safety limit to keep boot synchronization fast)
+    const checkHashStmt = db.prepare('SELECT id FROM transactions WHERE user_id = ? AND tx_hash = ? AND type = ?');
+    const checkPatternStmt = db.prepare('SELECT id FROM transactions WHERE user_id = ? AND details LIKE ? AND type = ?');
+    const checkExactStmt = db.prepare('SELECT id FROM transactions WHERE user_id = ? AND type = ? AND amount = ? AND created_at = ?');
+    const insertStmt = db.prepare(`
+      INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const updateStmt = db.prepare(`
+      UPDATE transactions SET status = ?, updated_at = datetime('now') WHERE id = ? AND status != ?
+    `);
+
+    // 1. Sync Deposits
     const depositsSnap = await adminDb.collection('deposits').limit(500).get();
-    for (const doc of depositsSnap.docs) {
-      const data = doc.data();
-      const firestoreId = doc.id;
-      const userId = data.userId;
-      if (!userId) continue;
+    let i = 0;
+    const batchSize = 50;
+    while (i < depositsSnap.docs.length) {
+      db.prepare('BEGIN').run();
+      try {
+        const batch = depositsSnap.docs.slice(i, i + batchSize);
+        for (const doc of batch) {
+          const data = doc.data();
+          const firestoreId = doc.id;
+          const userId = data.userId;
+          if (!userId) continue;
 
-      const txHash = data.trxId || data.txHash || '';
-      const amount = (data.amount || 0).toString();
-      const status = (data.status === 'success' || data.status === 'approved') ? 'completed' : data.status || 'pending';
-      const method = data.method || 'direct';
-      const currency = data.currency || 'BDT';
-      const createdTime = data.timestamp || Date.now();
+          const txHash = data.trxId || data.txHash || '';
+          const amount = (data.amount || 0).toString();
+          const status = (data.status === 'success' || data.status === 'approved') ? 'completed' : data.status || 'pending';
+          const method = data.method || 'direct';
+          const currency = data.currency || 'BDT';
+          const createdTime = data.timestamp || Date.now();
 
-      let existingTx = null;
-      if (txHash) {
-        existingTx = await get('SELECT id FROM transactions WHERE user_id = ? AND tx_hash = ? AND type = \'deposit\'', [userId, txHash]);
-      }
-      if (!existingTx) {
-        const pattern = `%${firestoreId}%`;
-        existingTx = await get('SELECT id FROM transactions WHERE user_id = ? AND details LIKE ? AND type = \'deposit\'', [userId, pattern]);
-      }
-      if (!existingTx) {
-        existingTx = await get(
-          'SELECT id FROM transactions WHERE user_id = ? AND type = \'deposit\' AND amount = ? AND created_at = ?',
-          [userId, amount, createdTime]
-        );
-      }
+          let existingTx = null;
+          if (txHash) {
+            existingTx = checkHashStmt.get(userId, txHash, 'deposit');
+          }
+          if (!existingTx) {
+            existingTx = checkPatternStmt.get(userId, `%${firestoreId}%`, 'deposit');
+          }
+          if (!existingTx) {
+            existingTx = checkExactStmt.get(userId, 'deposit', amount, createdTime);
+          }
 
-      const detailsObj = { firestoreId, walletNumber: data.walletNumber, orderId: data.orderId };
+          const detailsObj = { firestoreId, walletNumber: data.walletNumber, orderId: data.orderId };
 
-      if (!existingTx) {
-        await run(
-          `INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [userId, 'deposit', amount, status, method, txHash, currency, JSON.stringify(detailsObj), createdTime]
-        );
-      } else {
-        await run(
-          `UPDATE transactions SET status = ?, updated_at = datetime('now') WHERE id = ? AND status != ?`,
-          [status, existingTx.id, status]
-        );
+          if (!existingTx) {
+            insertStmt.run(userId, 'deposit', amount, status, method, txHash, currency, JSON.stringify(detailsObj), createdTime);
+          } else {
+            updateStmt.run(status, (existingTx as any).id, status);
+          }
+        }
+        db.prepare('COMMIT').run();
+      } catch (txErr) {
+        db.prepare('ROLLBACK').run();
       }
+      i += batchSize;
+      await new Promise(resolve => setImmediate(resolve));
     }
 
-    // 2. Sync Withdrawals (with safety limit to keep boot synchronization fast)
+    // 2. Sync Withdrawals
     const withdrawalsSnap = await adminDb.collection('withdrawals').limit(500).get();
-    for (const doc of withdrawalsSnap.docs) {
-      const data = doc.data();
-      const firestoreId = doc.id;
-      const userId = data.userId;
-      if (!userId) continue;
+    i = 0;
+    while (i < withdrawalsSnap.docs.length) {
+      db.prepare('BEGIN').run();
+      try {
+        const batch = withdrawalsSnap.docs.slice(i, i + batchSize);
+        for (const doc of batch) {
+          const data = doc.data();
+          const firestoreId = doc.id;
+          const userId = data.userId;
+          if (!userId) continue;
 
-      const txHash = data.txHash || '';
-      const amount = (data.amount || 0).toString();
-      const status = (data.status === 'success' || data.status === 'approved') ? 'completed' : data.status || 'pending';
-      const method = data.method || 'direct';
-      const currency = data.currency || 'USD';
-      const createdTime = data.timestamp || Date.now();
+          const txHash = data.txHash || '';
+          const amount = (data.amount || 0).toString();
+          const status = (data.status === 'success' || data.status === 'approved') ? 'completed' : data.status || 'pending';
+          const method = data.method || 'direct';
+          const currency = data.currency || 'USD';
+          const createdTime = data.timestamp || Date.now();
 
-      let existingTx = null;
-      if (txHash) {
-        existingTx = await get('SELECT id FROM transactions WHERE user_id = ? AND tx_hash = ? AND type = \'withdrawal\'', [userId, txHash]);
-      }
-      if (!existingTx) {
-        const pattern = `%${firestoreId}%`;
-        existingTx = await get('SELECT id FROM transactions WHERE user_id = ? AND details LIKE ? AND type = \'withdrawal\'', [userId, pattern]);
-      }
-      if (!existingTx) {
-        existingTx = await get(
-          'SELECT id FROM transactions WHERE user_id = ? AND type = \'withdrawal\' AND amount = ? AND created_at = ?',
-          [userId, amount, createdTime]
-        );
-      }
+          let existingTx = null;
+          if (txHash) {
+            existingTx = checkHashStmt.get(userId, txHash, 'withdrawal');
+          }
+          if (!existingTx) {
+            existingTx = checkPatternStmt.get(userId, `%${firestoreId}%`, 'withdrawal');
+          }
+          if (!existingTx) {
+            existingTx = checkExactStmt.get(userId, 'withdrawal', amount, createdTime);
+          }
 
-      const detailsObj = { firestoreId, walletNumber: data.walletNumber, bankDetails: data.details };
+          const detailsObj = { firestoreId, walletNumber: data.walletNumber, bankDetails: data.details };
 
-      if (!existingTx) {
-        await run(
-          `INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [userId, 'withdrawal', amount, status, method, txHash, currency, JSON.stringify(detailsObj), createdTime]
-        );
-      } else {
-        await run(
-          `UPDATE transactions SET status = ?, updated_at = datetime('now') WHERE id = ? AND status != ?`,
-          [status, existingTx.id, status]
-        );
+          if (!existingTx) {
+            insertStmt.run(userId, 'withdrawal', amount, status, method, txHash, currency, JSON.stringify(detailsObj), createdTime);
+          } else {
+            updateStmt.run(status, (existingTx as any).id, status);
+          }
+        }
+        db.prepare('COMMIT').run();
+      } catch (txErr) {
+        db.prepare('ROLLBACK').run();
       }
+      i += batchSize;
+      await new Promise(resolve => setImmediate(resolve));
     }
   } catch (err) {
     logger.error(`[syncGlobalTransactionsFromFirestore] Error: ${err}`);
@@ -862,34 +876,48 @@ export async function syncGlobalTransactionsFromFirestore() {
 export async function syncKYCRequestsFromFirestore() {
   if (!adminDb) return;
   try {
-    // Limit to latest 200 KYC requests to keep boot sync safe and fast
     const snapshot = await adminDb.collection('kycRequests').limit(200).get();
     if (snapshot.empty) return;
 
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      const userId = data.userId;
-      if (!userId) continue;
+    const checkStmt = db.prepare('SELECT id FROM kyc_requests WHERE user_id = ? AND status = ? AND document_number = ?');
+    const insertStmt = db.prepare(`
+      INSERT INTO kyc_requests (user_id, status, full_name, document_type, document_number, front_image, back_image, selfie_image, rejection_reason, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-      const status = data.status || 'pending';
-      const fullName = data.fullName || '';
-      const documentType = data.idType || '';
-      const documentNumber = data.idNumber || '';
-      const frontImage = data.idFrontUrl || '';
-      const backImage = data.idBackUrl || '';
-      const selfieImage = data.selfieUrl || '';
-      const rejectionReason = data.rejectionReason || '';
-      const submittedAt = data.submittedAt || Date.now();
-      const updatedAt = data.updatedAt instanceof Date ? data.updatedAt.getTime() : (data.updatedAt || Date.now());
+    let i = 0;
+    const batchSize = 50;
+    while (i < snapshot.docs.length) {
+      db.prepare('BEGIN').run();
+      try {
+        const batch = snapshot.docs.slice(i, i + batchSize);
+        for (const doc of batch) {
+          const data = doc.data();
+          const userId = data.userId;
+          if (!userId) continue;
 
-      const existing = await get('SELECT id FROM kyc_requests WHERE user_id = ? AND status = ? AND document_number = ?', [userId, status, documentNumber]);
-      if (!existing) {
-        await run(
-          `INSERT INTO kyc_requests (user_id, status, full_name, document_type, document_number, front_image, back_image, selfie_image, rejection_reason, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [userId, status, fullName, documentType, documentNumber, frontImage, backImage, selfieImage, rejectionReason, submittedAt, updatedAt]
-        );
+          const status = data.status || 'pending';
+          const fullName = data.fullName || '';
+          const documentType = data.idType || '';
+          const documentNumber = data.idNumber || '';
+          const frontImage = data.idFrontUrl || '';
+          const backImage = data.idBackUrl || '';
+          const selfieImage = data.selfieUrl || '';
+          const rejectionReason = data.rejectionReason || '';
+          const submittedAt = data.submittedAt || Date.now();
+          const updatedAt = data.updatedAt instanceof Date ? data.updatedAt.getTime() : (data.updatedAt || Date.now());
+
+          const existing = checkStmt.get(userId, status, documentNumber);
+          if (!existing) {
+            insertStmt.run(userId, status, fullName, documentType, documentNumber, frontImage, backImage, selfieImage, rejectionReason, submittedAt, updatedAt);
+          }
+        }
+        db.prepare('COMMIT').run();
+      } catch (txErr) {
+        db.prepare('ROLLBACK').run();
       }
+      i += batchSize;
+      await new Promise(resolve => setImmediate(resolve));
     }
   } catch (err: any) {
     logger.error(`[syncKYCRequestsFromFirestore] Error: ${err.message}`);
@@ -899,42 +927,60 @@ export async function syncKYCRequestsFromFirestore() {
 export async function syncTradesFromFirestore() {
   if (!adminDb) return;
   try {
-    // Limit to latest 500 trades to keep boot-time synchronization bounded and extremely fast
     const snapshot = await adminDb.collection('trades').limit(500).get();
     if (snapshot.empty) return;
 
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      const tradeId = parseInt(doc.id, 10);
-      if (isNaN(tradeId)) continue;
+    const checkStmt = db.prepare('SELECT id FROM trades WHERE id = ?');
+    const insertStmt = db.prepare(`
+      INSERT INTO trades (id, user_id, market_id, amount, direction, entry_price, exit_price, duration, expiry_time, is_demo, status, payout_amount, settled_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const updateStmt = db.prepare(`
+      UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE id = ? AND status != ?
+    `);
 
-      const userId = data.userId;
-      const marketId = data.marketId;
-      const amount = data.amount;
-      const direction = data.direction;
-      const entryPrice = data.entryPrice;
-      const exitPrice = data.exitPrice || null;
-      const duration = data.duration;
-      const expiryTime = data.expiryTime;
-      const isDemo = data.isDemo ? 1 : 0;
-      const status = data.status || 'open';
-      const payoutAmount = data.payoutAmount || 0;
-      const settledAt = data.settledAt || null;
-      const createdAt = data.createdAt || Date.now();
+    let i = 0;
+    const batchSize = 50;
+    
+    while (i < snapshot.docs.length) {
+      db.prepare('BEGIN').run();
+      try {
+        const batch = snapshot.docs.slice(i, i + batchSize);
+        for (const doc of batch) {
+          const data = doc.data();
+          const tradeId = parseInt(doc.id, 10);
+          if (isNaN(tradeId)) continue;
 
-      const existing = await get('SELECT id FROM trades WHERE id = ?', [tradeId]);
-      if (!existing) {
-        await run(
-          `INSERT INTO trades (id, user_id, market_id, amount, direction, entry_price, exit_price, duration, expiry_time, is_demo, status, payout_amount, settled_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [tradeId, userId, marketId, amount, direction, entryPrice, exitPrice, duration, expiryTime, isDemo, status, payoutAmount, settledAt, createdAt]
-        );
-      } else {
-        await run(
-          `UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE id = ? AND status != ?`,
-          [status, exitPrice, payoutAmount, settledAt, tradeId, status]
-        );
+          const userId = data.userId;
+          const marketId = data.marketId;
+          const amount = data.amount;
+          const direction = data.direction;
+          const entryPrice = data.entryPrice;
+          const exitPrice = data.exitPrice || null;
+          const duration = data.duration;
+          const expiryTime = data.expiryTime;
+          const isDemo = data.isDemo ? 1 : 0;
+          const status = data.status || 'open';
+          const payoutAmount = data.payoutAmount || 0;
+          const settledAt = data.settledAt || null;
+          const createdAt = data.createdAt || Date.now();
+
+          const existing = checkStmt.get(tradeId);
+          if (!existing) {
+            insertStmt.run(tradeId, userId, marketId, amount, direction, entryPrice, exitPrice, duration, expiryTime, isDemo, status, payoutAmount, settledAt, createdAt);
+          } else {
+            updateStmt.run(status, exitPrice, payoutAmount, settledAt, tradeId, status);
+          }
+        }
+        db.prepare('COMMIT').run();
+      } catch (txErr) {
+        db.prepare('ROLLBACK').run();
+        logger.error(`[syncTradesFromFirestore] Batch transaction failed: ${txErr}`);
       }
+      
+      i += batchSize;
+      // Yield to event loop between batches
+      await new Promise(resolve => setImmediate(resolve));
     }
   } catch (err: any) {
     logger.error(`[syncTradesFromFirestore] Error: ${err.message}`);
@@ -1089,6 +1135,7 @@ export async function syncDatabaseFromFirestore() {
     } catch (userErr: any) {
       logger.error(`Failed to sync users: ${userErr.message}`);
     }
+    await new Promise(resolve => setImmediate(resolve));
 
     logger.info('💸 Syncing global transactions...');
     try {
@@ -1096,6 +1143,7 @@ export async function syncDatabaseFromFirestore() {
     } catch (txErr: any) {
       logger.error(`Failed to sync transactions: ${txErr.message}`);
     }
+    await new Promise(resolve => setImmediate(resolve));
 
     logger.info('🪪 Syncing KYC requests...');
     try {
@@ -1103,6 +1151,7 @@ export async function syncDatabaseFromFirestore() {
     } catch (kycErr: any) {
       logger.error(`Failed to sync KYC: ${kycErr.message}`);
     }
+    await new Promise(resolve => setImmediate(resolve));
 
     logger.info('📈 Syncing trades...');
     try {
@@ -1110,6 +1159,7 @@ export async function syncDatabaseFromFirestore() {
     } catch (tradeErr: any) {
       logger.error(`Failed to sync trades: ${tradeErr.message}`);
     }
+    await new Promise(resolve => setImmediate(resolve));
 
     // Ensure the seed admin exists and is up to date
     await ensureSeedAdminUser();
@@ -1127,83 +1177,94 @@ export async function syncDatabaseFromFirestore() {
 export async function syncAllUsersFromFirestore() {
   if (!adminDb) return;
   try {
-    const snapshot = await adminDb.collection('users').get();
+    // Limit to latest 1000 users to keep boot sync safe
+    const snapshot = await adminDb.collection('users').limit(1000).get();
     if (snapshot.empty) return;
 
-    for (const doc of snapshot.docs) {
-      const fbData = doc.data();
-      const uid = doc.id;
-      const email = fbData.email || '';
-      
-      const realBalance = fbData.balance || fbData.real_balance || fbData.realBalance || '0.00';
-      const demoBalance = fbData.demoBalance || fbData.demo_balance || '10000.00';
-      const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified) ? 1 : 0;
-      const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
-      const password = fbData.password || null;
-      const displayName = fbData.displayName || fbData.display_name || '';
-      const nickname = fbData.nickname || '';
-      const photoURL = fbData.photoURL || fbData.photo_url || '';
-      const currency = fbData.currency || 'USD';
-      const country = fbData.country || '';
-      const countryCode = fbData.countryCode || fbData.country_code || '';
-      const is_admin = (fbData.isAdmin || fbData.is_admin) ? 1 : 0;
-      const referralCode = fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase();
-      const referredByUid = fbData.referredBy || fbData.referred_by_uid || null;
-      const totalLiveVolume = fbData.totalLiveVolume || fbData.total_live_volume || '0.00';
+    const checkStmt = db.prepare('SELECT id, real_balance, demo_balance, is_verified, kyc_status, display_name FROM users WHERE uid = ?');
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO users (uid, email, password, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-      const user = await get('SELECT id, real_balance, demo_balance, is_verified, kyc_status, display_name FROM users WHERE uid = ?', [uid]) as any;
+    let i = 0;
+    const batchSize = 50;
+    while (i < snapshot.docs.length) {
+      db.prepare('BEGIN').run();
+      try {
+        const batch = snapshot.docs.slice(i, i + batchSize);
+        for (const doc of batch) {
+          const fbData = doc.data();
+          const uid = doc.id;
+          const email = fbData.email || '';
+          
+          const realBalance = fbData.balance || fbData.real_balance || fbData.realBalance || '0.00';
+          const demoBalance = fbData.demoBalance || fbData.demo_balance || '10000.00';
+          const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified) ? 1 : 0;
+          const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
+          const password = fbData.password || null;
+          const displayName = fbData.displayName || fbData.display_name || '';
+          const nickname = fbData.nickname || '';
+          const photoURL = fbData.photoURL || fbData.photo_url || '';
+          const currency = fbData.currency || 'USD';
+          const country = fbData.country || '';
+          const countryCode = fbData.countryCode || fbData.country_code || '';
+          const is_admin = (fbData.isAdmin || fbData.is_admin) ? 1 : 0;
+          const referralCode = fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase();
+          const referredByUid = fbData.referredBy || fbData.referred_by_uid || null;
+          const totalLiveVolume = fbData.totalLiveVolume || fbData.total_live_volume || '0.00';
 
-      if (!user) {
-        await run(
-          `INSERT OR IGNORE INTO users (uid, email, password, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            uid, email, password, displayName, nickname, photoURL, 
-            realBalance.toString(), demoBalance.toString(), currency, isVerified, is_admin, kycStatus, 
-            referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode
-          ]
-        );
-      } else {
-        let needsUpdate = false;
-        const updates: string[] = [];
-        const params: any[] = [];
+          const user = checkStmt.get(uid) as any;
 
-        if (parseFloat(user.real_balance || 0) !== parseFloat(realBalance || 0)) {
-          updates.push('real_balance = ?');
-          params.push(realBalance.toString());
-          needsUpdate = true;
-        }
-        if (parseFloat(user.demo_balance || 10000) !== parseFloat(demoBalance || 10000)) {
-          updates.push('demo_balance = ?');
-          params.push(demoBalance.toString());
-          needsUpdate = true;
-        }
-        if (user.is_verified !== isVerified) {
-          updates.push('is_verified = ?');
-          params.push(isVerified);
-          needsUpdate = true;
-        }
-        if (user.kyc_status !== kycStatus) {
-          updates.push('kyc_status = ?');
-          params.push(kycStatus);
-          needsUpdate = true;
-        }
-        if (displayName && user.display_name !== displayName) {
-          updates.push('display_name = ?');
-          params.push(displayName);
-          needsUpdate = true;
-        }
-        if (password && user.password !== password) {
-          updates.push('password = ?');
-          params.push(password);
-          needsUpdate = true;
-        }
+          if (!user) {
+            insertStmt.run(
+              uid, email, password, displayName, nickname, photoURL, 
+              realBalance.toString(), demoBalance.toString(), currency, isVerified, is_admin, kycStatus, 
+              referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode
+            );
+          } else {
+            let needsUpdate = false;
+            const updates: string[] = [];
+            const params: any[] = [];
 
-        if (needsUpdate) {
-          params.push(uid);
-          await run(`UPDATE users SET ${updates.join(', ')} WHERE uid = ?`, params);
+            if (parseFloat(user.real_balance || 0) !== parseFloat(realBalance || 0)) {
+              updates.push('real_balance = ?');
+              params.push(realBalance.toString());
+              needsUpdate = true;
+            }
+            if (parseFloat(user.demo_balance || 10000) !== parseFloat(demoBalance || 10000)) {
+              updates.push('demo_balance = ?');
+              params.push(demoBalance.toString());
+              needsUpdate = true;
+            }
+            if (user.is_verified !== isVerified) {
+              updates.push('is_verified = ?');
+              params.push(isVerified);
+              needsUpdate = true;
+            }
+            if (user.kyc_status !== kycStatus) {
+              updates.push('kyc_status = ?');
+              params.push(kycStatus);
+              needsUpdate = true;
+            }
+            if (displayName && user.display_name !== displayName) {
+              updates.push('display_name = ?');
+              params.push(displayName);
+              needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+              params.push(uid);
+              db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE uid = ?`).run(...params);
+            }
+          }
         }
+        db.prepare('COMMIT').run();
+      } catch (txErr) {
+        db.prepare('ROLLBACK').run();
       }
+      i += batchSize;
+      await new Promise(resolve => setImmediate(resolve));
     }
   } catch (err: any) {
     logger.error(`[syncAllUsersFromFirestore] Error: ${err.message}`);
@@ -2192,11 +2253,12 @@ router.post('/trade', async (req, res) => {
       const entryPrice = trade?.entryPrice || 0;
       const duration = trade?.timeLeft || 60;
       const expiryTime = Math.floor((Date.now() + duration * 1000) / 1000);
+      const createdAt = Date.now();
 
       await run(
-        `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status, account_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, pair, amount.toString(), direction, entryPrice.toString(), duration, expiryTime, isDemo ? 1 : 0, 'open', accountType || (isDemo ? 'demo' : 'real')],
+        `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status, account_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, pair, amount.toString(), direction, entryPrice.toString(), duration, expiryTime, isDemo ? 1 : 0, 'open', accountType || (isDemo ? 'demo' : 'real'), createdAt],
         conn
       );
 
@@ -2452,11 +2514,12 @@ router.post('/trades/place',
       }
 
       // 3. Insert trade
-      const expiryTime = Math.floor((Date.now() + duration * 1000) / 1000);
+      const now = Date.now();
+      const expiryTime = Math.floor((now + duration * 1000) / 1000);
       await run(
-        `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status, account_type, tournament_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uid, marketId, amount.toString(), direction, entryPrice.toString(), duration, expiryTime, (isDemo || accountType === 'demo') ? 1 : 0, 'open', accountType || (isDemo ? 'demo' : 'real'), isTournament ? tournamentId : null],
+        `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status, account_type, tournament_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uid, marketId, amount.toString(), direction, entryPrice.toString(), duration, expiryTime, (isDemo || accountType === 'demo') ? 1 : 0, 'open', accountType || (isDemo ? 'demo' : 'real'), isTournament ? tournamentId : null, now],
         conn
       );
 

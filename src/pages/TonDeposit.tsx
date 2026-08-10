@@ -19,12 +19,60 @@ export default function TonDeposit() {
   const [timeLeft, setTimeLeft] = useState(24 * 60 * 60); 
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
 
+  const [orderId] = useState(() => Math.floor(Math.random() * 100000000).toString());
+  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
+  const [depositDocId, setDepositDocId] = useState<string | null>(null);
+  const hasAutoSubmitted = React.useRef(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setCurrentUser(u);
     });
     return () => unsub();
   }, []);
+
+  const tonWalletAddress = appConfig.tonAddress || "UQCCpPsMUQJZK9DEzR-C51gJ13vBtSfPKNm53h1Wxys3Bof5";
+
+  useEffect(() => {
+    if (currentUser && tonWalletAddress && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const autoSubmit = async () => {
+        try {
+          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
+              type: 'Deposit',
+              amount: Number(amountCrypto.replace(',', '')),
+              method: 'Toncoin (TON)',
+              currency: 'TON',
+              status: 'Pending',
+              trxId: 'Pending/TON',
+              orderId: orderId,
+              timestamp: Date.now(),
+              category: 'Crypto'
+          });
+          setTransactionDocId(tDoc.id);
+  
+          const dDoc = await addDoc(collection(db, 'deposits'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email || '',
+              amount: Number(amountCrypto.replace(',', '')),
+              currency: 'TON',
+              method: 'Toncoin (TON)',
+              walletNumber: tonWalletAddress,
+              trxId: 'Pending/TON',
+              status: 'pending',
+              timestamp: Date.now(),
+              orderId: orderId
+          });
+          setDepositDocId(dDoc.id);
+          
+          console.log("Auto-submitted pending TON deposit request:", dDoc.id);
+        } catch (err) {
+          console.error("Auto TON deposit failed:", err);
+        }
+      };
+      autoSubmit();
+    }
+  }, [currentUser, tonWalletAddress, amountCrypto]);
   
   useEffect(() => {
     const fetchConfig = async () => {
@@ -72,6 +120,10 @@ export default function TonDeposit() {
      }
 
      setIsSubmitting(true);
+     setIsSuccess(true);
+     toast.success("Deposit request confirmed!");
+     setTimeout(() => { navigate('/trade'); }, 5000);
+     return;
      try {
          const baseOrderId = Math.floor(Math.random() * 100000000).toString();
          

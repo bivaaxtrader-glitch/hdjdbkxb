@@ -19,6 +19,11 @@ export default function UsdtTrc20Deposit() {
   const [timeLeft, setTimeLeft] = useState(24 * 60 * 60 - 7); // 24 hours timer as per screenshot
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
 
+  const [orderId] = useState(() => Math.floor(Math.random() * 100000000).toString());
+  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
+  const [depositDocId, setDepositDocId] = useState<string | null>(null);
+  const hasAutoSubmitted = React.useRef(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setCurrentUser(u);
@@ -51,6 +56,52 @@ export default function UsdtTrc20Deposit() {
     return () => clearInterval(timer);
   }, []);
 
+  const walletAddress = appConfig.usdtTrc20Address || "TCT8YFWr74eDmW rDwpG8JwpD2yVPy cebKU";
+
+  // Automatically submit request as pending when the page is viewed
+  useEffect(() => {
+    if (currentUser && walletAddress && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const autoSubmit = async () => {
+        try {
+          // 1. Log transaction as Pending
+          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
+              type: 'Deposit',
+              amount: Number(amountUsd.replace(',', '')),
+              method: 'USDT (TRC-20)',
+              currency: 'USDT',
+              status: 'Pending',
+              trxId: 'Pending/USDT',
+              orderId: orderId,
+              timestamp: Date.now(),
+              category: 'Crypto'
+          });
+          setTransactionDocId(tDoc.id);
+  
+          // 2. Add to global deposits as pending
+          const dDoc = await addDoc(collection(db, 'deposits'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email || '',
+              amount: Number(amountUsd.replace(',', '')),
+              currency: 'USDT',
+              method: 'USDT (TRC-20)',
+              walletNumber: walletAddress,
+              trxId: 'Pending/USDT',
+              status: 'pending',
+              timestamp: Date.now(),
+              orderId: orderId
+          });
+          setDepositDocId(dDoc.id);
+          
+          console.log("Auto-submitted pending deposit request:", dDoc.id);
+        } catch (err) {
+          console.error("Auto deposit failed:", err);
+        }
+      };
+      autoSubmit();
+    }
+  }, [currentUser, walletAddress, amountUsd]);
+
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -58,7 +109,6 @@ export default function UsdtTrc20Deposit() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const walletAddress = appConfig.usdtTrc20Address || "TCT8YFWr74eDmW rDwpG8JwpD2yVPy cebKU";
   const qrCodeUrl = appConfig.usdtTrc20QrCode || "https://i.postimg.cc/ZKN9zFGL/IMG-20260804-151047.png";
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,6 +121,10 @@ export default function UsdtTrc20Deposit() {
      }
 
      setIsSubmitting(true);
+     setIsSuccess(true);
+     toast.success("Deposit request confirmed!");
+     setTimeout(() => { navigate('/trade'); }, 5000);
+     return;
      try {
          const baseOrderId = Math.floor(Math.random() * 100000000).toString();
          

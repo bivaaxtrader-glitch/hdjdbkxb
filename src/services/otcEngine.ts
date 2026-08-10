@@ -194,8 +194,9 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       } else if (globalManipulationMode === 'always_win') {
         biasDirection = exposure > 0 ? 1 : -1;
       }
-      mu += biasDirection * 0.05;
-      volatilityMultiplier *= 0.5;
+      // Natural, subtle drift scaled by baseSigma instead of huge hardcoded 0.05
+      mu += biasDirection * baseSigma * 1.0;
+      volatilityMultiplier *= 0.8; // Smooth but keeps natural texture
     }
   }
 
@@ -207,11 +208,12 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
     // If manipExposure > 0, it means we have a 'positive' bias (price should go up)
     // If manipExposure < 0, it means we have a 'negative' bias (price should go down)
     
-    // Check for 92% probability to apply manipulation (up from 85%), 8% random to keep it looking natural
+    // Check for 92% probability to apply manipulation, 8% random to keep it looking natural
     if (Math.random() < 0.92) {
       const manipBias = manipExposure > 0 ? 1 : -1;
-      mu += manipBias * 0.12; // Much stronger push (up from 0.045)
-      volatilityMultiplier *= 0.4; // Even smoother move
+      // Natural, subtle drift scaled by baseSigma instead of huge hardcoded 0.12
+      mu += manipBias * baseSigma * 1.5; 
+      volatilityMultiplier *= 0.7; // Smoother, natural moves
     }
   }
 
@@ -248,16 +250,19 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
     const clampedMomentum = Math.max(-0.015, Math.min(0.015, state.momentum));
     const momentumEffect = clampedMomentum * 0.08;
     
-    // High manipulation mu shouldn't be clamped as tightly
+    // High manipulation mu shouldn't be clamped as tightly, but keep it realistic
     const isManipulated = manipExposure !== 0 || globalManipulationMode !== 'neutral';
-    const muCap = isManipulated ? 0.25 : 0.03;
+    const muCap = isManipulated ? 0.05 : 0.03;
 
     const clampedMu = Math.max(-muCap, Math.min(muCap, mu));
     const drift = (clampedMu - 0.5 * Math.pow(sigma, 2)) * dt + targetDrift + momentumEffect;
     const shock = sigma * dW;
     const flicker = (Math.random() - 0.5) * sigma * 1.2;
 
-    const totalExponent = Math.max(-0.04, Math.min(0.04, drift + shock + flicker + suddenJump));
+    // Clamp the single-tick exponent to a realistic multiple of the active sigma, with an absolute safety cap of 0.005 (0.5% per tick)
+    // This completely eliminates unrealistic, giant vertical candles while preserving beautiful, smooth price action.
+    const maxTickExponent = Math.min(0.005, Math.max(0.0005, 5 * sigma));
+    const totalExponent = Math.max(-maxTickExponent, Math.min(maxTickExponent, drift + shock + flicker + suddenJump));
     const priceMultiplier = Math.exp(totalExponent);
     newPrice = currentPrice * priceMultiplier;
   }
@@ -313,7 +318,7 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
         closeTime: completedCandle.closeTime
       };
       historyPool[pair][tf].push(historyRow);
-      if (historyPool[pair][tf].length > 25000) historyPool[pair][tf].shift();
+      if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
 
       // 3. Gap handling between ticks (generate realistic volatile candles instead of flat ones)
       let gapTime = completedCandle.closeTime;
@@ -362,7 +367,7 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
         };
 
         historyPool[pair][tf].push(gapRow);
-        if (historyPool[pair][tf].length > 25000) historyPool[pair][tf].shift();
+        if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
 
         try {
            getIO().to(`market_${pair}_${type}`).emit('candle_complete', { pair, timeframe: tf, candle: gapRow });
