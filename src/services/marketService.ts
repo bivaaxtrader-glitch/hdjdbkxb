@@ -115,16 +115,12 @@ setInterval(flushCandleBuffer, 500);
 
 export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
   try {
-    const nowMs = Date.now();
-    const nowSec = Math.floor(nowMs / 1000);
+    const nowSec = Math.floor(Date.now() / 1000);
     const isCompleted = candle.closeTime <= nowSec;
-    const cacheKey = `${pair}_${type}_${timeframe}`;
-    const lastWrite = lastSqliteWrite.get(cacheKey) || 0;
 
-    // ONLY buffer for save periodically (every 5 seconds) or if the candle just completed
-    if (nowMs - lastWrite >= 5000 || isCompleted) {
-      lastSqliteWrite.set(cacheKey, nowMs);
-      
+    // Save only COMPLETED candles to database to prevent database locking and disk I/O bottlenecks.
+    // Forming candles are kept in memory and served directly to users via WebSocket.
+    if (isCompleted) {
       candleBuffer.push({
         pair,
         type,
@@ -141,14 +137,13 @@ export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe
       if (candleBuffer.length > 2000) {
         flushCandleBuffer();
       }
-    }
 
-    // Save only COMPLETED candles (1m+) to Firestore to significantly reduce write quota usage.
-    // Forming candles (those currently active) are kept in SQLite and memory only.
-    const isMajorTimeframe = ["1 minute", "5 minutes", "15 minutes", "30 minutes", "1 hour", "4 hours", "1 day"].includes(timeframe);
+      // Save only COMPLETED candles (1m+) to Firestore to significantly reduce write quota usage.
+      const isMajorTimeframe = ["1 minute", "5 minutes", "15 minutes", "30 minutes", "1 hour", "4 hours", "1 day"].includes(timeframe);
 
-    if (isMajorTimeframe && isCompleted) {
-      saveCandleToFirestore(pair, type, timeframe, candle);
+      if (isMajorTimeframe) {
+        saveCandleToFirestore(pair, type, timeframe, candle);
+      }
     }
   } catch (err: any) {
     console.error(`Failed to save historical candle to DB for ${pair} (${type}) timeframe ${timeframe}:`, err.message);

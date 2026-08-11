@@ -416,8 +416,7 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
         close: m.price,
         volume: Math.random() * 20 + 5,
         openTime: bucketTime,
-        closeTime: bucketTime + tfSeconds,
-        lastSaved: Date.now()
+        closeTime: bucketTime + tfSeconds
       };
       saveCandleToDB_v2(pair, type, tf, candlePool[pair][tf]);
     } else {
@@ -426,12 +425,6 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       activeCandle.high = Math.max(activeCandle.high, m.price);
       activeCandle.low = Math.min(activeCandle.low, m.price);
       activeCandle.volume += Math.random() * 3;
-
-      const nowMs = Date.now();
-      if (!activeCandle.lastSaved || (nowMs - activeCandle.lastSaved) > 5000) {
-        activeCandle.lastSaved = nowMs;
-        saveCandleToDB_v2(pair, type, tf, activeCandle);
-      }
     }
   }
 
