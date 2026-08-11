@@ -2764,7 +2764,7 @@ const PROMOTED_ARTICLES = [
                        lastValueVisible: false,
                        priceLineVisible: false,
                     });
-                    try { chart.priceScale('rsi').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+                    try { chart.priceScale('rsi').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
                  } else {
                      try { indicatorSeriesRefs.current.rsi.applyOptions({
                        color: currentSettings["RSI"].color,
@@ -2798,7 +2798,7 @@ const PROMOTED_ARTICLES = [
                    lastValueVisible: false,
                    priceLineVisible: false,
                  });
-                 try { chart.priceScale('mfi').applyOptions({ scaleMargins: { top: 0.7, bottom: 0 } }); } catch (e) {}
+                 try { chart.priceScale('mfi').applyOptions({ visible: false, scaleMargins: { top: 0.7, bottom: 0 } }); } catch (e) {}
                } else {
                  try { indicatorSeriesRefs.current.mfi.applyOptions({
                    color: currentSettings["MFI"].color,
@@ -2837,7 +2837,7 @@ const PROMOTED_ARTICLES = [
                    lastValueVisible: false,
                    priceLineVisible: false,
                  });
-                 try { chart.priceScale('obv').applyOptions({ scaleMargins: { top: 0.7, bottom: 0 } }); } catch (e) {}
+                 try { chart.priceScale('obv').applyOptions({ visible: false, scaleMargins: { top: 0.7, bottom: 0 } }); } catch (e) {}
                } else {
                  try { indicatorSeriesRefs.current.obv.applyOptions({
                    color: currentSettings["OBV"].color,
@@ -2880,11 +2880,11 @@ const PROMOTED_ARTICLES = [
                   priceScaleId: 'macd',
                   lastValueVisible: false, priceLineVisible: false,
                });
-               try { chart.priceScale('macd').applyOptions({ scaleMargins: { top: currentSettings["RSI"]?.enabled ? 0.6 : 0.8, bottom: currentSettings["RSI"]?.enabled ? 0.2 : 0 } }); } catch (e) {}
+               try { chart.priceScale('macd').applyOptions({ visible: false, scaleMargins: { top: currentSettings["RSI"]?.enabled ? 0.6 : 0.8, bottom: currentSettings["RSI"]?.enabled ? 0.2 : 0 } }); } catch (e) {}
             } else {
                try { indicatorSeriesRefs.current.macdFast.applyOptions({ color: currentSettings["MACD"].colorFast }); } catch (e) {}
                try { indicatorSeriesRefs.current.macdSlow.applyOptions({ color: currentSettings["MACD"].colorSlow }); } catch (e) {}
-               try { chart.priceScale('macd').applyOptions({ scaleMargins: { top: currentSettings["RSI"]?.enabled ? 0.6 : 0.8, bottom: currentSettings["RSI"]?.enabled ? 0.2 : 0 } }); } catch (e) {}
+               try { chart.priceScale('macd').applyOptions({ visible: false, scaleMargins: { top: currentSettings["RSI"]?.enabled ? 0.6 : 0.8, bottom: currentSettings["RSI"]?.enabled ? 0.2 : 0 } }); } catch (e) {}
             }
             const fastPeriod = parseInt(currentSettings["MACD"].fast) || 12;
             const slowPeriod = parseInt(currentSettings["MACD"].slow) || 26;
@@ -2979,7 +2979,7 @@ const PROMOTED_ARTICLES = [
                   priceScaleId: 'stoch',
                   lastValueVisible: false, priceLineVisible: false,
                });
-               try { chart.priceScale('stoch').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+               try { chart.priceScale('stoch').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
             } else {
                try { indicatorSeriesRefs.current.stochK.applyOptions({ color: currentSettings["Stochastic"].colorK }); } catch (e) {}
                try { indicatorSeriesRefs.current.stochD.applyOptions({ color: currentSettings["Stochastic"].colorD }); } catch (e) {}
@@ -3110,7 +3110,7 @@ const PROMOTED_ARTICLES = [
          if (currentSettings[ind.name]?.enabled) {
              if (!indicatorSeriesRefs.current[refName]) {
                  indicatorSeriesRefs.current[refName] = chart.addSeries(LineSeries, { color: currentSettings[ind.name].color, lineWidth: currentSettings[ind.name].strokeWidth, priceScaleId: refName, lastValueVisible: false, priceLineVisible: false });
-                 try { chart.priceScale(refName).applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch(e) {}
+                 try { chart.priceScale(refName).applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch(e) {}
              } else {
                  try { indicatorSeriesRefs.current[refName].applyOptions({ color: currentSettings[ind.name].color, lineWidth: parseInt(currentSettings[ind.name].strokeWidth) || 2 }); } catch (e) {}
              }
@@ -3136,7 +3136,7 @@ const PROMOTED_ARTICLES = [
          if (!indicatorSeriesRefs.current.kstFast) {
             indicatorSeriesRefs.current.kstFast = chart.addSeries(LineSeries, { color: currentSettings["KST"].colorFast, lineWidth: 2, priceScaleId: 'kst', lastValueVisible: false, priceLineVisible: false });
             indicatorSeriesRefs.current.kstSlow = chart.addSeries(LineSeries, { color: currentSettings["KST"].colorSlow, lineWidth: 2, priceScaleId: 'kst', lastValueVisible: false, priceLineVisible: false });
-            try { chart.priceScale('kst').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+            try { chart.priceScale('kst').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
          } else {
             try { indicatorSeriesRefs.current.kstFast.applyOptions({ color: currentSettings["KST"].colorFast }); } catch (e) {}
             try { indicatorSeriesRefs.current.kstSlow.applyOptions({ color: currentSettings["KST"].colorSlow }); } catch (e) {}
@@ -3259,7 +3259,7 @@ const PROMOTED_ARTICLES = [
          if (currentSettings["ADL"]?.enabled) {
              if (!indicatorSeriesRefs.current.adl) {
                 indicatorSeriesRefs.current.adl = chart.addSeries(LineSeries, { color: currentSettings["ADL"].color, lineWidth: currentSettings["ADL"].strokeWidth, priceScaleId: 'adl', lastValueVisible: false, priceLineVisible: false });
-                try { chart.priceScale('adl').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+                try { chart.priceScale('adl').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
              } else {
                 try { indicatorSeriesRefs.current.adl.applyOptions({ color: currentSettings["ADL"].color, lineWidth: currentSettings["ADL"].strokeWidth }); } catch (e) {}
              }
@@ -3291,7 +3291,7 @@ const PROMOTED_ARTICLES = [
          if (currentSettings["ForceIndex"]?.enabled) {
              if (!indicatorSeriesRefs.current.forceindex) {
                 indicatorSeriesRefs.current.forceindex = chart.addSeries(HistogramSeries, { color: currentSettings["ForceIndex"].color, priceScaleId: 'forceindex', lastValueVisible: false, priceLineVisible: false });
-                try { chart.priceScale('forceindex').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+                try { chart.priceScale('forceindex').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
              } else {
                 try { indicatorSeriesRefs.current.forceindex.applyOptions({ color: currentSettings["ForceIndex"].color }); } catch (e) {}
              }
@@ -3323,7 +3323,7 @@ const PROMOTED_ARTICLES = [
             if (!indicatorSeriesRefs.current.stochRsiK) {
                indicatorSeriesRefs.current.stochRsiK = chart.addSeries(LineSeries, { color: currentSettings["StochRSI"].colorK, lineWidth: 2, priceScaleId: 'stochrsi', lastValueVisible: false, priceLineVisible: false });
                indicatorSeriesRefs.current.stochRsiD = chart.addSeries(LineSeries, { color: currentSettings["StochRSI"].colorD, lineWidth: 2, priceScaleId: 'stochrsi', lastValueVisible: false, priceLineVisible: false });
-               try { chart.priceScale('stochrsi').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+               try { chart.priceScale('stochrsi').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
             } else {
                try { indicatorSeriesRefs.current.stochRsiK.applyOptions({ color: currentSettings["StochRSI"].colorK }); } catch (e) {}
                try { indicatorSeriesRefs.current.stochRsiD.applyOptions({ color: currentSettings["StochRSI"].colorD }); } catch (e) {}
@@ -3431,7 +3431,7 @@ const PROMOTED_ARTICLES = [
              indicatorSeriesRefs.current.gatorTop = chart.addSeries(HistogramSeries, { priceScaleId: 'gator', lastValueVisible: false, priceLineVisible: false });
              //@ts-ignore
              indicatorSeriesRefs.current.gatorBottom = chart.addSeries(HistogramSeries, { priceScaleId: 'gator', lastValueVisible: false, priceLineVisible: false });
-             try { chart.priceScale('gator').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
+             try { chart.priceScale('gator').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch (e) {}
           }
           
           const jawP = 13, teethP = 8, lipsP = 5;
@@ -3576,7 +3576,7 @@ const PROMOTED_ARTICLES = [
                 lastValueVisible: false, 
                 priceLineVisible: false 
              });
-             try { chart.priceScale('ao').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } }); } catch(e) {}
+             try { chart.priceScale('ao').applyOptions({ visible: false, scaleMargins: { top: 0.82, bottom: 0 } }); } catch(e) {}
           }
           const fastPeriod = parseInt(currentSettings["Awesome Oscillator"].fastPeriod) || 5;
           const slowPeriod = parseInt(currentSettings["Awesome Oscillator"].slowPeriod) || 34;
@@ -3677,7 +3677,7 @@ const PROMOTED_ARTICLES = [
        if (currentSettings["Standard Deviation"]?.enabled) {
           if (!indicatorSeriesRefs.current.sd) {
              indicatorSeriesRefs.current.sd = chart.addSeries(LineSeries, { color: currentSettings["Standard Deviation"].color || '#84cc16', lineWidth: 2, priceScaleId: 'sd', lastValueVisible: false, priceLineVisible: false });
-             try { chart.priceScale('sd').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch(e) {}
+             try { chart.priceScale('sd').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch(e) {}
           } else {
              try { indicatorSeriesRefs.current.sd.applyOptions({ color: currentSettings["Standard Deviation"].color || '#84cc16' }); } catch (e) {}
           }
@@ -3702,7 +3702,7 @@ const PROMOTED_ARTICLES = [
        if (currentSettings["Momentum"]?.enabled) {
           if (!indicatorSeriesRefs.current.momentum) {
              indicatorSeriesRefs.current.momentum = chart.addSeries(LineSeries, { color: currentSettings["Momentum"].color || '#ec4899', lineWidth: 2, priceScaleId: 'momentum', lastValueVisible: false, priceLineVisible: false });
-             try { chart.priceScale('momentum').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } }); } catch(e) {}
+             try { chart.priceScale('momentum').applyOptions({ visible: false, scaleMargins: { top: 0.8, bottom: 0 } }); } catch(e) {}
           } else {
              try { indicatorSeriesRefs.current.momentum.applyOptions({ color: currentSettings["Momentum"].color || '#ec4899' }); } catch (e) {}
           }
@@ -5960,8 +5960,8 @@ const PROMOTED_ARTICLES = [
         timeVisible: true, 
         secondsVisible: true,
         rightOffset: 20, 
-        barSpacing: 6,
-        minBarSpacing: 3,
+        barSpacing: 15,
+        minBarSpacing: 10,
         fixLeftEdge: false, 
         lockVisibleTimeRangeOnResize: true,
         tickMarkFormatter: (time: any) => {
@@ -5978,8 +5978,21 @@ const PROMOTED_ARTICLES = [
         borderVisible: false, 
         ticksVisible: false,
         visible: true,
+        tickMarkDensity: 10,
       },
       localization: { 
+        priceFormatter: (price: number) => {
+           if (price >= 10000) return price.toFixed(0);
+           if (price >= 1000) return price.toFixed(1);
+           if (price >= 100) return price.toFixed(2);
+           if (price >= 10) return price.toFixed(3);
+           if (price >= 1) return price.toFixed(4);
+           if (price > 0) {
+              const log10 = Math.ceil(-Math.log10(price));
+              return price.toFixed(Math.max(5, log10 + 4));
+           }
+           return price.toString();
+        },
         timeFormatter: (time: any) => {
            const date = new Date(time * 1000);
            return date.toLocaleString('en-US', { timeZone: timeZoneRef.current, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -6096,7 +6109,8 @@ const PROMOTED_ARTICLES = [
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 20,
-        barSpacing: 6,
+        barSpacing: 15,
+        minBarSpacing: 10,
       },
       rightPriceScale: {
         borderColor: "#1c1f24",
@@ -6107,7 +6121,26 @@ const PROMOTED_ARTICLES = [
         borderVisible: false,
         ticksVisible: false,
         visible: true,
+        tickMarkDensity: 10,
       },
+      localization: { 
+        priceFormatter: (price: number) => {
+           if (price >= 10000) return price.toFixed(0);
+           if (price >= 1000) return price.toFixed(1);
+           if (price >= 100) return price.toFixed(2);
+           if (price >= 10) return price.toFixed(3);
+           if (price >= 1) return price.toFixed(4);
+           if (price > 0) {
+              const log10 = Math.ceil(-Math.log10(price));
+              return price.toFixed(Math.max(5, log10 + 4));
+           }
+           return price.toString();
+        },
+        timeFormatter: (time: any) => {
+           const date = new Date(time * 1000);
+           return date.toLocaleString('en-US', { timeZone: timeZoneRef.current, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        }
+      }
     });
 
     chartRef2.current = chart;
@@ -6122,20 +6155,27 @@ const PROMOTED_ARTICLES = [
 
     // Calculate dynamic precision based on current price for series2
     const initialPrice = currentInterpolatedPriceRef.current > 0 ? currentInterpolatedPriceRef.current : 100;
-    let dynamicPrecision = 4;
-    let dynamicMinMove = 0.0001;
-    if (initialPrice >= 1000) {
+    let dynamicPrecision = 5;
+    let dynamicMinMove = 0.00001;
+    if (initialPrice >= 10000) {
+        dynamicPrecision = 0;
+        dynamicMinMove = 1;
+    } else if (initialPrice >= 1000) {
+        dynamicPrecision = 1;
+        dynamicMinMove = 0.1;
+    } else if (initialPrice >= 100) {
         dynamicPrecision = 2;
         dynamicMinMove = 0.01;
-    } else if (initialPrice >= 100) {
+    } else if (initialPrice >= 10) {
         dynamicPrecision = 3;
         dynamicMinMove = 0.001;
-    } else if (initialPrice >= 10) {
+    } else if (initialPrice >= 1) {
         dynamicPrecision = 4;
         dynamicMinMove = 0.0001;
-    } else {
-        dynamicPrecision = 5;
-        dynamicMinMove = 0.00001;
+    } else if (initialPrice > 0) {
+        const log10 = Math.ceil(-Math.log10(initialPrice));
+        dynamicPrecision = Math.max(5, log10 + 4);
+        dynamicMinMove = Math.pow(10, -dynamicPrecision);
     }
 
     const series = chart.addSeries(CandlestickSeries, {
@@ -6146,8 +6186,8 @@ const PROMOTED_ARTICLES = [
         wickDownColor: '#ff4757',
         priceFormat: {
             type: "price",
-            precision: 5,
-            minMove: 0.00001,
+            precision: dynamicPrecision,
+            minMove: dynamicMinMove,
         },
         lastValueVisible: true,
         priceLineVisible: true,
@@ -6161,9 +6201,10 @@ const PROMOTED_ARTICLES = [
             if (res !== null) {
                 const min = res.priceRange.min;
                 const max = res.priceRange.max;
-                if (min === max) {
-                    const mid = min;
-                    const minRange = Math.max(mid * 0.01, 0.02);
+                const mid = (min + max) / 2;
+                // Enforce a professional spacing (minimum range of 0.3% of current price or 0.005 absolute)
+                const minRange = Math.max(mid * 0.003, 0.005);
+                if ((max - min) < minRange) {
                     res.priceRange.min = mid - minRange / 2;
                     res.priceRange.max = mid + minRange / 2;
                 }
@@ -6261,30 +6302,38 @@ const PROMOTED_ARTICLES = [
 
     if (forceRecreate) {
         const initialPrice = currentInterpolatedPriceRef.current > 0 ? currentInterpolatedPriceRef.current : (rawLastCandleRef.current?.close || 100);
-        let dynamicPrecision = 4;
-        let dynamicMinMove = 0.0001;
-        if (initialPrice >= 1000) {
+        let dynamicPrecision = 5;
+        let dynamicMinMove = 0.00001;
+        if (initialPrice >= 10000) {
+            dynamicPrecision = 0;
+            dynamicMinMove = 1;
+        } else if (initialPrice >= 1000) {
+            dynamicPrecision = 1;
+            dynamicMinMove = 0.1;
+        } else if (initialPrice >= 100) {
             dynamicPrecision = 2;
             dynamicMinMove = 0.01;
-        } else if (initialPrice >= 100) {
+        } else if (initialPrice >= 10) {
             dynamicPrecision = 3;
             dynamicMinMove = 0.001;
-        } else if (initialPrice >= 10) {
+        } else if (initialPrice >= 1) {
             dynamicPrecision = 4;
             dynamicMinMove = 0.0001;
-        } else {
-            dynamicPrecision = 5;
-            dynamicMinMove = 0.00001;
+        } else if (initialPrice > 0) {
+            const log10 = Math.ceil(-Math.log10(initialPrice));
+            dynamicPrecision = Math.max(5, log10 + 4);
+            dynamicMinMove = Math.pow(10, -dynamicPrecision);
         }
 
         const commonOptions: any = {
       priceFormat: { 
         type: "price", 
-        precision: 5,
-        minMove: 0.00001 
+        precision: dynamicPrecision,
+        minMove: dynamicMinMove 
       },
       lastValueVisible: true, 
       priceLineVisible: true, 
+      priceLineLabelVisible: false,
       priceLineSource: 1,
       priceLineColor: "rgba(255, 255, 255, 0.5)", 
       priceLineStyle: LineStyle.Dashed, 
@@ -6297,9 +6346,10 @@ const PROMOTED_ARTICLES = [
           if (res !== null) {
               const min = res.priceRange.min;
               const max = res.priceRange.max;
-              if (min === max) {
-                  const mid = min;
-                  const minRange = Math.max(mid * 0.01, 0.02);
+              const mid = (min + max) / 2;
+              // Enforce a professional spacing (minimum range of 0.3% of current price or 0.005 absolute)
+              const minRange = Math.max(mid * 0.003, 0.005);
+              if ((max - min) < minRange) {
                   res.priceRange.min = mid - minRange / 2;
                   res.priceRange.max = mid + minRange / 2;
               }

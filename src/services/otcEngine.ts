@@ -389,9 +389,9 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       let nextOpen = completedCandle.close;
       
       // Gap chance depends on volatility / regime
-      const gapChance = state.regime === 'VOLATILITY_SPIKE' || state.regime === 'MOMENTUM_BURST' ? 0.22 : 0.12;
+      const gapChance = state.regime === 'VOLATILITY_SPIKE' || state.regime === 'MOMENTUM_BURST' ? 0.10 : 0.05;
       if (Math.random() < gapChance) {
-        const gapSize = nextOpen * baseSigma * (Math.random() * 2.2 + 0.8);
+        const gapSize = nextOpen * baseSigma * (Math.random() * 0.5 + 0.1);
         const gapDir = Math.random() < 0.5 ? 1 : -1;
         nextOpen += (gapDir * gapSize);
         m.price = nextOpen; // Snap market price immediately to gap open

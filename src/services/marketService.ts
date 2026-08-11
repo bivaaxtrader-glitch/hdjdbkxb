@@ -115,11 +115,16 @@ setInterval(flushCandleBuffer, 500);
 
 export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
   try {
+    // 5-second candles are ephemeral memory-only for real-time tick charts.
+    // Do NOT persist them to database to prevent database locking, disk I/O bottlenecks, and 2-3 hour app freezing.
+    if (timeframe === '5 seconds') {
+      return;
+    }
+
     const nowSec = Math.floor(Date.now() / 1000);
     const isCompleted = candle.closeTime <= nowSec;
 
-    // Save only COMPLETED candles to database to prevent database locking and disk I/O bottlenecks.
-    // Forming candles are kept in memory and served directly to users via WebSocket.
+    // Save only COMPLETED major candles to database.
     if (isCompleted) {
       candleBuffer.push({
         pair,
