@@ -1,0 +1,5 @@
+[phases.setup]
+aptPkgs = ["build-essential", "python3", "make", "g++", "libatomic1"]
+
+[phases.build]
+cmds = ["npm run build"]
