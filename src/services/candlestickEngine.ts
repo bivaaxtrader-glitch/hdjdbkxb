@@ -111,7 +111,7 @@ export function generateSingleCandleOHLC(
   }
 
   const pattern = patternHint || pickRandomPattern();
-  const rangeVol = actualOpen * volatility * (3.5 + Math.random() * 12.0);
+  const rangeVol = actualOpen * volatility * (0.8 + Math.random() * 1.5);
   let close = actualOpen;
   let high = actualOpen;
   let low = actualOpen;

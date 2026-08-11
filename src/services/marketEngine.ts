@@ -93,8 +93,8 @@ export async function startMarketEngine() {
             }
           }
           
-          // Yield to event loop if we've processed a batch of markets
-          if (marketKeys.indexOf(pair) % 20 === 0) {
+          // Yield to event loop frequently to keep the UI responsive and prevent long lags
+          if (marketKeys.indexOf(pair) % 5 === 0) {
             await new Promise(resolve => setImmediate(resolve));
           }
         }

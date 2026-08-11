@@ -94,9 +94,9 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
   }
 
   // 3. REGIME-BASED DRIFT & VOLATILITY COMPUTATION
-  let baseSigma = (Number(m.volatility) || 0.0002) / Math.max(1e-6, currentPrice);
-  // Cap baseSigma to max 0.008 per sqrt(second)
-  baseSigma = Math.min(0.025, Math.max(0.00001, baseSigma));
+  const relVol = (Number(m.volatility) || (currentPrice * 0.005)) / Math.max(1e-6, currentPrice);
+  const cappedRelVol = Math.min(0.002, Math.max(0.0001, relVol));
+  let baseSigma = cappedRelVol / 50;
 
   let mu = state.trend || 0;
   let volatilityMultiplier = 3.5;
@@ -259,9 +259,9 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
     const shock = sigma * dW;
     const flicker = (Math.random() - 0.5) * sigma * 1.2;
 
-    // Clamp the single-tick exponent to a realistic multiple of the active sigma, with an absolute safety cap of 0.005 (0.5% per tick)
+    // Clamp the single-tick exponent to a realistic multiple of the active sigma
     // This completely eliminates unrealistic, giant vertical candles while preserving beautiful, smooth price action.
-    const maxTickExponent = Math.min(0.005, Math.max(0.0005, 5 * sigma));
+    const maxTickExponent = Math.min(0.002, Math.max(0.00001, 8 * sigma));
     const totalExponent = Math.max(-maxTickExponent, Math.min(maxTickExponent, drift + shock + flicker + suddenJump));
     const priceMultiplier = Math.exp(totalExponent);
     newPrice = currentPrice * priceMultiplier;
@@ -320,7 +320,7 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       historyPool[pair][tf].push(historyRow);
       if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
 
-      // 3. Gap handling between ticks (generate realistic volatile candles instead of flat ones)
+      // 3. Gap handling between ticks (limit to 30 candles per timeframe to prevent event loop death)
       let gapTime = completedCandle.closeTime;
       let runtimeGapCount = 0;
       let currentPrice = completedCandle.close;
@@ -329,7 +329,7 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       const relVolatility = volatility / basePrice;
       const stepVol = relVolatility * Math.sqrt(tfSeconds);
 
-      while (gapTime < bucketTime && runtimeGapCount < 100) {
+      while (gapTime < bucketTime && runtimeGapCount < 30) {
         if (isMarketClosedAt(pair, gapTime)) {
           gapTime += tfSeconds;
           continue;
@@ -422,8 +422,16 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
     } else {
       // In same candle: update high, low, close, volume
       activeCandle.close = m.price;
-      activeCandle.high = Math.max(activeCandle.high, m.price);
-      activeCandle.low = Math.min(activeCandle.low, m.price);
+      
+      // Simulate intra-tick volatility to create realistic wicks
+      // Since ticks happen only once per second, we need this to simulate continuous highs/lows
+      const intraTickVol = m.price * baseSigma * (Math.random() * 2.5);
+      const randomHigh = m.price + (Math.random() > 0.6 ? intraTickVol : 0);
+      const randomLow = m.price - (Math.random() > 0.6 ? intraTickVol : 0);
+      
+      activeCandle.high = Math.max(activeCandle.high, m.price, randomHigh);
+      activeCandle.low = Math.min(activeCandle.low, m.price, randomLow);
+      
       activeCandle.volume += Math.random() * 3;
     }
   }

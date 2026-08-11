@@ -427,12 +427,12 @@ const resampleData = (data: any[], tfString: string) => {
              const isLastSub = j === splits - 1;
              
              // Add random noise while preserving macro drift
-             const subNoise = (Math.random() - 0.5) * Math.abs(stepSize) * 0.7;
+             const subNoise = (Math.random() - 0.5) * Math.abs(stepSize) * 0.2;
              const rawSubClose = currentOpen + stepSize + subNoise;
              const currentClose = isLastSub ? d.close : rawSubClose;
              
              const bodyRange = Math.abs(currentClose - currentOpen);
-             const wickNoise = Math.max(bodyRange * 0.4, Math.abs(stepSize) * 0.5, currentOpen * 0.00008);
+             const wickNoise = Math.max(bodyRange * 0.2, Math.abs(stepSize) * 0.2);
              
              const high = Math.max(currentOpen, currentClose) + Math.random() * wickNoise;
              const low = Math.min(currentOpen, currentClose) - Math.random() * wickNoise;
@@ -3812,11 +3812,35 @@ const PROMOTED_ARTICLES = [
     } catch(e) { return "Candle"; }
   });
 
+  const [showQuoteDetails, setShowQuoteDetails] = useState(() => {
+    try {
+      return localStorage.getItem('bivax_quote_details') !== 'false';
+    } catch(e) { return true; }
+  });
+
+  const [showTimer, setShowTimer] = useState(() => {
+    try {
+      return localStorage.getItem('bivax_show_timer') !== 'false';
+    } catch(e) { return true; }
+  });
+
   useEffect(() => {
     try {
       localStorage.setItem('bivax_chart_type', chartType);
     } catch(e) {}
   }, [chartType]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bivax_quote_details', showQuoteDetails.toString());
+    } catch(e) {}
+  }, [showQuoteDetails]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bivax_show_timer', showTimer.toString());
+    } catch(e) {}
+  }, [showTimer]);
 
   const chartTypeOptions = [
     {
@@ -4494,6 +4518,7 @@ const PROMOTED_ARTICLES = [
   const prevChartTypeRefRender = useRef<string | null>(null);
   const crosshairCallbackRef = useRef<any>(null);
   const lastZoomedAssetRef = useRef<string | null>(null);
+  const timerOverlayRef = useRef<HTMLDivElement | null>(null);
   const [purchaseLineX, setPurchaseLineX] = useState<number | null>(null);
   const [expirationLineX, setExpirationLineX] = useState<number | null>(null);
 
@@ -4574,6 +4599,10 @@ const PROMOTED_ARTICLES = [
                
                if (currentSeries && (lastCandleRef.current || rawLastCandleRef.current)) {
                    if (idx === 0) {
+                     const priceY = currentSeries.priceToCoordinate(currentInterpolatedPriceRef.current);
+                     if (timerOverlayRef.current && priceY !== null) {
+                         timerOverlayRef.current.style.top = `${priceY}px`;
+                     }
                      if (hoverTradeTypeRef.current && lastCandleRef.current) {
                          const y = currentSeries.priceToCoordinate(lastCandleRef.current.close);
                          setHoverLineY(y);
@@ -5520,7 +5549,6 @@ const PROMOTED_ARTICLES = [
         lastChartUpdateTimeRef.current = Date.now();
         const { pair, candle, timeframe: candleTimeframe } = payload;
         
-        // Only aggregate or update if it's the smallest unit (5s) or matches our current timeframe
         const isMinUnit = candleTimeframe === "5 seconds";
         const isCurrentTf = candleTimeframe === timeframeRef.current;
         
@@ -5815,6 +5843,15 @@ const PROMOTED_ARTICLES = [
   useEffect(() => { timeframeRef.current = timeframe; }, [timeframe]);
   useEffect(() => { chartTypeRef.current = chartType; }, [chartType]);
 
+  useEffect(() => {
+    if (seriesRef.current) {
+      seriesRef.current.applyOptions({
+        lastValueVisible: showQuoteDetails,
+        priceLineVisible: showQuoteDetails,
+      });
+    }
+  }, [showQuoteDetails]);
+
   // Real-time Chart Resize handling (Critical for Mobile)
   useEffect(() => {
     if (!chartRef.current || !chartContainerRef.current) return;
@@ -6094,8 +6131,8 @@ const PROMOTED_ARTICLES = [
             precision: dynamicPrecision,
             minMove: dynamicMinMove,
         },
-        lastValueVisible: true,
-        priceLineVisible: true,
+        lastValueVisible: showQuoteDetails,
+        priceLineVisible: showQuoteDetails,
         priceLineColor: "#FFE24C",
         priceLineStyle: LineStyle.Dotted,
         priceLineWidth: 1,
@@ -6226,8 +6263,8 @@ const PROMOTED_ARTICLES = [
         precision: dynamicPrecision,
         minMove: dynamicMinMove 
       },
-      lastValueVisible: true, 
-      priceLineVisible: true, 
+      lastValueVisible: showQuoteDetails, 
+      priceLineVisible: showQuoteDetails, 
       priceLineSource: 1,
       priceLineColor: "#FFE24C", 
       priceLineStyle: LineStyle.Dotted, 
@@ -6944,17 +6981,18 @@ const PROMOTED_ARTICLES = [
             >
                 {/* Timer Circle - Refined to match screenshot */}
                 <div className="absolute top-[60px] -translate-x-1/2 left-0 flex flex-col items-center z-50">
-                  <div className="w-[40px] h-[40px] rounded-full border border-white/30 bg-[#1c1f24]/90 backdrop-blur-md text-white flex items-center justify-center text-[13px] font-medium shadow-xl">
+                  <div className="w-[32px] h-[32px] rounded-full border border-white/40 bg-transparent text-white/90 flex items-center justify-center text-[11px] font-medium shadow-sm">
                     {formatTimeToPurchase(timeToPurchase)}
                   </div>
                 </div>
             
                 {/* Vertical Text - Subdued, non-uppercase style */}
-                <div className="absolute top-[105px] left-[15px] whitespace-nowrap rotate-90 text-[11px] font-medium text-white/30 tracking-tight origin-top-left">
+                <div className="absolute top-[105px] left-[15px] whitespace-nowrap rotate-90 text-[11px] font-medium text-white/40 tracking-tight origin-top-left">
                    Time remaining
                 </div>
 
-                {/* The Vertical Purchase Line removed */}
+                {/* The Vertical Purchase Line */}
+                <div className="absolute top-[92px] bottom-0 w-[1px] bg-[#ff5252]/80"></div>
             </div>
           )}
 
@@ -6978,6 +7016,19 @@ const PROMOTED_ARTICLES = [
             </div>
           )}
 
+          {showTimer && (
+            <div className="absolute right-[56px] pointer-events-none z-[60]" ref={timerOverlayRef} style={{ transform: 'translateY(calc(-50% - 15px))' }}>
+               <div className="bg-[#1C1C1E] border border-white/10 px-1.5 py-[1px] rounded text-[10px] font-bold text-[#e4e4e4] shadow-xl backdrop-blur-md">
+                 {(() => {
+                   const tfSecs = getTimeSeconds(timeframe);
+                   const remain = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
+                   const m = Math.floor(remain / 60);
+                   const s = remain % 60;
+                   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                 })()}
+               </div>
+            </div>
+          )}
           {/* Active Trades Overlays */}
           <div id={`active-trades-overlays-${idx}`} className="absolute inset-0 pointer-events-none z-[35]">
                {visibleActiveTrades.filter(t => t.asset === activeAsset).map((trade, tIdx) => {
@@ -14512,14 +14563,16 @@ const PROMOTED_ARTICLES = [
 
                 <div className="mt-8 pt-6 space-y-4">
                     <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="w-5 h-5 rounded-[4px] border border-[#FFE24C] bg-[#FFE24C]/20 flex items-center justify-center">
-                            <Icons.Check size={14} className="text-[#FFE24C]" strokeWidth={3} />
+                        <input type="checkbox" className="hidden" checked={showQuoteDetails} onChange={(e) => setShowQuoteDetails(e.target.checked)} />
+                        <div className={`w-5 h-5 rounded-[4px] border transition-colors flex items-center justify-center ${showQuoteDetails ? 'border-[#FFE24C] bg-[#FFE24C]/20' : 'border-[#4A4A4F] bg-transparent group-hover:border-[#6C6C75]'}`}>
+                            {showQuoteDetails && <Icons.Check size={14} className="text-[#FFE24C]" strokeWidth={3} />}
                         </div>
                         <span className="text-[#e4e4e4] text-[13px] font-bold tracking-wide group-hover:text-white transition-colors">View quote details</span>
                     </label>
                     <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="w-5 h-5 rounded-[4px] border border-[#FFE24C] bg-[#FFE24C]/20 flex items-center justify-center">
-                            <Icons.Check size={14} className="text-[#FFE24C]" strokeWidth={3} />
+                        <input type="checkbox" className="hidden" checked={showTimer} onChange={(e) => setShowTimer(e.target.checked)} />
+                        <div className={`w-5 h-5 rounded-[4px] border transition-colors flex items-center justify-center ${showTimer ? 'border-[#FFE24C] bg-[#FFE24C]/20' : 'border-[#4A4A4F] bg-transparent group-hover:border-[#6C6C75]'}`}>
+                            {showTimer && <Icons.Check size={14} className="text-[#FFE24C]" strokeWidth={3} />}
                         </div>
                         <span className="text-[#e4e4e4] text-[13px] font-bold tracking-wide group-hover:text-white transition-colors">View timer until next quote</span>
                     </label>

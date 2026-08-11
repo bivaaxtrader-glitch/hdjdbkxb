@@ -236,11 +236,11 @@ export async function pruneHistoricalCandles() {
     let totalDeleted = 0;
 
     for (const pair of pairKeys) {
-      // Yield to event loop to prevent blocking during heavy pruning
-      await new Promise(resolve => setImmediate(resolve));
-      
       for (const type of ['real', 'demo']) {
         for (const tf of TIMEFRAMES) {
+          // Yield to event loop frequently to prevent blocking during heavy pruning
+          await new Promise(resolve => setImmediate(resolve));
+          
           const limit = 1000;
           
           // Use a fast check to see if we exceed the limit
@@ -318,9 +318,9 @@ export async function initializeCandlesFromDB() {
   
   // 2. Migration, initial seeding, and gap filling
   for (const pair of pairKeys) {
-    // Yield every pair to prevent long blocking
-    await new Promise(resolve => setImmediate(resolve));
     for (const type of ['real', 'demo']) {
+      // Yield frequently to prevent long blocking
+      await new Promise(resolve => setImmediate(resolve));
       try {
         // A. Copy old 5s data from the candles table if historical_candles is empty for 5s
         const tf5sCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, '5 seconds') as any;
@@ -467,6 +467,8 @@ export async function initializeCandlesFromDB() {
 
         // C. Gap-filling & Memory loading for EVERY timeframe
         for (const tf of TIMEFRAMES) {
+          // Yield even more frequently during gap filling
+          await new Promise(resolve => setImmediate(resolve));
           const tfSeconds = timeframeSecondsMap[tf];
           const latestCandle = db.prepare('SELECT close, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime DESC LIMIT 1').get(pair, type, tf) as any;
           
