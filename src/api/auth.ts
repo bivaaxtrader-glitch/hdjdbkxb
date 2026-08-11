@@ -396,7 +396,7 @@ router.get('/google/callback', async (req, res) => {
       ].filter(Boolean).includes(emailLower);
 
       await run(
-        `INSERT INTO users (uid, email, display_name, photo_url, referral_code, referred_by_uid, referral_sub_id, referral_type, country, country_code, balance, demo_balance, is_admin) 
+        `INSERT INTO users (uid, email, display_name, photo_url, referral_code, referred_by_uid, referral_sub_id, referral_type, country, country_code, real_balance, demo_balance, is_admin) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uid,

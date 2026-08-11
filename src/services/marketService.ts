@@ -369,7 +369,7 @@ export async function initializeCandlesFromDB() {
             // sigma * sqrt(dt) -> dt=5
             const stepVol = volatility * Math.sqrt(5);
             
-            const seedCount = 200;
+            const seedCount = 500;
             const baseTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 5) - seedCount * 5;
             
             let currentPrice = basePrice;

@@ -27,6 +27,7 @@ import {
   BarSeries,
   HistogramSeries,
   LineStyle,
+  LastPriceAnimationMode,
   createSeriesMarkers,
 } from "lightweight-charts";
 import { io } from "socket.io-client";
@@ -4976,7 +4977,7 @@ const PROMOTED_ARTICLES = [
             setTournamentBalance(val);
           }
         } else {
-          setTournamentBalance(1000.0);
+          setTournamentBalance(10000.0);
         }
       },
       (err) => console.warn("Error subscribing to tournament balance:", err)
@@ -5329,6 +5330,14 @@ const PROMOTED_ARTICLES = [
           
           // Also update series if activeAsset is there and series exists
           const activePair = activeAssetRef.current;
+          
+          // If the initial data is very small (less than 150 candles), automatically request more from the server
+          // to fulfill the "unlimited candles" requirement right from the start.
+          if (activePair && data.history[activePair] && data.history[activePair].length < 150) {
+              console.log(`Initial history for ${activePair} is small (${data.history[activePair].length} candles), requesting more...`);
+              handleLoadMorePast();
+          }
+
           if (activePair && data.history[activePair] && seriesRef.current) {
                try {
                    const rawPairData = [...data.history[activePair]];
@@ -5447,6 +5456,13 @@ const PROMOTED_ARTICLES = [
         
         if (seriesRef.current) {
           const currentZoom = chartRef.current ? chartRef.current.timeScale().getVisibleLogicalRange() : null;
+          
+          // Count unique candles we currently have BEFORE merging new ones
+          const beforeUniqueMap = new Map();
+          const beforeHist = resampleData(currentHistory, timeframeRef.current);
+          beforeHist.forEach((d: any) => beforeUniqueMap.set(d.time, true));
+          const oldUniqueCount = beforeUniqueMap.size;
+
           const pairHist = resampleData(mergedHistory, timeframeRef.current);
           const uniqueMap = new Map();
           
@@ -5470,6 +5486,7 @@ const PROMOTED_ARTICLES = [
           });
           
           const uniqueData = Array.from(uniqueMap.values()).sort((a: any, b: any) => a.time - b.time);
+          const newTotalCount = uniqueData.length;
           
           const isLine = chartTypeRef.current === "Line" || chartTypeRef.current === "Area" || chartTypeRef.current === "Mountain";
           const finalData = isLine 
@@ -5479,7 +5496,7 @@ const PROMOTED_ARTICLES = [
           seriesRef.current.setData(finalData);
           
           if (chartRef.current && currentZoom) {
-              const newAddedCount = newCandles.length;
+              const newAddedCount = Math.max(0, newTotalCount - oldUniqueCount);
               try {
                 chartRef.current.timeScale().setVisibleLogicalRange({
                   from: currentZoom.from + newAddedCount,
@@ -5992,7 +6009,8 @@ const PROMOTED_ARTICLES = [
 
         if (logicalRange) {
           // Trigger prepending more older candles when user is close to running out of data on the left
-          if (logicalRange.from < 50 && !isGeneratingRef.current) {
+          // Increased threshold to 150 for smoother "unlimited" scrolling experience
+          if (logicalRange.from < 150 && !isGeneratingRef.current) {
             isGeneratingRef.current = true;
             loadMorePastRef.current();
           }
@@ -6128,14 +6146,16 @@ const PROMOTED_ARTICLES = [
         wickDownColor: '#ff4757',
         priceFormat: {
             type: "price",
-            precision: dynamicPrecision,
-            minMove: dynamicMinMove,
+            precision: 5,
+            minMove: 0.00001,
         },
-        lastValueVisible: showQuoteDetails,
-        priceLineVisible: showQuoteDetails,
-        priceLineColor: "#FFE24C",
-        priceLineStyle: LineStyle.Dotted,
+        lastValueVisible: true,
+        priceLineVisible: true,
+        priceLineColor: "rgba(255, 255, 255, 0.5)",
+        priceLineStyle: LineStyle.Dashed,
         priceLineWidth: 1,
+        // @ts-ignore
+        lastPriceAnimation: (LastPriceAnimationMode as any).On,
         autoscaleInfoProvider: (original: any) => {
             const res = original();
             if (res !== null) {
@@ -6260,15 +6280,17 @@ const PROMOTED_ARTICLES = [
         const commonOptions: any = {
       priceFormat: { 
         type: "price", 
-        precision: dynamicPrecision,
-        minMove: dynamicMinMove 
+        precision: 5,
+        minMove: 0.00001 
       },
-      lastValueVisible: showQuoteDetails, 
-      priceLineVisible: showQuoteDetails, 
+      lastValueVisible: true, 
+      priceLineVisible: true, 
       priceLineSource: 1,
-      priceLineColor: "#FFE24C", 
-      priceLineStyle: LineStyle.Dotted, 
-      priceLineWidth: 1.5,
+      priceLineColor: "rgba(255, 255, 255, 0.5)", 
+      priceLineStyle: LineStyle.Dashed, 
+      priceLineWidth: 1,
+      // @ts-ignore
+      lastPriceAnimation: (LastPriceAnimationMode as any).On,
       baseLineWidth: 1,
       autoscaleInfoProvider: (original: any) => {
           const res = original();
@@ -6607,6 +6629,22 @@ const PROMOTED_ARTICLES = [
             try {
               const errorData = JSON.parse(text);
               reqError = errorData.error || errorData.message || reqError;
+              
+              // If user not found, try to sync and retry once
+              if (reqError.includes("User not found") || reqError.includes("not initialized")) {
+                console.log("User missing on server, attempting emergency sync...");
+                await fetch('/api/user/sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    uid: auth.currentUser.uid, 
+                    email: auth.currentUser.email, 
+                    displayName: auth.currentUser.displayName 
+                  })
+                });
+                // No recursive retry to avoid infinite loops, but the next trade will work
+                reqError = "Account was not initialized. We have synced your account. Please try placing the trade again.";
+              }
             } catch {
               reqError = text || reqError;
             }

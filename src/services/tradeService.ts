@@ -184,6 +184,32 @@ export async function settleTrade(tradeId: number, currentMarketPrice?: number) 
           logger.info(`Successfully synced trade ${tradeId} settlement to Firestore.`);
         } catch (fsErr: any) {
           logger.error(`Failed to sync trade ${tradeId} settlement to Firestore: ${fsErr.message}`);
+          // Fallback: Try to sync full trade object if update failed (document might not exist)
+          try {
+            const fullTrade = await get('SELECT * FROM trades WHERE id = ?', [tradeId], conn) as any;
+            if (fullTrade) {
+              const mapped = {
+                id: fullTrade.id.toString(),
+                userId: fullTrade.user_id,
+                marketId: fullTrade.market_id,
+                asset: fullTrade.market_id,
+                amount: parseFloat(fullTrade.amount),
+                direction: fullTrade.direction,
+                type: fullTrade.direction,
+                entryPrice: parseFloat(fullTrade.entry_price),
+                exitPrice: parseFloat(exitPrice.toString()),
+                status: newStatus,
+                payoutAmount: payoutAmount.toNumber(),
+                duration: fullTrade.duration,
+                expiryTime: fullTrade.expiry_time,
+                accountType: fullTrade.account_type,
+                isDemo: !!fullTrade.is_demo,
+                createdAt: fullTrade.created_at,
+                settledAt: Math.floor(Date.now() / 1000)
+              };
+              await adminDb.collection('trades').doc(tradeId.toString()).set(mapped);
+            }
+          } catch (e) {}
         }
       }
 
@@ -195,6 +221,10 @@ export async function settleTrade(tradeId: number, currentMarketPrice?: number) 
              const currentBalance = new Big(participant.score || 0);
              const newBalance = currentBalance.plus(payoutAmount).toFixed(2);
              await run(`UPDATE tournament_participants SET score = ? WHERE tournament_id = ? AND user_id = ?`, [newBalance, trade.tournament_id, trade.user_id], conn);
+             
+             // Sync updated score to Firestore
+             const { syncTournamentScoreToFirestore } = await import('../lib/firebase-admin.ts');
+             syncTournamentScoreToFirestore(trade.tournament_id, trade.user_id, parseFloat(newBalance)).catch(err => logger.error('Sync tournament score failed on payout:', err));
            }
         } else {
            const balanceField = (trade.is_demo || trade.account_type === 'demo') ? 'demo_balance' : 'real_balance';
@@ -217,13 +247,24 @@ export async function settleTrade(tradeId: number, currentMarketPrice?: number) 
         await updateLeaderboardStats(trade.user_id, newStatus as any, profit, tradeAmount.toNumber(), conn);
       }
 
+      const fullTrade = await get('SELECT * FROM trades WHERE id = ?', [tradeId], conn) as any;
+
       return { 
         id: tradeId, 
         status: newStatus, 
         exitPrice, 
         payoutAmount: payoutAmount.toNumber(), 
         userId: trade.user_id,
-        isDemo
+        isDemo,
+        accountType: trade.account_type,
+        asset: trade.market_id,
+        direction: trade.direction,
+        type: trade.direction,
+        amount: parseFloat(trade.amount),
+        entryPrice: parseFloat(trade.entry_price),
+        createdAt: trade.created_at,
+        settledAt: Math.floor(Date.now() / 1000),
+        payoutRate: m ? (m.payout || 82) : 80
       };
     });
 

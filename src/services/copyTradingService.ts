@@ -8,7 +8,15 @@ import logger from '../lib/logger.ts';
 /**
  * Process copy trading for a master trader's trade
  */
-export async function processCopyTrading(masterId: string, tradeData: { marketId: string, direction: string, duration: number, entryPrice: number, isDemo: boolean }) {
+export async function processCopyTrading(masterId: string, tradeData: { 
+  marketId: string, 
+  direction: string, 
+  entryPrice: number, 
+  isDemo: boolean,
+  amount?: number,
+  duration?: number, 
+  tradeId?: number 
+}) {
   try {
     // 1. Find all active followers for this master
     const followers = await query("SELECT * FROM active_copies WHERE master_id = ? AND status = 'active'", [masterId]) as any[];
@@ -44,11 +52,12 @@ export async function processCopyTrading(masterId: string, tradeData: { marketId
           await run(`UPDATE users SET ${balanceField} = ? WHERE uid = ?`, [newBalance, userId], conn);
 
           // Create trade
-          const expiryTime = Math.floor((Date.now() + tradeData.duration * 1000) / 1000);
+          const duration = tradeData.duration || 60;
+          const expiryTime = Math.floor((Date.now() + duration * 1000) / 1000);
           await run(
             `INSERT INTO trades (user_id, market_id, amount, direction, entry_price, duration, expiry_time, is_demo, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [userId, tradeData.marketId, tradeAmount.toString(), tradeData.direction, tradeData.entryPrice.toString(), tradeData.duration, expiryTime, isDemo ? 1 : 0, 'open'],
+            [userId, tradeData.marketId, tradeAmount.toString(), tradeData.direction, tradeData.entryPrice.toString(), duration, expiryTime, isDemo ? 1 : 0, 'open'],
             conn
           );
 

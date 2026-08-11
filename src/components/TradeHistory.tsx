@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, orderBy, getDocs, limit } from '../firebase';
-import { db, auth } from '../firebase';
+import { auth } from '../firebase';
 
 interface Trade {
   id: string;
@@ -22,18 +21,21 @@ const TradeHistory: React.FC = () => {
   useEffect(() => {
     if (!auth.currentUser) return;
 
-    const q = query(
-      collection(db, 'trades'),
-      where('userId', '==', auth.currentUser.uid),
-      where('status', 'in', ['won', 'lost', 'draw']),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
+    const fetchTrades = async () => {
+      try {
+        const response = await fetch(`/api/user-trades?userId=${auth.currentUser?.uid}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.trades) {
+            setTrades(data.trades);
+          }
+        }
+      } catch (err) {
+        console.warn("Trade history fetch failed:", err);
+      }
+    };
 
-    getDocs(q).then((snapshot) => {
-      const tradesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trade));
-      setTrades(tradesData);
-    }).catch(err => console.warn("Trade history fetch failed:", err));
+    fetchTrades();
   }, []);
 
   return (

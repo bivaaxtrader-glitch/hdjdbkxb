@@ -561,3 +561,13 @@ export async function syncUserToFirestore(uid: string, data: any) {
     console.error(`[FirebaseSync] Failed to sync user ${uid}:`, err);
   }
 }
+
+export async function syncTournamentScoreToFirestore(tournamentId: string, userId: string, score: number) {
+  if (!adminDb || !tournamentId || !userId) return;
+  try {
+    const participantRef = adminDb.collection('tournaments').doc(tournamentId).collection('participants').doc(userId);
+    await participantRef.set({ score, updatedAt: Date.now() }, { merge: true });
+  } catch (err) {
+    console.error(`[FirebaseSync] Failed to sync tournament score for user ${userId} in ${tournamentId}:`, err);
+  }
+}

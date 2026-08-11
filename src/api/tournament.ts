@@ -4,6 +4,8 @@ import logger from '../lib/logger.ts';
 import { requireAuth, AuthRequest } from '../middleware/jwtAuth.ts';
 import Big from 'big.js';
 
+import { syncTournamentScoreToFirestore } from '../lib/firebase-admin.ts';
+
 const router = express.Router();
 
 /**
@@ -146,6 +148,9 @@ router.post('/tournaments/:id/join', requireAuth, async (req: AuthRequest, res) 
         [id, uid, 10000.0, Date.now()],
         conn
       );
+
+      // Sync to Firestore immediately so TradeTerminal sees the balance
+      syncTournamentScoreToFirestore(id, uid, 10000.0).catch(err => logger.error('Firestore tournament sync failed on join:', err));
     });
 
     res.json({ success: true, message: 'Successfully joined tournament' });
@@ -282,6 +287,9 @@ router.post('/tournaments/:id/rebuy', requireAuth, async (req: AuthRequest, res)
             await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, uid], conn);
             
             await run('UPDATE tournament_participants SET score = 10000.0 WHERE tournament_id = ? AND user_id = ?', [tournamentId, uid], conn);
+            
+            // Sync to Firestore on rebuy
+            syncTournamentScoreToFirestore(tournamentId, uid, 10000.0).catch(err => logger.error('Firestore tournament sync failed on rebuy:', err));
         });
         
         res.json({ success: true });

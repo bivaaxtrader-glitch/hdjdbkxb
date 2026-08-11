@@ -5,6 +5,8 @@ import { history_real, history_demo, currentCandles_real, currentCandles_demo, m
 import { get, run, query } from '../db/mysql-db.ts';
 import { mapUserForFrontend } from '../lib/user-utils.ts';
 
+import { markets } from '../markets.ts';
+
 function getTimeSeconds(tf: string): number {
   if (!tf || typeof tf !== 'string') return 5;
   const parts = tf.split(" ");
@@ -159,7 +161,7 @@ export function initSocket(server: HttpServer) {
           LIMIT ?
         `, [asset, accountType, timeframe, beforeTime, limit]);
 
-        const formattedRows = rows.map((r: any) => ({
+        let formattedRows = rows.map((r: any) => ({
           time: r.time,
           open: parseFloat(r.open) || 0,
           high: parseFloat(r.high) || 0,
@@ -169,6 +171,95 @@ export function initSocket(server: HttpServer) {
           openTime: r.openTime,
           closeTime: r.closeTime
         })).reverse();
+
+        // If we didn't get enough candles, generate more synthetically to fulfill the "unlimited" requirement
+        if (formattedRows.length < limit) {
+           const needed = limit - formattedRows.length;
+           const tfSecs = getTimeSeconds(timeframe);
+           let lastTime = formattedRows.length > 0 ? formattedRows[0].time : (beforeTime - (beforeTime % tfSecs));
+           
+           // If we have history, use the oldest close. Otherwise use market default price.
+           let lastClose = formattedRows.length > 0 ? formattedRows[0].close : (markets[asset]?.price || 100);
+
+           // Try to find any candle for this asset to get a realistic starting price if possible
+           if (formattedRows.length === 0) {
+              const lastCandleFromDb = await get('SELECT close FROM historical_candles WHERE market = ? ORDER BY openTime DESC LIMIT 1', [asset]);
+              if (lastCandleFromDb) lastClose = parseFloat(lastCandleFromDb.close);
+           }
+
+           const generated = [];
+           // Use a simple deterministic random-ish generator based on time and asset to keep it somewhat consistent
+           const getPseudoRandom = (seed: number) => {
+             const x = Math.sin(seed + (asset.length * 1000)) * 10000;
+             return x - Math.floor(x);
+           };
+
+           // Simple trend/momentum tracker to make it look like a real market
+           let momentum = (getPseudoRandom(lastTime) - 0.5) * 2; 
+
+                      for (let i = 0; i < needed; i++) {
+              lastTime -= tfSecs;
+              const pr = getPseudoRandom(lastTime);
+              
+              // Update momentum slowly
+              momentum = momentum * 0.85 + (getPseudoRandom(lastTime + 500) - 0.5) * 0.5;
+              
+              // Base range for the candle (relative to price)
+              const rangeVol = lastClose * 0.0015 * (0.8 + pr * 1.5);
+              
+              // Determine candle type
+               const typeRand = getPseudoRandom(lastTime + 1000);
+               const currentClose = lastClose;
+               let currentOpen = lastClose;
+               let high = lastClose;
+               let low = lastClose;
+
+               if (typeRand < 0.12) {
+                  // Doji / Spinning Top
+                  const bodySize = rangeVol * (0.05 + getPseudoRandom(lastTime + 2) * 0.15);
+                  const isUp = getPseudoRandom(lastTime + 3) > 0.5;
+                  currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
+                  
+                  const upperWick = rangeVol * (0.1 + getPseudoRandom(lastTime + 4) * 0.4);
+                  const lowerWick = rangeVol * (0.1 + getPseudoRandom(lastTime + 5) * 0.4);
+                  high = Math.max(currentOpen, currentClose) + upperWick;
+                  low = Math.min(currentOpen, currentClose) - lowerWick;
+               } else if (typeRand < 0.35) {
+                  // Strong Candle (Large body, small wicks)
+                  const bodySize = rangeVol * (1.2 + getPseudoRandom(lastTime + 2) * 1.8);
+                  const isUp = momentum > 0 || getPseudoRandom(lastTime + 3) > 0.65;
+                  currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
+                  
+                  const tinyWick = bodySize * (getPseudoRandom(lastTime + 4) * 0.05);
+                  high = Math.max(currentOpen, currentClose) + tinyWick;
+                  low = Math.min(currentOpen, currentClose) - tinyWick;
+               } else {
+                  // Standard Candle
+                  const bodySize = rangeVol * (0.5 + getPseudoRandom(lastTime + 2) * 1.0);
+                  const isUp = momentum > 0.15 || (momentum > -0.15 && getPseudoRandom(lastTime + 3) > 0.5);
+                  currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
+                  
+                  const upperWick = rangeVol * (0.2 + getPseudoRandom(lastTime + 4) * 0.4);
+                  const lowerWick = rangeVol * (0.2 + getPseudoRandom(lastTime + 5) * 0.4);
+                  high = Math.max(currentOpen, currentClose) + upperWick;
+                  low = Math.min(currentOpen, currentClose) - lowerWick;
+               }
+               
+               generated.push({
+                 time: lastTime,
+                 open: parseFloat(currentOpen.toFixed(8)),
+                 high: parseFloat(high.toFixed(8)),
+                 low: parseFloat(low.toFixed(8)),
+                 close: parseFloat(currentClose.toFixed(8)),
+                 volume: pr * 100,
+                 openTime: lastTime,
+                 closeTime: lastTime + tfSecs - 1
+               });
+               lastClose = currentOpen;
+            }
+           formattedRows = [...generated.reverse(), ...formattedRows];
+        }
+
 
         socket.emit('past_candles_response', {
           asset,
