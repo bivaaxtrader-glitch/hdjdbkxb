@@ -325,7 +325,7 @@ export async function initializeCandlesFromDB() {
   for (const pair of pairKeys) {
     // Yield every pair to prevent long blocking
     await new Promise(resolve => setImmediate(resolve));
-    for (const type of ['real']) {
+    for (const type of ['real', 'demo']) {
       try {
         // A. Copy old 5s data from the candles table if historical_candles is empty for 5s
         const tf5sCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, '5 seconds') as any;
@@ -714,27 +714,54 @@ export async function initializeUserManipulation() {
   }
 }
 
+const firestoreCandleBuffer: any[] = [];
+let isFlushingFirestore = false;
+
 // Firestore Persistence for candles (Master Store)
-async function saveCandleToFirestore(pair: string, type: string, timeframe: string, candle: any) {
-  try {
-    const docId = `${pair}_${type}_${timeframe}_${candle.openTime}`;
-    await adminDb.collection('market_candles').doc(docId).set({
-      pair,
-      type,
-      timeframe,
-      open: Number(candle.open),
-      high: Number(candle.high),
-      low: Number(candle.low),
-      close: Number(candle.close),
-      volume: Number(candle.volume),
-      openTime: Number(candle.openTime),
-      closeTime: Number(candle.closeTime),
-      updatedAt: Date.now()
-    }, { merge: true });
-  } catch (e) {
-    // Silently fail if firestore unreachable to keep engine running
+export async function saveCandleToFirestore(pair: string, type: string, timeframe: string, candle: any) {
+  firestoreCandleBuffer.push({ pair, type, timeframe, candle });
+  if (firestoreCandleBuffer.length >= 450 && !isFlushingFirestore) {
+    flushFirestoreCandleBuffer();
   }
 }
+
+async function flushFirestoreCandleBuffer() {
+  if (isFlushingFirestore || firestoreCandleBuffer.length === 0) return;
+  isFlushingFirestore = true;
+  
+  try {
+    const batchList = firestoreCandleBuffer.splice(0, 450);
+    const batch = adminDb.batch();
+    for (const item of batchList) {
+      const { pair, type, timeframe, candle } = item;
+      const docId = `${pair}_${type}_${timeframe}_${candle.openTime}`;
+      const ref = adminDb.collection('market_candles').doc(docId);
+      batch.set(ref, {
+        pair,
+        type,
+        timeframe,
+        open: Number(candle.open),
+        high: Number(candle.high),
+        low: Number(candle.low),
+        close: Number(candle.close),
+        volume: Number(candle.volume),
+        openTime: Number(candle.openTime),
+        closeTime: Number(candle.closeTime),
+        updatedAt: Date.now()
+      }, { merge: true });
+    }
+    await batch.commit();
+  } catch (e: any) {
+    console.error('Failed to commit firestore candle batch:', e.message);
+  } finally {
+    isFlushingFirestore = false;
+    if (firestoreCandleBuffer.length > 0) {
+      setTimeout(flushFirestoreCandleBuffer, 100);
+    }
+  }
+}
+
+setInterval(flushFirestoreCandleBuffer, 5000);
 
 export function setSystemActive(active: boolean) {
   systemActive = active;

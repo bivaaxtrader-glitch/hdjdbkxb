@@ -64,28 +64,37 @@ export async function startMarketEngine() {
         const isSummaryTick = tickCount % 5 === 0; // Every 1 second (5 * 200ms)
 
         for (const pair of marketKeys) {
-          const roomName = `market_${pair}_real`;
-          const room = io.sockets.adapter.rooms.get(roomName);
-          const hasListeners = room && room.size > 0;
+          // Process REAL market
+          const roomNameReal = `market_${pair}_real`;
+          const roomReal = io.sockets.adapter.rooms.get(roomNameReal);
+          const hasListenersReal = roomReal && roomReal.size > 0;
 
-          // Optimization: If no one is watching, we can skip high-frequency updates
-          // and only update once per second (summary tick) to maintain history
-          if (!hasListeners && !isSummaryTick) continue;
-
-          const realTick = updatePair(pair, 'real', nowSec);
-          if (realTick) {
-            // Only emit to specific room if someone is actually watching that asset
-            if (hasListeners) {
-               io.to(roomName).emit('market_tick', { pair, ...realTick });
+          if (hasListenersReal || isSummaryTick) {
+            const realTick = updatePair(pair, 'real', nowSec);
+            if (realTick) {
+              if (hasListenersReal) {
+                 io.to(roomNameReal).emit('market_tick', { pair, ...realTick });
+              }
+              if (isSummaryTick) {
+                tickDataReal[pair] = realTick;
+              }
             }
-            
-            if (isSummaryTick) {
-              tickDataReal[pair] = realTick;
+          }
+
+          // Process DEMO market
+          const roomNameDemo = `market_${pair}_demo`;
+          const roomDemo = io.sockets.adapter.rooms.get(roomNameDemo);
+          const hasListenersDemo = roomDemo && roomDemo.size > 0;
+
+          if (hasListenersDemo || isSummaryTick) {
+            const demoTick = updatePair(pair, 'demo', nowSec);
+            if (demoTick && hasListenersDemo) {
+               io.to(roomNameDemo).emit('market_tick', { pair, ...demoTick });
             }
           }
           
           // Yield to event loop if we've processed a batch of markets
-          if (marketKeys.indexOf(pair) % 40 === 0) {
+          if (marketKeys.indexOf(pair) % 20 === 0) {
             await new Promise(resolve => setImmediate(resolve));
           }
         }

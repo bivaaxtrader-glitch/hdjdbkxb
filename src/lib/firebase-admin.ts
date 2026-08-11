@@ -126,6 +126,25 @@ function createMockDb() {
 
   const mockDbObj: any = {
     settings: () => {},
+    batch: () => {
+      const ops: any[] = [];
+      return {
+        set: (ref: any, data: any, options?: any) => {
+          ops.push(async () => await ref.set(data, options));
+        },
+        update: (ref: any, data: any) => {
+          ops.push(async () => await ref.update(data));
+        },
+        delete: (ref: any) => {
+          ops.push(async () => await ref.delete());
+        },
+        commit: async () => {
+          for (const op of ops) {
+            await op();
+          }
+        }
+      };
+    }
   };
 
   const collectionFn = (name: string) => {
@@ -273,6 +292,8 @@ function wrapCollectionRef(realCol: any, mockCol: any): any {
 
 function wrapDocRef(realDoc: any, mockDoc: any): any {
   return {
+    _realRef: realDoc,
+    _mockRef: mockDoc,
     id: realDoc.id,
     collection(subcollectionName: string) {
       if (useMock) return mockDoc.collection(subcollectionName);
@@ -395,6 +416,62 @@ function createSelfHealingFirestoreWrapper(realDb: any, mockDb: any): any {
             } catch (err) {
               handleFirebaseError(err);
               return mockDb.doc(...args);
+            }
+          };
+        }
+        if (prop === 'batch') {
+          return function(...args: any[]) {
+            if (useMock) return mockDb.batch();
+            try {
+              const realBatch = value.apply(target, args);
+              const mockBatch = mockDb.batch();
+              return {
+                set(ref: any, data: any, options?: any) {
+                  const realRef = ref._realRef || ref;
+                  const mockRef = ref._mockRef || ref;
+                  try {
+                    realBatch.set(realRef, data, options);
+                  } catch(e) {
+                    handleFirebaseError(e);
+                  }
+                  mockBatch.set(mockRef, data, options);
+                  return this;
+                },
+                update(ref: any, data: any) {
+                  const realRef = ref._realRef || ref;
+                  const mockRef = ref._mockRef || ref;
+                  try {
+                    realBatch.update(realRef, data);
+                  } catch(e) {
+                    handleFirebaseError(e);
+                  }
+                  mockBatch.update(mockRef, data);
+                  return this;
+                },
+                delete(ref: any) {
+                  const realRef = ref._realRef || ref;
+                  const mockRef = ref._mockRef || ref;
+                  try {
+                    realBatch.delete(realRef);
+                  } catch(e) {
+                    handleFirebaseError(e);
+                  }
+                  mockBatch.delete(mockRef);
+                  return this;
+                },
+                async commit() {
+                  if (useMock) return mockBatch.commit();
+                  try {
+                    return await realBatch.commit();
+                  } catch(e) {
+                    handleFirebaseError(e);
+                    return await mockBatch.commit();
+                  }
+                }
+              };
+            } catch (err) {
+              handleFirebaseError(err);
+              return mockDb.batch();
             }
           };
         }
