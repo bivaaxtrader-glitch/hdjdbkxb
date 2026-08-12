@@ -6,7 +6,8 @@ import {
   systemActive, globalManipulationMode,
   fetchAllRealPrices, initializeCandlesFromDB,
   initializeUserManipulation,
-  saveCandleToDB_v2, TIMEFRAMES, timeframeSecondsMap
+  saveCandleToDB_v2, TIMEFRAMES, timeframeSecondsMap,
+  pruneHistoricalCandles
 } from './marketService.ts';
 import { markets } from '../markets.ts';
 import { settleExpiredTrades, updateTradeExposureCache } from './tradeService.ts';
@@ -20,6 +21,15 @@ export async function startMarketEngine() {
   
   // Initialize candles from the database asynchronously in background
   initializeCandlesFromDB().catch(err => console.error("Error initializing candles:", err));
+  
+  // Prune historical candles on startup after 10 seconds, and then every 2 hours to keep the database small and fast
+  setTimeout(() => {
+    pruneHistoricalCandles().catch(err => console.error("Error pruning candles on startup:", err));
+  }, 10000);
+
+  setInterval(() => {
+    pruneHistoricalCandles().catch(err => console.error("Error pruning candles:", err));
+  }, 2 * 60 * 60 * 1000);
   
   // Initialize user manipulation cache
   initializeUserManipulation().catch(err => console.error("Error initializing user manipulation:", err));

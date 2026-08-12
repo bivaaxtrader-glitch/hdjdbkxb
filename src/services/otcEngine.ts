@@ -321,6 +321,8 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
 
       // 3. Gap handling between ticks (limit to 100 candles per timeframe to prevent event loop death)
+      // If the gap is too large (e.g. server was idle because no one was connected), we skip generating gap candles completely.
+      // This prevents thousands of useless writes to SQLite and Firestore, eliminating 2-3 hour app freezing/blocking!
       let gapTime = completedCandle.closeTime;
       let runtimeGapCount = 0;
       let currentPrice = completedCandle.close;
@@ -330,55 +332,63 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       const tfSeconds = timeframeSecondsMap[tf];
       const stepVol = relVolatility * Math.sqrt(tfSeconds);
 
-      while (gapTime < bucketTime && runtimeGapCount < 100) {
-        if (isMarketClosedAt(pair, gapTime)) {
+      const gapCandlesCount = Math.floor((bucketTime - gapTime) / tfSeconds);
+
+      if (gapCandlesCount < 3) {
+        while (gapTime < bucketTime && runtimeGapCount < 100) {
+          if (isMarketClosedAt(pair, gapTime)) {
+            gapTime += tfSeconds;
+            continue;
+          }
+          const isGap = false;
+          const gapDirection: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+          const c = generateSingleCandleOHLC(currentPrice, stepVol, undefined, {
+            isGap,
+            gapDirection,
+            gapSizeMultiplier: 1.2 + Math.random() * 1.5
+          });
+          const volume = Math.random() * 50 + 5;
+
+          const gapCandle = {
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume,
+            openTime: gapTime,
+            closeTime: gapTime + tfSeconds
+          };
+
+          saveCandleToDB_v2(pair, type, tf, gapCandle);
+
+          const gapRow = {
+            time: gapCandle.openTime,
+            open: gapCandle.open,
+            high: gapCandle.high,
+            low: gapCandle.low,
+            close: gapCandle.close,
+            volume: gapCandle.volume,
+            openTime: gapCandle.openTime,
+            closeTime: gapCandle.closeTime
+          };
+
+          historyPool[pair][tf].push(gapRow);
+          if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
+
+          try {
+             getIO().to(`market_${pair}_${type}`).emit('candle_complete', { pair, timeframe: tf, candle: gapRow });
+          } catch(e) {}
+
+          const pull = (basePrice - c.close) * 0.02;
+          currentPrice = c.close + pull;
+
           gapTime += tfSeconds;
-          continue;
+          runtimeGapCount++;
         }
-        const isGap = false;
-        const gapDirection: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
-        const c = generateSingleCandleOHLC(currentPrice, stepVol, undefined, {
-          isGap,
-          gapDirection,
-          gapSizeMultiplier: 1.2 + Math.random() * 1.5
-        });
-        const volume = Math.random() * 50 + 5;
-
-        const gapCandle = {
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume,
-          openTime: gapTime,
-          closeTime: gapTime + tfSeconds
-        };
-
-        saveCandleToDB_v2(pair, type, tf, gapCandle);
-
-        const gapRow = {
-          time: gapCandle.openTime,
-          open: gapCandle.open,
-          high: gapCandle.high,
-          low: gapCandle.low,
-          close: gapCandle.close,
-          volume: gapCandle.volume,
-          openTime: gapCandle.openTime,
-          closeTime: gapCandle.closeTime
-        };
-
-        historyPool[pair][tf].push(gapRow);
-        if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
-
-        try {
-           getIO().to(`market_${pair}_${type}`).emit('candle_complete', { pair, timeframe: tf, candle: gapRow });
-        } catch(e) {}
-
-        const pull = (basePrice - c.close) * 0.02;
-        currentPrice = c.close + pull;
-
-        gapTime += tfSeconds;
-        runtimeGapCount++;
+      } else {
+        // Fast-forward directly: update currentPrice to last close and skip generating empty backfill candles.
+        currentPrice = completedCandle.close;
+        gapTime = bucketTime;
       }
 
       // 4. Emit completed candle

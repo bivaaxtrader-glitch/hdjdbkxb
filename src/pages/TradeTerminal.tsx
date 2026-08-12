@@ -4417,33 +4417,12 @@ const PROMOTED_ARTICLES = [
   const seriesRef2 = useRef<ISeriesApi<any> | null>(null);
   const socketRef = useRef<any>(null);
   const [initialHistoryCache] = useState(() => {
-    try {
-      const saved = localStorage.getItem('chart_history_cache');
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      return {};
-    }
+    return {};
   });
   const historyCacheRef = useRef<Record<string, any>>(initialHistoryCache);
   const liveCandlesCacheRef = useRef<Record<string, any>>({});
   const saveHistoryCacheSafely = (cacheObj: Record<string, any>) => {
-    try {
-      const prunedCache: Record<string, any> = {};
-      Object.keys(cacheObj).forEach(key => {
-        const arr = cacheObj[key];
-        if (Array.isArray(arr)) {
-          prunedCache[key] = arr.slice(-150);
-        } else {
-          prunedCache[key] = arr;
-        }
-      });
-      localStorage.setItem('chart_history_cache', JSON.stringify(prunedCache));
-    } catch (e) {
-      console.warn("Storage quota exceeded or error occurred while saving chart cache. Safely handling...", e);
-      try {
-        localStorage.removeItem('chart_history_cache');
-      } catch (err) {}
-    }
+    // No-op to prevent saving stale/estimated candles to localStorage, ensuring 100% clean sync on app re-entry
   };
 
   const loadMorePastRef = useRef<() => void>((() => {}));
@@ -4525,19 +4504,59 @@ const PROMOTED_ARTICLES = [
   const [purchaseLineX, setPurchaseLineX] = useState<number | null>(null);
   const [expirationLineX, setExpirationLineX] = useState<number | null>(null);
 
+  const alignChartRightByIdx = (idx: number, fallbackLen: number = 0, delay: number = 50) => {
+    const chart = idx === 0 ? chartRef.current : chartRef2.current;
+    const series = idx === 0 ? seriesRef.current : seriesRef2.current;
+    if (!chart) return;
+    try {
+      const ts = chart.timeScale();
+      let len = fallbackLen;
+      if (series) {
+        try {
+          const d = series.data();
+          if (d && d.length > 0) {
+            len = d.length;
+          }
+        } catch (e) {}
+      }
+      if (len > 0) {
+        ts.setVisibleLogicalRange({ from: len - 58, to: len + 2 });
+      }
+    } catch (e) {}
+    
+    if (delay > 0) {
+      setTimeout(() => {
+        const c = idx === 0 ? chartRef.current : chartRef2.current;
+        const s = idx === 0 ? seriesRef.current : seriesRef2.current;
+        if (!c) return;
+        try {
+          const ts = c.timeScale();
+          let len = fallbackLen;
+          if (s) {
+            try {
+              const d = s.data();
+              if (d && d.length > 0) {
+                len = d.length;
+              }
+            } catch (e) {}
+          }
+          if (len > 0) {
+            ts.setVisibleLogicalRange({ from: len - 58, to: len + 2 });
+          }
+        } catch (e) {}
+      }, delay);
+    }
+  };
+
   useEffect(() => {
     let rafId: number;
     const updateLine = () => {
       const chartConfigs = (isMultiChart && !isMobile ? [0, 1] : [0]);
       
-      // Calculate smooth interpolated price once per frame
-      let newInterp = currentInterpolatedPriceRef.current;
+      // Use exact raw tick price without estimation or lagging interpolation to match history perfectly
+      let newInterp = targetPriceRef.current;
       if (rawLastCandleRef.current && targetPriceRef.current > 0) {
-          const currentInterp = currentInterpolatedPriceRef.current ?? rawLastCandleRef.current.close;
-          const target = targetPriceRef.current;
-          const dt = 0.15;
-          const MathAbs = Math.abs(target - currentInterp);
-          newInterp = MathAbs < 0.000001 ? target : currentInterp + (target - currentInterp) * dt;
+          newInterp = targetPriceRef.current;
           currentInterpolatedPriceRef.current = newInterp;
       }
 
@@ -5393,15 +5412,14 @@ const PROMOTED_ARTICLES = [
                                 const assetChanged = lastZoomedAssetRef.current !== layoutKey;
                                 
                                 if (assetChanged) {
-                                    chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 60), to: uniqueData.length + 2 });
-                                    chartRef.current.timeScale().scrollToRealTime();
+                                    alignChartRightByIdx(0, uniqueData.length, 50);
                                     lastZoomedAssetRef.current = layoutKey;
                                 } else if (currentRange && (currentRange.to - currentRange.from) > 0 && wasScrolledBack) {
                                     try {
                                         chartRef.current.timeScale().setVisibleLogicalRange(currentRange);
                                     } catch (e) {}
                                 } else {
-                                    chartRef.current.timeScale().scrollToRealTime();
+                                    alignChartRightByIdx(0, uniqueData.length, 0);
                                 }
                            }
                            rawLastCandleRef.current = pairHist[pairHist.length - 1];
@@ -5638,12 +5656,20 @@ const PROMOTED_ARTICLES = [
 
       if (!rawLastCandleRef.current) {
           const serverCandle = tick.candle;
+          
+          // Guarantee perfect continuity: find the last completed candle from history cache
+          let lastCompletedClose = newClose;
+          const hist = historyCacheRef.current[activePair];
+          if (Array.isArray(hist) && hist.length > 0) {
+              lastCompletedClose = hist[hist.length - 1].close;
+          }
+          
           rawLastCandleRef.current = {
               time: bucketTime as Time,
-              open: serverCandle?.open ?? newClose,
-              high: serverCandle?.high ?? (newClose * 1.0001),
-              low: serverCandle?.low ?? (newClose * 0.9999),
-              close: serverCandle?.close ?? newClose,
+              open: lastCompletedClose, // Always start exactly where the previous candle closed!
+              high: Math.max(lastCompletedClose, newClose),
+              low: Math.min(lastCompletedClose, newClose),
+              close: newClose,
               volume: serverCandle?.volume || 1
           };
           currentInterpolatedPriceRef.current = newClose;
@@ -5651,9 +5677,9 @@ const PROMOTED_ARTICLES = [
 
       if (rawLastCandleRef.current.time !== bucketTime && bucketTime > rawLastCandleRef.current.time) {
           const prevClose = rawLastCandleRef.current.close;
-          const openPrice = tick.candle?.open ?? prevClose;
-          const highPrice = Math.max(openPrice, newClose, tick.candle?.high ?? newClose);
-          const lowPrice = Math.min(openPrice, newClose, tick.candle?.low ?? newClose);
+          const openPrice = prevClose; // Always start exactly where the previous candle closed!
+          const highPrice = Math.max(openPrice, newClose);
+          const lowPrice = Math.min(openPrice, newClose);
 
           const newCandle = {
               time: bucketTime as Time,
@@ -5873,20 +5899,31 @@ const PROMOTED_ARTICLES = [
 
   // Real-time Chart Resize handling (Critical for Mobile)
   useEffect(() => {
-    if (!chartRef.current || !chartContainerRef.current) return;
-    
-    const container = chartContainerRef.current;
     const resizeObserver = new ResizeObserver((entries) => {
-      if (!entries || entries.length === 0 || !chartRef.current) return;
-      const { width, height } = entries[0].contentRect;
-      if (width > 0 && height > 0) {
-        chartRef.current.applyOptions({ width, height });
+      for (const entry of entries) {
+        const target = entry.target;
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          if (target === chartContainerRef.current && chartRef.current) {
+            chartRef.current.applyOptions({ width, height });
+            alignChartRightByIdx(0, 0, 10);
+          } else if (target === chartContainerRef2.current && chartRef2.current) {
+            chartRef2.current.applyOptions({ width, height });
+            alignChartRightByIdx(1, 0, 10);
+          }
+        }
       }
     });
 
-    resizeObserver.observe(container);
+    if (chartContainerRef.current) {
+      resizeObserver.observe(chartContainerRef.current);
+    }
+    if (chartContainerRef2.current) {
+      resizeObserver.observe(chartContainerRef2.current);
+    }
+
     return () => resizeObserver.disconnect();
-  }, []);
+  }, [isMultiChart]);
 
   useEffect(() => {
     timeZoneRef.current = timeZone;
@@ -6229,6 +6266,7 @@ const PROMOTED_ARTICLES = [
             const data = (seriesRef.current as any).data();
             if (data && data.length > 0) {
                 series.setData(data);
+                alignChartRightByIdx(1, data.length, 50);
             }
         } catch (e) {}
     }
@@ -6489,15 +6527,14 @@ const PROMOTED_ARTICLES = [
               const assetChanged = lastZoomedAssetRef.current !== layoutKey;
               
               if (assetChanged || forceRecreate) {
-                  chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 60), to: uniqueData.length + 2 });
-                  chartRef.current.timeScale().scrollToRealTime();
+                  alignChartRightByIdx(0, uniqueData.length, 50);
                   lastZoomedAssetRef.current = layoutKey;
               } else if (hasZoom && wasScrolledBack) {
                   try {
                       chartRef.current.timeScale().setVisibleLogicalRange(currentZoom);
                   } catch (e) {}
               } else {
-                  chartRef.current.timeScale().scrollToRealTime();
+                  alignChartRightByIdx(0, uniqueData.length, 0);
               }
           }
           
@@ -6911,7 +6948,7 @@ const PROMOTED_ARTICLES = [
                     initial={{ opacity: 0, scale: 0.8, x: 20 }}
                     animate={{ opacity: 1, scale: 1, x: 0 }}
                     exit={{ opacity: 0, scale: 0.8, x: 20 }}
-                    onClick={() => chartRef.current?.timeScale().scrollToRealTime()}
+                    onClick={() => alignChartRightByIdx(0, 0, 0)}
                     className="absolute right-4 bottom-32 z-[150] w-11 h-11 bg-[#202126] hover:bg-[#2a2b30] text-[#FFE24C] rounded-xl flex items-center justify-center shadow-2xl border border-white/5 active:scale-95 transition-all group"
                   >
                     <Icons.ChevronsRight size={22} className="group-hover:translate-x-0.5 transition-transform" />
@@ -7180,7 +7217,7 @@ const PROMOTED_ARTICLES = [
 
                       {/* Chevrons Button */}
                       <button 
-                          onClick={() => chartRef.current?.timeScale().scrollToRealTime()}
+                          onClick={() => alignChartRightByIdx(0, 0, 0)}
                           className="w-[38px] h-[38px] flex items-center justify-center transition-all rounded-[12px] bg-[#27282e] text-[#8e8f93] hover:text-white hover:bg-[#323339]"
                       >
                           <Icons.ChevronsRight size={19} strokeWidth={1.8} />
