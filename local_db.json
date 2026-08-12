@@ -25,7 +25,7 @@
         "balance": 0,
         "realBalance": 0,
         "demoBalance": 9999,
-        "currency": "USD",
+        "currency": "BDT",
         "isVerified": false,
         "isAdmin": true,
         "kycStatus": "unverified",
@@ -42,7 +42,7 @@
         "manipulationMode": "neutral",
         "createdAt": 1786510631181,
         "created_at": 1786510631181,
-        "updated_at": 1786521073508
+        "updated_at": 1786523035442
       },
       "admin_seed_dijdbqhf": {
         "id": "admin_seed_dijdbqhf",
@@ -72,7 +72,7 @@
         "manipulationMode": "neutral",
         "createdAt": 1786511846640,
         "created_at": 1786511846640,
-        "updated_at": 1786514787393
+        "updated_at": 1786522948036
       }
     },
     "news": {
@@ -239,6 +239,23 @@
         "currency": "LTC",
         "address": "LQ41bM2B892pfDX1suYe15hmsDuozgyZfU",
         "qrCode": "https://i.postimg.cc/9FCX4MCs/IMG-20260805-125156.png",
+        "isActive": true
+      },
+      "7yu53e4wpue": {
+        "name": "Bitcoin (BTC)",
+        "provider": "Bitcoin",
+        "logo": "https://i.postimg.cc/rzXYSxxx/1.png",
+        "logoType": "image",
+        "category": "Crypto",
+        "bgColor": "#F7931A",
+        "time": "Instant",
+        "instant": true,
+        "minDeposit": 50,
+        "maxDeposit": 50000,
+        "isPopular": true,
+        "currency": "BTC",
+        "address": "0x8e01631855cf57fa2da27ff30c181cca137aefb5",
+        "qrCode": "https://i.postimg.cc/GpKwd7Gr/IMG-20260804-235328.png",
         "isActive": true
       }
     },
@@ -61843,20 +61860,4 @@
         "timeframe": "1 minute",
         "open": 1.7123418890611712,
         "high": 1.7123418890611712,
-        "low": 1.7024227481506784,
-        "close": 1.7025214519012686,
-        "volume": 114.1853395216815,
-        "openTime": 1786512540,
-        "closeTime": 1786512600,
-        "updatedAt": 1786512602781
-      },
-      "GBP/CAD (OTC)_real_5 minutes_1786512300": {
-        "pair": "GBP/CAD (OTC)",
-        "type": "real",
-        "timeframe": "5 minutes",
-        "open": 1.7123418890611712,
-        "high": 1.7123418890611712,
-        "low": 1.7024227481506784,
-        "close": 1.7025214519012686,
-        "volume": 120.31151909913825,
-        "openTime": 1786512
+   

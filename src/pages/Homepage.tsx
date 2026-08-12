@@ -6,8 +6,7 @@ import { AuthModal } from '../components/AuthModal';
 import NewsletterForm from '../components/NewsletterForm';
 import SEO from '../components/SEO';
 import { motion, AnimatePresence } from 'motion/react';
-import { auth, db } from '../firebase';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { auth, db, onSnapshot, doc } from '../firebase';
 import { formatWithCurrency, convertToBase } from '../lib/currencies';
 
 export default function Homepage() {

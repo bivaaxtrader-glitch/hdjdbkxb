@@ -1,8 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Camera, X, Check, RefreshCw, UploadCloud, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, auth } from '../firebase';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth, doc, updateDoc, serverTimestamp } from '../firebase';
 
 interface CameraScannerProps {
   onCapture: (blob: Blob) => void;

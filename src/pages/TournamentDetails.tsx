@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trophy, Users, Clock, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { auth, db } from '../firebase';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { auth, db, onSnapshot, doc } from '../firebase';
 import { formatWithCurrency, convertToBase } from '../lib/currencies';
 
 interface TournamentDetail {
