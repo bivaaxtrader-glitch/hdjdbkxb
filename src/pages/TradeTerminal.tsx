@@ -5393,7 +5393,7 @@ const PROMOTED_ARTICLES = [
                                 const assetChanged = lastZoomedAssetRef.current !== layoutKey;
                                 
                                 if (assetChanged) {
-                                    chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 12), to: uniqueData.length + 2 });
+                                    chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 60), to: uniqueData.length + 2 });
                                     chartRef.current.timeScale().scrollToRealTime();
                                     lastZoomedAssetRef.current = layoutKey;
                                 } else if (currentRange && (currentRange.to - currentRange.from) > 0 && wasScrolledBack) {
@@ -5893,6 +5893,7 @@ const PROMOTED_ARTICLES = [
     if (chartRef.current) {
       chartRef.current.applyOptions({
         timeScale: {
+          rightOffset: 2,
           tickMarkFormatter: (time: any) => {
              const date = new Date(time * 1000);
              return date.toLocaleString('en-US', { timeZone: timeZoneRef.current, hour: '2-digit', minute: '2-digit', hour12: false });
@@ -5916,11 +5917,14 @@ const PROMOTED_ARTICLES = [
 
     const chart = createChart(chartContainerRef.current, {
       autoSize: true,
+
+
       layout: {
         background: { type: ColorType.Solid, color: "#131417" },
         textColor: "#d1d4dc",
         fontSize: 10,
         fontFamily: "JetBrains Mono, -apple-system, system-ui, sans-serif",
+
       },
       grid: {
         vertLines: { color: "#1c1f24", style: LineStyle.Solid },
@@ -5954,14 +5958,14 @@ const PROMOTED_ARTICLES = [
         pinch: true,
         axisPressedMouseMove: {
           time: true,
-          price: false,
+          price: true,
         },
       },
       timeScale: {
         borderColor: "#1c1f24",
         timeVisible: true, 
         secondsVisible: true,
-        rightOffset: 10, 
+        rightOffset: 2, 
         barSpacing: 10,
         minBarSpacing: 2,
         fixLeftEdge: false, 
@@ -5976,7 +5980,7 @@ const PROMOTED_ARTICLES = [
         autoScale: true, 
         alignLabels: true,
         scaleMargins: { top: 0.18, bottom: 0.18 },
-        entireTextOnly: true, 
+        entireTextOnly: false, 
         borderVisible: false, 
         ticksVisible: false,
         visible: true,
@@ -6085,11 +6089,14 @@ const PROMOTED_ARTICLES = [
 
     const chart = createChart(chartContainerRef2.current, {
       autoSize: true,
+
+
       layout: {
         background: { type: ColorType.Solid, color: "#131417" },
         textColor: "#d1d4dc",
         fontSize: 10,
         fontFamily: "JetBrains Mono, -apple-system, system-ui, sans-serif",
+
       },
       grid: {
         vertLines: { color: "#1c1f24", style: LineStyle.Solid },
@@ -6103,14 +6110,14 @@ const PROMOTED_ARTICLES = [
         pinch: true,
         axisPressedMouseMove: {
           time: true,
-          price: false,
+          price: true,
         },
       },
       timeScale: {
         borderColor: "#1c1f24",
         timeVisible: true,
         secondsVisible: true,
-        rightOffset: 10,
+        rightOffset: 2,
         barSpacing: 10,
         minBarSpacing: 2,
       },
@@ -6119,7 +6126,7 @@ const PROMOTED_ARTICLES = [
         autoScale: true,
         alignLabels: true,
         scaleMargins: { top: 0.18, bottom: 0.18 },
-        entireTextOnly: true,
+        entireTextOnly: false,
         borderVisible: false,
         ticksVisible: false,
         visible: true,
@@ -6482,7 +6489,7 @@ const PROMOTED_ARTICLES = [
               const assetChanged = lastZoomedAssetRef.current !== layoutKey;
               
               if (assetChanged || forceRecreate) {
-                  chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 12), to: uniqueData.length + 2 });
+                  chartRef.current.timeScale().setVisibleLogicalRange({ from: Math.max(0, uniqueData.length - 60), to: uniqueData.length + 2 });
                   chartRef.current.timeScale().scrollToRealTime();
                   lastZoomedAssetRef.current = layoutKey;
               } else if (hasZoom && wasScrolledBack) {

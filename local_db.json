@@ -42,7 +42,7 @@
         "manipulationMode": "neutral",
         "createdAt": 1786510631181,
         "created_at": 1786510631181,
-        "updated_at": 1786528564349
+        "updated_at": 1786531195310
       },
       "admin_seed_dijdbqhf": {
         "id": "admin_seed_dijdbqhf",
@@ -72,7 +72,7 @@
         "manipulationMode": "neutral",
         "createdAt": 1786511846640,
         "created_at": 1786511846640,
-        "updated_at": 1786524391930
+        "updated_at": 1786531574334
       }
     },
     "news": {
@@ -273,6 +273,21 @@
         "currency": "USDT",
         "address": "0x8e01631855cf57fa2da27ff30c181cca137aefb5",
         "qrCode": "https://i.postimg.cc/T3WzTQGD/IMG-20260804-151727.png",
+        "isActive": true
+      },
+      "mgs25ffjh08": {
+        "name": "Binance Pay",
+        "provider": "Binance",
+        "logo": "https://i.postimg.cc/RVJPryCQ/images-(1).jpg",
+        "logoType": "image",
+        "category": "Crypto",
+        "bgColor": "#FCD535",
+        "time": "Instant",
+        "instant": true,
+        "minDeposit": 10,
+        "maxDeposit": 40000,
+        "isPopular": true,
+        "currency": "USDT",
         "isActive": true
       }
     },
@@ -61846,17 +61861,4 @@
         "updatedAt": 1786512602781
       },
       "EUR/AUD (OTC)_real_15 minutes_1786511700": {
-        "pair": "EUR/AUD (OTC)",
-        "type": "real",
-        "timeframe": "15 minutes",
-        "open": 1.6169330568769567,
-        "high": 1.6169330568769567,
-        "low": 1.6087056192597666,
-        "close": 1.6087056192597666,
-        "volume": 101.39182036515042,
-        "openTime": 1786511700,
-        "closeTime": 1786512600,
-        "updatedAt": 1786512602781
-      },
-      "EUR/AUD (OTC)_real_30 minutes_1786510800": {
-        "pair": "EUR
+        "pair": "EUR/

@@ -50,4 +50,9 @@ div[id^="tv-attr-logo"],
 .tv-lightweight-charts a,
 a[href*="tradingview.com"] {
   display: none !important;
+}/* Hide TradingView attribution logo */
+.tv-lightweight-charts-watermark,
+#tv-attr-logo,
+a[href*="tradingview.com"] {
+  display: none !important;
 }
