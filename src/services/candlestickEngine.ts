@@ -104,7 +104,9 @@ export function generateSingleCandleOHLC(
   let isGap = false;
   let gapAmount = 0;
 
-  if (forceGap && forceGap.isGap) {
+  // Strictly no gaps as per user requirement for continuous charts.
+  // The engine now defaults to continuous flow by skipping gap generation logic.
+  if (false) {
     isGap = true;
     gapAmount = open * volatility * (forceGap.gapSizeMultiplier || 2.5);
     actualOpen = open + (forceGap.gapDirection * gapAmount);

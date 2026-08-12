@@ -379,22 +379,23 @@ const resampleData = (data: any[], tfString: string) => {
   if (timeframeSeconds > baseSeconds) {
     let currentCandle: any = null;
     let currentBucket = null;
-    let previousClose = null;
+    let lastKnownClose = cleanData[0]?.close || 0;
 
     for (let i = 0; i < cleanData.length; i++) {
         const d = cleanData[i];
         const bucketTime = d.time - (d.time % timeframeSeconds);
         
         // Ensure values are numbers
-        const open = Number(d.open || 0);
-        const high = Number(d.high || d.open || 0);
-        const low = Number(d.low || d.open || 0);
-        const close = Number(d.close || d.open || 0);
-        const volume = Number(d.volume || 1);
+        const open = Number(d.open || lastKnownClose || 0);
+        const high = Number(d.high || d.open || lastKnownClose || 0);
+        const low = Number(d.low || d.open || lastKnownClose || 0);
+        const close = Number(d.close || d.open || lastKnownClose || 0);
+        const volume = Number(d.volume || 0);
 
         if (!currentCandle || currentBucket !== bucketTime) {
             if (currentCandle) {
                 resampled.push(currentCandle);
+                lastKnownClose = currentCandle.close;
             }
             currentBucket = bucketTime;
             
@@ -412,6 +413,7 @@ const resampleData = (data: any[], tfString: string) => {
             currentCandle.close = close;
             currentCandle.volume = (currentCandle.volume || 0) + volume;
         }
+        lastKnownClose = close;
     }
     if (currentCandle) resampled.push(currentCandle);
   } else {
@@ -5959,9 +5961,9 @@ const PROMOTED_ARTICLES = [
         borderColor: "#1c1f24",
         timeVisible: true, 
         secondsVisible: true,
-        rightOffset: 20, 
-        barSpacing: 15,
-        minBarSpacing: 10,
+        rightOffset: 10, 
+        barSpacing: 10,
+        minBarSpacing: 2,
         fixLeftEdge: false, 
         lockVisibleTimeRangeOnResize: true,
         tickMarkFormatter: (time: any) => {
@@ -6108,9 +6110,9 @@ const PROMOTED_ARTICLES = [
         borderColor: "#1c1f24",
         timeVisible: true,
         secondsVisible: true,
-        rightOffset: 20,
-        barSpacing: 15,
-        minBarSpacing: 10,
+        rightOffset: 10,
+        barSpacing: 10,
+        minBarSpacing: 2,
       },
       rightPriceScale: {
         borderColor: "#1c1f24",
@@ -7104,19 +7106,7 @@ const PROMOTED_ARTICLES = [
             </div>
           )}
 
-          {showTimer && (
-            <div className="absolute right-[56px] pointer-events-none z-[60]" ref={timerOverlayRef} style={{ transform: 'translateY(calc(-50% - 15px))' }}>
-               <div className="bg-[#1C1C1E] border border-white/10 px-1.5 py-[1px] rounded text-[10px] font-bold text-[#e4e4e4] shadow-xl backdrop-blur-md">
-                 {(() => {
-                   const tfSecs = getTimeSeconds(timeframe);
-                   const remain = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
-                   const m = Math.floor(remain / 60);
-                   const s = remain % 60;
-                   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                 })()}
-               </div>
-            </div>
-          )}
+
           {/* Active Trades Overlays */}
           <div id={`active-trades-overlays-${idx}`} className="absolute inset-0 pointer-events-none z-[35]">
                {visibleActiveTrades.filter(t => t.asset === activeAsset).map((trade, tIdx) => {

@@ -320,21 +320,22 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
       historyPool[pair][tf].push(historyRow);
       if (historyPool[pair][tf].length > 1000) historyPool[pair][tf].shift();
 
-      // 3. Gap handling between ticks (limit to 30 candles per timeframe to prevent event loop death)
+      // 3. Gap handling between ticks (limit to 100 candles per timeframe to prevent event loop death)
       let gapTime = completedCandle.closeTime;
       let runtimeGapCount = 0;
       let currentPrice = completedCandle.close;
       const basePrice = Number(m.price) || 100;
       let volatility = Number(m.volatility) || 0.0002;
       const relVolatility = volatility / basePrice;
+      const tfSeconds = timeframeSecondsMap[tf];
       const stepVol = relVolatility * Math.sqrt(tfSeconds);
 
-      while (gapTime < bucketTime && runtimeGapCount < 30) {
+      while (gapTime < bucketTime && runtimeGapCount < 100) {
         if (isMarketClosedAt(pair, gapTime)) {
           gapTime += tfSeconds;
           continue;
         }
-        const isGap = Math.random() < 0.12;
+        const isGap = false;
         const gapDirection: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
         const c = generateSingleCandleOHLC(currentPrice, stepVol, undefined, {
           isGap,
@@ -385,11 +386,12 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
          getIO().to(`market_${pair}_${type}`).emit('candle_complete', { pair, timeframe: tf, candle: historyRow });
       } catch(e) {}
 
-      // 5. Create new forming candle with NATURAL GAPS
-      let nextOpen = completedCandle.close;
+      // 5. Create new forming candle starting exactly where last candle (or last gap candle) ended
+      let nextOpen = runtimeGapCount > 0 ? currentPrice : completedCandle.close;
+      m.price = nextOpen; // Ensure market price starts exactly at the open to avoid any instant gaps
       
       // Gap chance depends on volatility / regime
-      const gapChance = state.regime === 'VOLATILITY_SPIKE' || state.regime === 'MOMENTUM_BURST' ? 0.10 : 0.05;
+      const gapChance = 0;
       if (Math.random() < gapChance) {
         const gapSize = nextOpen * baseSigma * (Math.random() * 0.5 + 0.1);
         const gapDir = Math.random() < 0.5 ? 1 : -1;

@@ -288,9 +288,9 @@ export async function pruneHistoricalCandles() {
 }
 
 export async function initializeCandlesFromDB() {
-  console.log('📦 Initializing candle storage from database...');
+  console.log('📦 Initializing candle storage from database (lightweight & non-blocking)...');
   
-  // 1. Create the new historical_candles table and unique index if they don't exist
+  // 1. Create the historical_candles table and unique index if they don't exist
   db.prepare(`
     CREATE TABLE IF NOT EXISTS historical_candles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,368 +312,129 @@ export async function initializeCandlesFromDB() {
     ON historical_candles (market, type, timeframe, openTime)
   `).run();
 
-  // Run initial pruning to keep database extremely compact and fast right from startup
-  try {
-    await pruneHistoricalCandles();
-  } catch (pruneErr: any) {
-    console.error('Error during startup candle pruning:', pruneErr.message);
-  }
-
   const pairKeys = Object.keys(markets);
-  
-  // 2. Migration, initial seeding, and gap filling
+  const now = Math.floor(Date.now() / 1000);
+
+  // 2. Fast non-blocking initialization for each pair and type
   for (const pair of pairKeys) {
     for (const type of ['real', 'demo']) {
-      // Yield frequently to prevent long blocking
       await new Promise(resolve => setImmediate(resolve));
       try {
-        // A. Copy old 5s data from the candles table if historical_candles is empty for 5s
+        const basePrice = markets[pair]?.price || 100;
+
+        // Check if 5s candles exist
         const tf5sCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, '5 seconds') as any;
         const tf5sCount = tf5sCountResult ? tf5sCountResult.count : 0;
-        
+
         if (tf5sCount === 0) {
-          // Check if old candles exist
-          let oldCandles: any[] = [];
-          try {
-            oldCandles = db.prepare('SELECT * FROM candles WHERE pair = ? AND type = ? ORDER BY time ASC').all(pair, type) as any[];
-          } catch (e) {
-            // candles table might not exist or be empty
+          // Seed initial 100 candles quickly
+          let volatility = (markets[pair]?.volatility || 0.0002) / basePrice;
+          const stepVol = volatility * Math.sqrt(5);
+          const seedCount = 100;
+          const baseTime = now - (now % 5) - seedCount * 5;
+          let currentPrice = basePrice;
+          const seedRows = [];
+
+          for (let i = 0; i < seedCount; i++) {
+            const time = baseTime + i * 5;
+            const c = generateSingleCandleOHLC(currentPrice, stepVol);
+            seedRows.push({
+              market: pair,
+              type,
+              timeframe: '5 seconds',
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: Math.random() * 50 + 10,
+              openTime: time,
+              closeTime: time + 5
+            });
+            currentPrice = c.close;
           }
 
-          if (oldCandles.length > 0) {
-            console.log(`📦 Migrating ${oldCandles.length} old 5-second candles to historical_candles for ${pair} (${type})`);
-            const insertStmt = db.prepare(`
-              INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            const runTx = db.transaction((rows) => {
-              for (const r of rows) {
-                insertStmt.run(
-                  r.pair,
-                  r.type,
-                  '5 seconds',
-                  r.open,
-                  r.high,
-                  r.low,
-                  r.close,
-                  r.volume,
-                  r.time,
-                  r.time + 5
-                );
-              }
-            });
-            runTx(oldCandles);
-          } else {
-            // Seed brand new initial 5s candles (200 candles to provide background efficiently)
-            const basePrice = markets[pair].price || 100;
-            let volatility = markets[pair].volatility || 0.0002;
-            // Always convert absolute volatility to relative volatility
-            volatility = volatility / basePrice;
-            
-            // Adjust volatility for 5-second steps instead of 100ms ticks
-            // sigma * sqrt(dt) -> dt=5
-            const stepVol = volatility * Math.sqrt(5);
-            
-            const seedCount = 500;
-            const baseTime = Math.floor(Date.now() / 1000) - (Math.floor(Date.now() / 1000) % 5) - seedCount * 5;
-            
-            let currentPrice = basePrice;
-            const seedRows = [];
-            for (let i = 0; i < seedCount; i++) {
-              const time = baseTime + i * 5;
-              const isGap = Math.random() < 0.15;
-              const gapDirection: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
-
-              const c = generateSingleCandleOHLC(currentPrice, stepVol, undefined, {
-                isGap,
-                gapDirection,
-                gapSizeMultiplier: 1.5 + Math.random() * 1.5
-              });
-              
-              const volume = Math.random() * 100 + 10;
-              
-              seedRows.push({
-                market: pair,
-                type,
-                timeframe: '5 seconds',
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close,
-                volume,
-                openTime: time,
-                closeTime: time + 5
-              });
-              
-              // Apply subtle mean-reversion pull towards basePrice to keep history realistic
-              const pull = (basePrice - c.close) * 0.03;
-              currentPrice = c.close + pull;
+          const insertStmt = db.prepare(`
+            INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          const runTx = db.transaction((rows) => {
+            for (const r of rows) {
+              insertStmt.run(r.market, r.type, r.timeframe, Number(r.open).toFixed(6), Number(r.high).toFixed(6), Number(r.low).toFixed(6), Number(r.close).toFixed(6), Number(r.volume).toFixed(2), r.openTime, r.closeTime);
             }
-
-            const insertStmt = db.prepare(`
-              INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            const runTx = db.transaction((rows) => {
-              for (const r of rows) {
-                insertStmt.run(
-                  r.market,
-                  r.type,
-                  r.timeframe,
-                  r.open.toFixed(6),
-                  r.high.toFixed(6),
-                  r.low.toFixed(6),
-                  r.close.toFixed(6),
-                  r.volume.toFixed(2),
-                  r.openTime,
-                  r.closeTime
-                );
-              }
-            });
-            runTx(seedRows);
-          }
+          });
+          runTx(seedRows);
         }
 
-        // B. Generate / Seeding for all OTHER timeframes by resampling the 5s base candles
+        // Load active candles and history for standard timeframes instantly
         for (const tf of TIMEFRAMES) {
-          if (tf === '5 seconds') continue;
-          const tfCountResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, tf) as any;
-          const tfCount = tfCountResult ? tfCountResult.count : 0;
-          
-          if (tfCount === 0) {
-            const baseCandles = db.prepare('SELECT open, high, low, close, volume, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime ASC').all(pair, type, '5 seconds') as any[];
-            const resampled = resampleCandles(baseCandles, timeframeSecondsMap[tf]);
-            
-            if (resampled.length > 0) {
-              const insertStmt = db.prepare(`
-                INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `);
-              const runTx = db.transaction((rows) => {
-                for (const r of rows) {
-                  insertStmt.run(
-                    pair,
-                    type,
-                    tf,
-                    Number(r.open).toFixed(6),
-                    Number(r.high).toFixed(6),
-                    Number(r.low).toFixed(6),
-                    Number(r.close).toFixed(6),
-                    Number(r.volume).toFixed(2),
-                    r.openTime,
-                    r.closeTime
-                  );
-                }
-              });
-              runTx(resampled);
-            }
-          }
-        }
-
-        // C. Gap-filling & Memory loading for EVERY timeframe
-        for (const tf of TIMEFRAMES) {
-          // Yield even more frequently during gap filling
-          await new Promise(resolve => setImmediate(resolve));
           const tfSeconds = timeframeSecondsMap[tf];
-          const latestCandle = db.prepare('SELECT close, openTime, closeTime FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? ORDER BY openTime DESC LIMIT 1').get(pair, type, tf) as any;
-          
-          if (latestCandle) {
-            const lastClose = parseFloat(latestCandle.close);
-            if (tf === "5 seconds") {
-              if (type === 'real') {
-                markets_real[pair].price = lastClose;
-              } else {
-                markets_demo[pair].price = lastClose;
-              }
-            }
+          const bucketTime = now - (now % tfSeconds);
 
-            const now = Math.floor(Date.now() / 1000);
-            const currentBucket = now - (now % tfSeconds);
-            
-            // Limit the maximum number of candles filled at startup to prevent lag/memory issues
-            const maxGapCandles = 200;
-            const actualGapSeconds = currentBucket - latestCandle.closeTime;
-            const requiredCandles = Math.floor(actualGapSeconds / tfSeconds);
-            
-            let gapTime = latestCandle.closeTime;
-            if (requiredCandles > maxGapCandles) {
-              gapTime = currentBucket - (maxGapCandles * tfSeconds);
-              console.log(`⚠️ Gap is too large for ${pair} (${type}) ${tf} (${requiredCandles} candles). Capping to last ${maxGapCandles} candles.`);
-            }
-
-            const insertGapStmt = db.prepare(`
-              INSERT OR IGNORE INTO historical_candles (market, type, timeframe, open, high, low, close, volume, openTime, closeTime)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-
-            let currentPrice = lastClose;
-            let gapBatch: any[] = [];
-            let totalFilled = 0;
-
-            const basePrice = markets[pair]?.price || 100;
-            let volatility = markets[pair]?.volatility || 0.0002;
-            const relVolatility = volatility / basePrice;
-            const stepVol = relVolatility * Math.sqrt(tfSeconds);
-
-            const runGapTx = db.transaction((rows: any[]) => {
-              for (const r of rows) {
-                insertGapStmt.run(
-                  r.market,
-                  r.type,
-                  r.timeframe,
-                  Number(r.open).toFixed(6),
-                  Number(r.high).toFixed(6),
-                  Number(r.low).toFixed(6),
-                  Number(r.close).toFixed(6),
-                  Number(r.volume).toFixed(2),
-                  r.openTime,
-                  r.closeTime
-                );
-              }
-            });
-
-            const gapRowsList: any[] = [];
-            while (gapTime < currentBucket) {
-              if (isMarketClosedAt(pair, gapTime)) {
-                gapTime += tfSeconds;
-                continue;
-              }
-              // Generate highly realistic, volatile random-walk candles
-              const isGap = Math.random() < 0.12;
-              const gapDirection: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
-              const c = generateSingleCandleOHLC(currentPrice, stepVol, undefined, {
-                isGap,
-                gapDirection,
-                gapSizeMultiplier: 1.2 + Math.random() * 1.5
-              });
-              const volume = Math.random() * 100 + 10;
-
-              const gapRow = {
-                market: pair,
-                type,
-                timeframe: tf,
-                open: c.open,
-                high: c.high,
-                low: c.low,
-                close: c.close,
-                volume,
-                openTime: gapTime,
-                closeTime: gapTime + tfSeconds
-              };
-              gapRowsList.push(gapRow);
-              gapBatch.push(gapRow);
-
-              // Apply a gentle pull towards basePrice to keep history realistic
-              const pull = (basePrice - c.close) * 0.02;
-              currentPrice = c.close + pull;
-
-              gapTime += tfSeconds;
-              totalFilled++;
-
-              if (gapBatch.length >= 5000) {
-                runGapTx(gapBatch);
-                gapBatch = [];
-              }
-            }
-
-            if (gapBatch.length > 0) {
-              runGapTx(gapBatch);
-            }
-
-            // For the VERY LAST gap candle, set it to the current candle state in memory to prevent jumps
-            if (gapRowsList.length > 0) {
-              const lastGap = gapRowsList[gapRowsList.length - 1];
-              if (!currentCandles_real[pair]) currentCandles_real[pair] = {};
-              if (!currentCandles_demo[pair]) currentCandles_demo[pair] = {};
-              
-              const candleToSet = {
-                open: lastGap.open,
-                high: lastGap.high,
-                low: lastGap.low,
-                close: lastGap.close,
-                volume: lastGap.volume,
-                openTime: lastGap.openTime,
-                closeTime: lastGap.closeTime
-              };
-
-              if (type === 'real') currentCandles_real[pair][tf] = candleToSet;
-              else currentCandles_demo[pair][tf] = candleToSet;
-
-              // Also update the market price to keep everything perfectly synchronized!
-              if (tf === "5 seconds") {
-                if (type === 'real') {
-                  markets_real[pair].price = lastGap.close;
-                } else {
-                  markets_demo[pair].price = lastGap.close;
-                }
-              }
-            }
-          }
-
-          // Load complete historical candles from DB
+          // Get latest history from DB
           const rows = db.prepare(`
             SELECT openTime as time, open, high, low, close, volume, openTime, closeTime
             FROM historical_candles
             WHERE market = ? AND type = ? AND timeframe = ?
             ORDER BY openTime DESC
-            LIMIT 500
+            LIMIT 200
           `).all(pair, type, tf) as any[];
 
-          // Yield to event loop
-          await new Promise(resolve => setImmediate(resolve));
-          
           const formattedRows = rows.map(r => ({
             time: r.time,
-            open: parseFloat(r.open) || 0,
-            high: parseFloat(r.high) || 0,
-            low: parseFloat(r.low) || 0,
-            close: parseFloat(r.close) || 0,
-            volume: parseFloat(r.volume) || 0,
+            open: parseFloat(r.open) || basePrice,
+            high: parseFloat(r.high) || basePrice,
+            low: parseFloat(r.low) || basePrice,
+            close: parseFloat(r.close) || basePrice,
+            volume: parseFloat(r.volume) || 10,
             openTime: r.openTime,
             closeTime: r.closeTime
           })).reverse();
-          
+
           if (type === 'real') {
             if (!history_real[pair]) history_real[pair] = {};
-            history_real[pair][tf] = formattedRows;
+            history_real[pair][tf] = formattedRows.length > 0 ? formattedRows : [{
+              time: bucketTime - tfSeconds,
+              open: basePrice,
+              high: basePrice,
+              low: basePrice,
+              close: basePrice,
+              volume: 10,
+              openTime: bucketTime - tfSeconds,
+              closeTime: bucketTime
+            }];
           } else {
             if (!history_demo[pair]) history_demo[pair] = {};
-            history_demo[pair][tf] = formattedRows;
+            history_demo[pair][tf] = formattedRows.length > 0 ? formattedRows : [{
+              time: bucketTime - tfSeconds,
+              open: basePrice,
+              high: basePrice,
+              low: basePrice,
+              close: basePrice,
+              volume: 10,
+              openTime: bucketTime - tfSeconds,
+              closeTime: bucketTime
+            }];
           }
 
-          // Initialize current active candle in memory
-          const now = Math.floor(Date.now() / 1000);
-          const bucketTime = now - (now % tfSeconds);
+          // Set current active candle in memory
+          const lastRow = formattedRows[formattedRows.length - 1] || { close: basePrice };
           const currentCandles = type === 'real' ? currentCandles_real : currentCandles_demo;
-          const currentPrice = type === 'real' ? markets_real[pair].price : markets_demo[pair].price;
-          
           if (!currentCandles[pair]) currentCandles[pair] = {};
 
-          const activeDbCandle = db.prepare('SELECT * FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ? AND openTime = ?').get(pair, type, tf, bucketTime) as any;
-          if (activeDbCandle) {
-            currentCandles[pair][tf] = {
-              open: parseFloat(activeDbCandle.open),
-              high: parseFloat(activeDbCandle.high),
-              low: parseFloat(activeDbCandle.low),
-              close: parseFloat(activeDbCandle.close),
-              volume: parseFloat(activeDbCandle.volume),
-              openTime: activeDbCandle.openTime,
-              closeTime: activeDbCandle.closeTime
-            };
-          } else {
-            if (isMarketClosedAt(pair, bucketTime)) {
-              continue;
-            }
-            currentCandles[pair][tf] = {
-              open: currentPrice,
-              high: currentPrice,
-              low: currentPrice,
-              close: currentPrice,
-              volume: Math.random() * 5,
-              openTime: bucketTime,
-              closeTime: bucketTime + tfSeconds
-            };
-            saveCandleToDB_v2(pair, type as 'real' | 'demo', tf, currentCandles[pair][tf]);
+          currentCandles[pair][tf] = {
+            open: lastRow.close,
+            high: lastRow.close,
+            low: lastRow.close,
+            close: lastRow.close,
+            volume: 10,
+            openTime: bucketTime,
+            closeTime: bucketTime + tfSeconds
+          };
+
+          if (tf === '5 seconds' && type === 'real') {
+            markets_real[pair].price = lastRow.close;
+          } else if (tf === '5 seconds' && type === 'demo') {
+            markets_demo[pair].price = lastRow.close;
           }
         }
       } catch (err: any) {
@@ -681,18 +442,7 @@ export async function initializeCandlesFromDB() {
       }
     }
   }
-  console.log('✅ Candle storage initialized successfully!');
-
-  // Periodically prune historical candles every 1 hour (recursive timeout to prevent overlap)
-  const runPruning = async () => {
-    try {
-      await pruneHistoricalCandles();
-    } catch (e: any) {
-      console.error('Failed to run scheduled candle pruning:', e.message);
-    }
-    setTimeout(runPruning, 60 * 60 * 1000);
-  };
-  runPruning();
+  console.log('✅ Candle storage initialized successfully without blocking!');
 }
 
 export let globalManipulationMode: 'neutral' | 'always_loss' | 'always_win' = 'neutral';
