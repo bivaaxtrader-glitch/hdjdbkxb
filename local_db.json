@@ -42,7 +42,7 @@
         "manipulationMode": "neutral",
         "createdAt": 1786510631181,
         "created_at": 1786510631181,
-        "updated_at": 1786523035442
+        "updated_at": 1786528564349
       },
       "admin_seed_dijdbqhf": {
         "id": "admin_seed_dijdbqhf",
@@ -72,7 +72,7 @@
         "manipulationMode": "neutral",
         "createdAt": 1786511846640,
         "created_at": 1786511846640,
-        "updated_at": 1786522948036
+        "updated_at": 1786524391930
       }
     },
     "news": {
@@ -256,6 +256,23 @@
         "currency": "BTC",
         "address": "0x8e01631855cf57fa2da27ff30c181cca137aefb5",
         "qrCode": "https://i.postimg.cc/GpKwd7Gr/IMG-20260804-235328.png",
+        "isActive": true
+      },
+      "lhwow9gha9": {
+        "name": "Ethereum (ETH)",
+        "provider": "Ethereum",
+        "logo": "https://i.postimg.cc/T2KMkTSH/images-(1).png",
+        "logoType": "image",
+        "category": "Crypto",
+        "bgColor": "#627EEA",
+        "time": "Instant",
+        "instant": true,
+        "minDeposit": 30,
+        "maxDeposit": 50000,
+        "isPopular": true,
+        "currency": "USDT",
+        "address": "0x8e01631855cf57fa2da27ff30c181cca137aefb5",
+        "qrCode": "https://i.postimg.cc/T3WzTQGD/IMG-20260804-151727.png",
         "isActive": true
       }
     },
@@ -61842,22 +61859,4 @@
         "updatedAt": 1786512602781
       },
       "EUR/AUD (OTC)_real_30 minutes_1786510800": {
-        "pair": "EUR/AUD (OTC)",
-        "type": "real",
-        "timeframe": "30 minutes",
-        "open": 1.6169330568769567,
-        "high": 1.6169330568769567,
-        "low": 1.6087056192597666,
-        "close": 1.6087056192597666,
-        "volume": 111.40409773345465,
-        "openTime": 1786510800,
-        "closeTime": 1786512600,
-        "updatedAt": 1786512602781
-      },
-      "GBP/CAD (OTC)_real_1 minute_1786512540": {
-        "pair": "GBP/CAD (OTC)",
-        "type": "real",
-        "timeframe": "1 minute",
-        "open": 1.7123418890611712,
-        "high": 1.7123418890611712,
-   
+        "pair": "EUR
