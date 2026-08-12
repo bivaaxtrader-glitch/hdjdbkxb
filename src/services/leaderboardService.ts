@@ -64,93 +64,135 @@ export const updateLeaderboardStats = async (userId: string, tradeStatus: 'won' 
 };
 
 export const fetchLeaderboards = async () => {
+  let allTime: any[] = [];
+  let winRate: any[] = [];
+  let streaks: any[] = [];
+  let daily: any[] = [];
+  let weekly: any[] = [];
+  let monthly: any[] = [];
+
   try {
+    // Ensure leaderboard_stats table exists if not already
+    await run(`
+      CREATE TABLE IF NOT EXISTS leaderboard_stats (
+        user_id TEXT PRIMARY KEY,
+        total_profit NUMERIC DEFAULT 0,
+        total_trades INTEGER DEFAULT 0,
+        won_trades INTEGER DEFAULT 0,
+        lost_trades INTEGER DEFAULT 0,
+        draw_trades INTEGER DEFAULT 0,
+        total_volume NUMERIC DEFAULT 0,
+        current_streak INTEGER DEFAULT 0,
+        max_streak INTEGER DEFAULT 0,
+        roi NUMERIC DEFAULT 0,
+        last_trade_at INTEGER
+      )
+    `).catch(() => {});
+
     // 1. All Time Top Profit
-    console.log("Fetching allTime...");
-    const allTime = await query(`
-      SELECT l.user_id, 
-             l.total_profit as total_profit, 
-             l.total_trades, l.won_trades, l.lost_trades,
-             u.real_balance as balance,
-             COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
-      FROM leaderboard_stats l
-      JOIN users u ON l.user_id = u.uid
-      ORDER BY total_profit DESC
-      LIMIT 100
-    `) || [];
+    try {
+      allTime = await query(`
+        SELECT l.user_id, 
+               l.total_profit as total_profit, 
+               l.total_trades, l.won_trades, l.lost_trades,
+               u.real_balance as balance,
+               COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
+        FROM leaderboard_stats l
+        JOIN users u ON l.user_id = u.uid
+        ORDER BY total_profit DESC
+        LIMIT 100
+      `) || [];
+    } catch (e) {
+      console.error('Error fetching allTime leaderboard:', e);
+    }
 
     // 2. Highest Win Rate (min 10 trades)
-    console.log("Fetching winRate...");
-    const winRate = await query(`
-      SELECT l.*, COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code,
-      CAST(l.won_trades AS REAL) / l.total_trades * 100 as win_percentage
-      FROM leaderboard_stats l
-      JOIN users u ON l.user_id = u.uid
-      WHERE l.total_trades >= 10
-      ORDER BY win_percentage DESC
-      LIMIT 100
-    `) || [];
+    try {
+      winRate = await query(`
+        SELECT l.*, COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code,
+        CAST(l.won_trades AS REAL) / l.total_trades * 100 as win_percentage
+        FROM leaderboard_stats l
+        JOIN users u ON l.user_id = u.uid
+        WHERE l.total_trades >= 10
+        ORDER BY win_percentage DESC
+        LIMIT 100
+      `) || [];
+    } catch (e) {
+      console.error('Error fetching winRate leaderboard:', e);
+    }
 
     // 3. Current Max Streak
-    console.log("Fetching streaks...");
-    const streaks = await query(`
-      SELECT l.*, COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
-      FROM leaderboard_stats l
-      JOIN users u ON l.user_id = u.uid
-      ORDER BY l.max_streak DESC
-      LIMIT 100
-    `) || [];
+    try {
+      streaks = await query(`
+        SELECT l.*, COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
+        FROM leaderboard_stats l
+        JOIN users u ON l.user_id = u.uid
+        ORDER BY l.max_streak DESC
+        LIMIT 100
+      `) || [];
+    } catch (e) {
+      console.error('Error fetching streaks leaderboard:', e);
+    }
 
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const startOfDayTimestamp = Math.floor(startOfDay.getTime() / 1000);
     
-    console.log("Fetching daily...");
-    const daily = await query(`
-      SELECT t.user_id, 
-             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE -t.amount END) as profit,
-             u.real_balance as balance,
-             COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
-      FROM trades t
-      JOIN users u ON t.user_id = u.uid
-      WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
-      AND t.settled_at >= ?
-      GROUP BY t.user_id
-      ORDER BY profit DESC
-      LIMIT 100
-    `, [startOfDayTimestamp]) || [];
+    try {
+      daily = await query(`
+        SELECT t.user_id, 
+               SUM(CASE WHEN t.status = 'won' THEN (COALESCE(t.payout_amount, 0) - t.amount) ELSE -t.amount END) as profit,
+               u.real_balance as balance,
+               COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
+        FROM trades t
+        JOIN users u ON t.user_id = u.uid
+        WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
+        AND t.settled_at >= ?
+        GROUP BY t.user_id
+        ORDER BY profit DESC
+        LIMIT 100
+      `, [startOfDayTimestamp]) || [];
+    } catch (e) {
+      console.error('Error fetching daily leaderboard:', e);
+    }
 
     const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-    console.log("Fetching weekly...");
-    const weekly = await query(`
-      SELECT t.user_id, 
-             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE -t.amount END) as profit,
-             u.real_balance as balance,
-             COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
-      FROM trades t
-      JOIN users u ON t.user_id = u.uid
-      WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
-      AND t.settled_at >= ?
-      GROUP BY t.user_id
-      ORDER BY profit DESC
-      LIMIT 100
-    `, [sevenDaysAgo]) || [];
+    try {
+      weekly = await query(`
+        SELECT t.user_id, 
+               SUM(CASE WHEN t.status = 'won' THEN (COALESCE(t.payout_amount, 0) - t.amount) ELSE -t.amount END) as profit,
+               u.real_balance as balance,
+               COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
+        FROM trades t
+        JOIN users u ON t.user_id = u.uid
+        WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
+        AND t.settled_at >= ?
+        GROUP BY t.user_id
+        ORDER BY profit DESC
+        LIMIT 100
+      `, [sevenDaysAgo]) || [];
+    } catch (e) {
+      console.error('Error fetching weekly leaderboard:', e);
+    }
 
     const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-    console.log("Fetching monthly...");
-    const monthly = await query(`
-      SELECT t.user_id, 
-             SUM(CASE WHEN t.status = 'won' THEN (t.payout_amount - t.amount) ELSE -t.amount END) as profit,
-             u.real_balance as balance,
-             COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
-      FROM trades t
-      JOIN users u ON t.user_id = u.uid
-      WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
-      AND t.settled_at >= ?
-      GROUP BY t.user_id
-      ORDER BY profit DESC
-      LIMIT 100
-    `, [thirtyDaysAgo]) || [];
+    try {
+      monthly = await query(`
+        SELECT t.user_id, 
+               SUM(CASE WHEN t.status = 'won' THEN (COALESCE(t.payout_amount, 0) - t.amount) ELSE -t.amount END) as profit,
+               u.real_balance as balance,
+               COALESCE(u.nickname, u.display_name) as display_name, u.photo_url, u.country, u.country_code
+        FROM trades t
+        JOIN users u ON t.user_id = u.uid
+        WHERE (t.account_type = 'real' OR t.is_demo = 0) AND t.status IN ('won', 'lost', 'draw')
+        AND t.settled_at >= ?
+        GROUP BY t.user_id
+        ORDER BY profit DESC
+        LIMIT 100
+      `, [thirtyDaysAgo]) || [];
+    } catch (e) {
+      console.error('Error fetching monthly leaderboard:', e);
+    }
 
     const fakeUsers = [
       { user_id: 'fake_1', display_name: 'CryptoKing', total_profit: 224537.45, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'United States', country_code: 'us', balance: 12450.50 },
@@ -176,13 +218,13 @@ export const fetchLeaderboards = async () => {
     ];
 
     // Merge fake users into allTime
-    const finalAllTime = [...(allTime as any[]), ...fakeUsers].map(u => ({
+    const finalAllTime = [...allTime, ...fakeUsers].map(u => ({
       ...u,
       win_rate: u.total_trades > 0 ? Math.floor((u.won_trades / u.total_trades) * 100) : (80 + Math.floor(Math.random() * 15))
     })).sort((a, b) => b.total_profit - a.total_profit).slice(0, 20);
 
     // Merge fake users into daily/weekly/monthly
-    const dailyWithFake = [...(daily as any[]), ...fakeUsers.map(u => ({ 
+    const dailyWithFake = [...daily, ...fakeUsers.map(u => ({ 
       user_id: u.user_id, 
       profit: parseFloat((u.total_profit * 0.12).toFixed(2)), 
       display_name: u.display_name, 
@@ -193,7 +235,7 @@ export const fetchLeaderboards = async () => {
       win_rate: 80 + Math.floor(Math.random() * 15)
     }))].sort((a, b) => b.profit - a.profit).slice(0, 20);
 
-    const weeklyWithFake = [...(weekly as any[]), ...fakeUsers.map(u => ({ 
+    const weeklyWithFake = [...weekly, ...fakeUsers.map(u => ({ 
       user_id: u.user_id, 
       profit: parseFloat((u.total_profit * 0.45).toFixed(2)), 
       display_name: u.display_name, 
@@ -204,7 +246,7 @@ export const fetchLeaderboards = async () => {
       win_rate: 80 + Math.floor(Math.random() * 15)
     }))].sort((a, b) => b.profit - a.profit).slice(0, 20);
 
-    const monthlyWithFake = [...(monthly as any[]), ...fakeUsers.map(u => ({ 
+    const monthlyWithFake = [...monthly, ...fakeUsers.map(u => ({ 
       user_id: u.user_id, 
       profit: parseFloat((u.total_profit * 0.88).toFixed(2)), 
       display_name: u.display_name, 

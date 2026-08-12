@@ -1347,7 +1347,7 @@ router.post('/user/sync', async (req, res) => {
       const createdAt = Date.now();
 
       await run(
-        `INSERT INTO users (uid, email, display_name, nickname, photo_url, referral_code, real_balance, demo_balance, country, country_code, referred_by_uid, referral_sub_id, referral_type, first_name, last_name, gender, dob, is_verified, kyc_status, created_at) 
+        `INSERT OR IGNORE INTO users (uid, email, display_name, nickname, photo_url, referral_code, real_balance, demo_balance, country, country_code, referred_by_uid, referral_sub_id, referral_type, first_name, last_name, gender, dob, is_verified, kyc_status, created_at) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uid, email || '', displayName || '', nickname || '', photoURL || '', affiliateId, realBalance, demoBalance, 
@@ -1356,7 +1356,7 @@ router.post('/user/sync', async (req, res) => {
           isVerified, kycStatus, createdAt
         ]
       );
-      logger.info(`Successfully created user ${uid} in SQLite`);
+      logger.info(`Successfully ensured user ${uid} in SQLite`);
       
       if (referredBy) {
         await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);

@@ -26,18 +26,11 @@ export async function startMarketEngine() {
 
   // Initial price fetch
   fetchAllRealPrices();
-  setInterval(fetchAllRealPrices, 15000); // Sync with real prices every 15 seconds
+  setInterval(fetchAllRealPrices, 30000); // Sync with real prices every 30 seconds
 
-  // Start Real-time WebSocket Service
-  // try {
-  //   liveApiService.start();
-  // } catch (e) {
-  //   console.error("Live API Start Error:", e);
-  // }
-
-  // Settle expired trades every 2 seconds (using recursive timeout to prevent overlap)
+  // Settle expired trades every 3 seconds (using recursive timeout to prevent overlap)
   const runSettlement = async () => {
-    if (systemActive) {
+    if (systemActive && getActiveConnections() > 0) {
       try {
         await updateTradeExposureCache();
         await settleExpiredTrades();
@@ -45,7 +38,7 @@ export async function startMarketEngine() {
         console.error('Settlement error:', e);
       }
     }
-    setTimeout(runSettlement, 2000);
+    setTimeout(runSettlement, 3000);
   };
   runSettlement();
 
@@ -54,6 +47,12 @@ export async function startMarketEngine() {
   const runTicker = async () => {
     if (systemActive) {
       try {
+        // IDLE GUARD: If no clients are connected, sleep for 2 seconds to completely eliminate background CPU and DB load
+        if (getActiveConnections() === 0) {
+          setTimeout(runTicker, 2000);
+          return;
+        }
+
         const io = getIO();
         const marketKeys = Object.keys(markets);
         const nowMs = Date.now();
@@ -92,15 +91,10 @@ export async function startMarketEngine() {
                io.to(roomNameDemo).emit('market_tick', { pair, ...demoTick });
             }
           }
-          
-          // Yield to event loop frequently to keep the UI responsive and prevent long lags
-          if (marketKeys.indexOf(pair) % 5 === 0) {
-            await new Promise(resolve => setImmediate(resolve));
-          }
         }
 
         // Broadcast market summary (prices) less frequently to reduce global bandwidth
-        if (isSummaryTick) {
+        if (isSummaryTick && Object.keys(tickDataReal).length > 0) {
           io.emit('market_ticks', tickDataReal);
           tickCount = 0;
         }
