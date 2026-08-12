@@ -611,74 +611,7 @@ router.post('/api/kyc', async (req, res) => {
   }
 });
 
-router.post('/api/kyc/scan', async (req, res) => {
-  const { image } = req.body;
-  if (!image) return res.status(400).json({ error: 'No image data' });
-
-  try {
-    const client = getGeminiClient();
-    
-    // Convert base64 data to parts
-    const base64Data = image.split(',')[1] || image;
-    
-    const systemInstruction = `You are a professional Identity Document Verification Specialist.
-    Analyze the provided ID card image (NID, Passport, or License) and extract details.
-    
-    Return a JSON object:
-    {
-      "isValidDocument": boolean (true if it looks like a real physical government ID, false if it's a scan of a scan, mock, or digital screen),
-      "documentType": "NID" | "Passport" | "Driving License",
-      "documentNumber": string,
-      "fullName": string,
-      "dateOfBirth": "YYYY-MM-DD",
-      "age": number,
-      "isOver18": boolean,
-      "address": string,
-      "originalityConfidence": number (0 to 1),
-      "isOriginal": boolean (true if it appears to be the original physical card),
-      "rejectionReason": string | null
-    }`;
-
-    let result;
-    try {
-      const response = await client.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image', // Good for OCR and vision
-        contents: [
-          { text: "Extract all details from this ID document accurately." },
-          { inlineData: { data: base64Data, mimeType: 'image/jpeg' } }
-        ],
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-        }
-      });
-
-      const text = response.text || '{}';
-      result = JSON.parse(text);
-    } catch (aiErr: any) {
-      logger.error(`AI KYC Scan failed: ${aiErr.message}`);
-      // Fallback: If AI is exhausted or fails, return a manual review required state
-      result = {
-        isValidDocument: true, // Optimistic to allow manual review
-        documentType: "NID",
-        documentNumber: "PENDING_MANUAL_REVIEW",
-        fullName: "PENDING_MANUAL_REVIEW",
-        isOver18: true,
-        rejectionReason: "AI quota exhausted or service unavailable. Manual verification required.",
-        aiError: true
-      };
-    }
-
-    res.json(result);
-  } catch (err: any) {
-    logger.error(`KYC Scan general error: ${err.message}`);
-    res.status(500).json({ 
-      error: 'AI Scan failed. Please ensure the photo is clear and well-lit.',
-      isValidDocument: false,
-      rejectionReason: 'System processing error. Manual upload required.'
-    });
-  }
-});
+// --- Admin & Support Routes ---
 
 router.get('/user/details', async (req, res) => {
   const { uid } = req.query;
@@ -1697,9 +1630,10 @@ router.get('/market-movers', async (req, res) => {
 // --- Support API ---
 
 // AI Assistant Route (Agentic)
-router.post('/support/ai-chat', async (req, res) => {
-    const { userId, message, history, mode } = req.body;
-    if (!userId || !message) return res.status(400).json({ error: 'Missing userId or message' });
+router.post('/support/ai-chat', requireAuth, async (req: AuthRequest, res) => {
+    const { message, history, mode } = req.body;
+    const userId = req.user!.uid;
+    if (!message) return res.status(400).json({ error: 'Missing message' });
 
     try {
         const responseData = await handleSupportQuery(userId, message, history || [], mode || 'agentic');
@@ -3633,7 +3567,7 @@ Provide your response strictly matching the schema. If it's not a real ID card, 
     };
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-1.5-flash",
       contents: { parts: [imagePart, promptPart] },
       config: {
         systemInstruction,
@@ -3735,7 +3669,7 @@ Respond strictly in JSON matching the schema:
     });
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-1.5-flash",
       contents: { parts: contents },
       config: {
         systemInstruction,

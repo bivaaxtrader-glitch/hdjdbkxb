@@ -16,6 +16,9 @@ export { db };
 // Enable WAL mode for better concurrency and to prevent database corruption
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
+db.pragma('cache_size = -2000'); // 2MB cache
+db.pragma('temp_store = MEMORY');
+db.pragma('mmap_size = 30000000000'); // Maximize memory mapping for faster reads
 
 // Ensure tables exist
 db.exec(`
