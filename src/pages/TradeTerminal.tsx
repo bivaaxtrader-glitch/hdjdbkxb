@@ -8171,7 +8171,7 @@ const PROMOTED_ARTICLES = [
                 <span className="text-[15px] font-medium text-white/90">Help Center</span>
               </button>
               <button 
-                onClick={openSupport}
+  
                 className="flex items-center gap-4 px-6 h-[64px] hover:bg-white/5 border-b border-white/5 w-full text-left group"
               >
                 <span className="text-[15px] font-medium text-white/90 group-hover:text-[#f45c5c] transition-colors">Support</span>

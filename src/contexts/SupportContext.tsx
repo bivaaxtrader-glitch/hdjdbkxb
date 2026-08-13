@@ -1,26 +1,20 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
 interface SupportContextType {
   isSupportOpen: boolean;
   openSupport: () => void;
   closeSupport: () => void;
-  toggleSupport: () => void;
 }
 
 const SupportContext = createContext<SupportContextType | undefined>(undefined);
 
-export const SupportProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const SupportProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-
-  const openSupport = () => {
-    setIsSupportOpen(true);
-  };
-
+  const openSupport = () => setIsSupportOpen(true);
   const closeSupport = () => setIsSupportOpen(false);
-  const toggleSupport = () => setIsSupportOpen(prev => !prev);
 
   return (
-    <SupportContext.Provider value={{ isSupportOpen, openSupport, closeSupport, toggleSupport }}>
+    <SupportContext.Provider value={{ isSupportOpen, openSupport, closeSupport }}>
       {children}
     </SupportContext.Provider>
   );
@@ -28,8 +22,6 @@ export const SupportProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 export const useSupport = () => {
   const context = useContext(SupportContext);
-  if (context === undefined) {
-    throw new Error('useSupport must be used within a SupportProvider');
-  }
+  if (!context) throw new Error('useSupport must be used within a SupportProvider');
   return context;
 };

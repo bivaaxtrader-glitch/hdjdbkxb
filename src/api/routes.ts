@@ -11,6 +11,7 @@ import { mapUserForFrontend } from '../lib/user-utils.ts';
 import { GoogleGenAI, Type } from '@google/genai';
 import { adminDb, syncUserToFirestore } from '../lib/firebase-admin.ts';
 import { sendEmail } from '../lib/email.ts';
+import { generateChatResponse } from '../lib/gemini.ts';
 
 import { handleSupportQuery } from './support-agent.ts';
 import { body, validationResult } from 'express-validator';
@@ -363,7 +364,16 @@ router.get('/ip-info', async (req, res) => {
   });
 });
 
-// --- REST Endpoint Implementations ---
+
+// Add this route for AI chat proxying
+router.post('/ai/chat', async (req, res) => {
+  const { message, history } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message is required' });
+  
+  const replyData = await generateChatResponse(message, history);
+  res.json({ reply: replyData });
+});
+
 
 // Auth Routes (Custom)
 router.post('/auth/register', async (req, res) => {

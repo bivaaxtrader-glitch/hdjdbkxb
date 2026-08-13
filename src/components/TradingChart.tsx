@@ -56,12 +56,12 @@ export const TradingChart: React.FC = () => {
         mouseWheel: true,
         pressedMouseMove: true,
         horzTouchDrag: true,
-        vertTouchDrag: false, 
+        vertTouchDrag: true, 
       },
       handleScale: {
-        axisPressedMouseMove: false,
-        mouseWheel: false, // Strictly lock zoom level to prevent rendering intensity issues
-        pinch: false,      
+        axisPressedMouseMove: true,
+        mouseWheel: true, 
+        pinch: true,      
       },
     });
 

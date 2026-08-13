@@ -124,9 +124,7 @@ export default function CopyTradingHighlights() {
   return (
     <section id="copy-trading-highlights" className="relative py-24 px-4 bg-[#1C1D22] border-t border-white/5 overflow-hidden">
       {/* Dynamic SEO JSON-LD injection */}
-      <script type="application/ld+json">
-        {JSON.stringify(copyTradingSchema)}
-      </script>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(copyTradingSchema) }} />
 
       {/* Aesthetic glowing background lights */}
       <div className="absolute top-1/4 left-1/3 -translate-x-1/2 w-[45vw] h-[45vw] max-w-[400px] bg-[#ffcf00]/5 blur-[120px] rounded-full pointer-events-none" />

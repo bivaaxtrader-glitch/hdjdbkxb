@@ -9,10 +9,15 @@ import { motion } from 'motion/react';
 import { Toaster, toast } from 'react-hot-toast';
 
 
-import { I18nProvider } from './context/I18nContext';
 import { SupportProvider, useSupport } from './contexts/SupportContext';
 import { LiveSupport } from './components/LiveSupport';
+import { I18nProvider } from './context/I18nContext';
 import AppBoundary from './components/AppBoundary';
+
+function SupportModalWrapper({ user }: { user: any | null }) {
+  const { isSupportOpen, closeSupport } = useSupport();
+  return isSupportOpen ? <LiveSupport onClose={closeSupport} userId={user?.uid || 'guest'} /> : null;
+}
 
 
 import DocsPage from './pages/DocsPage';
@@ -52,11 +57,6 @@ const PageLoader = () => (
   </div>
 );
 
-
-function SupportModalWrapper({ user }: { user: User | null }) {
-  const { isSupportOpen, closeSupport } = useSupport();
-  return isSupportOpen ? <LiveSupport onClose={closeSupport} userId={user?.uid || 'guest'} /> : null;
-}
 
 const RequireAuth = ({ children, user }: { children: React.ReactNode; user: User | null }) => {
   return user ? children : <Navigate to="/" replace />;
@@ -741,11 +741,11 @@ export default function App() {
               <Route path="/deposit/ltc" element={<RequireAuth user={user}><LtcDeposit /></RequireAuth>} />
               <Route path="/deposit/gopay" element={<RequireAuth user={user}><GoPayDepositPage /></RequireAuth>} />
             </Routes>
-          </Suspense>
+         </Suspense>
         </AppBoundary>
       </BrowserRouter>
-    </SupportProvider>
-  </I18nProvider>
+        </SupportProvider>
+      </I18nProvider>
     </>
   );
 }
