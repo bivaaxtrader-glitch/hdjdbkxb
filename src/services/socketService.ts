@@ -184,16 +184,16 @@ export function initSocket(server: HttpServer) {
     socket.on('request_past_candles', async (params: { asset: string, accountType: 'real' | 'demo', timeframe: string, beforeTime: number, limit?: number }) => {
       const { asset, accountType, timeframe, beforeTime, limit = 1000 } = params;
       try {
-        const rows = await query(`
-          SELECT openTime as time, open, high, low, close, volume, openTime, closeTime
-          FROM historical_candles
-          WHERE market = ? AND type = ? AND timeframe = ? AND openTime < ?
-          ORDER BY openTime DESC
-          LIMIT ?
-        `, [asset, accountType, timeframe, beforeTime, limit]);
+        const pool = accountType === 'real' ? history_real : history_demo;
+        const pairHistory = (pool[asset] && pool[asset][timeframe]) || [];
+        
+        // Filter candles where openTime < beforeTime, sorted desc (newest to oldest)
+        const matchedCandles = pairHistory
+          .filter((c: any) => c.openTime < beforeTime)
+          .sort((a: any, b: any) => b.openTime - a.openTime);
 
-        let formattedRows = rows.map((r: any) => ({
-          time: r.time,
+        let formattedRows = matchedCandles.map((r: any) => ({
+          time: r.openTime || r.time,
           open: parseFloat(r.open) || 0,
           high: parseFloat(r.high) || 0,
           low: parseFloat(r.low) || 0,
@@ -201,34 +201,30 @@ export function initSocket(server: HttpServer) {
           volume: parseFloat(r.volume) || 0,
           openTime: r.openTime,
           closeTime: r.closeTime
-        })).reverse();
+        }));
 
+        const generated = [];
         // If we didn't get enough candles, generate more synthetically to fulfill the "unlimited" requirement
         if (formattedRows.length < limit) {
            const needed = limit - formattedRows.length;
            const tfSecs = getTimeSeconds(timeframe);
-           let lastTime = formattedRows.length > 0 ? formattedRows[0].time : (beforeTime - (beforeTime % tfSecs));
            
-           // If we have history, use the oldest close. Otherwise use market default price.
-           let lastClose = formattedRows.length > 0 ? formattedRows[0].close : (markets[asset]?.price || 100);
+           // Determine the starting point for backwards generation
+           const oldestRow = formattedRows[formattedRows.length - 1];
+           let lastTime = oldestRow ? oldestRow.openTime : (beforeTime - (beforeTime % tfSecs));
+           
+           // For gapless connection: the synthetic candle immediately preceding oldestRow 
+           // must close exactly at oldestRow's open price.
+           let lastClose = oldestRow ? oldestRow.open : (markets[asset]?.price || 100);
 
-           // Try to find any candle for this asset to get a realistic starting price if possible
-           if (formattedRows.length === 0) {
-              const lastCandleFromDb = await get('SELECT close FROM historical_candles WHERE market = ? ORDER BY openTime DESC LIMIT 1', [asset]);
-              if (lastCandleFromDb) lastClose = parseFloat(lastCandleFromDb.close);
-           }
-
-           const generated = [];
-           // Use a simple deterministic random-ish generator based on time and asset to keep it somewhat consistent
            const getPseudoRandom = (seed: number) => {
              const x = Math.sin(seed + (asset.length * 1000)) * 10000;
              return x - Math.floor(x);
            };
 
-           // Simple trend/momentum tracker to make it look like a real market
            let momentum = (getPseudoRandom(lastTime) - 0.5) * 2; 
 
-                      for (let i = 0; i < needed; i++) {
+           for (let i = 0; i < needed; i++) {
               lastTime -= tfSecs;
               const pr = getPseudoRandom(lastTime);
               
@@ -239,63 +235,67 @@ export function initSocket(server: HttpServer) {
               const rangeVol = lastClose * 0.0015 * (0.8 + pr * 1.5);
               
               // Determine candle type
-               const typeRand = getPseudoRandom(lastTime + 1000);
-               const currentClose = lastClose;
-               let currentOpen = lastClose;
-               let high = lastClose;
-               let low = lastClose;
+              const typeRand = getPseudoRandom(lastTime + 1000);
+              const currentClose = lastClose;
+              let currentOpen = lastClose;
+              let high = lastClose;
+              let low = lastClose;
 
-               if (typeRand < 0.12) {
-                  // Doji / Spinning Top
-                  const bodySize = rangeVol * (0.05 + getPseudoRandom(lastTime + 2) * 0.15);
-                  const isUp = getPseudoRandom(lastTime + 3) > 0.5;
-                  currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
-                  
-                  const upperWick = rangeVol * (0.1 + getPseudoRandom(lastTime + 4) * 0.4);
-                  const lowerWick = rangeVol * (0.1 + getPseudoRandom(lastTime + 5) * 0.4);
-                  high = Math.max(currentOpen, currentClose) + upperWick;
-                  low = Math.min(currentOpen, currentClose) - lowerWick;
-               } else if (typeRand < 0.35) {
-                  // Strong Candle (Large body, small wicks)
-                  const bodySize = rangeVol * (1.2 + getPseudoRandom(lastTime + 2) * 1.8);
-                  const isUp = momentum > 0 || getPseudoRandom(lastTime + 3) > 0.65;
-                  currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
-                  
-                  const tinyWick = bodySize * (getPseudoRandom(lastTime + 4) * 0.05);
-                  high = Math.max(currentOpen, currentClose) + tinyWick;
-                  low = Math.min(currentOpen, currentClose) - tinyWick;
-               } else {
-                  // Standard Candle
-                  const bodySize = rangeVol * (0.5 + getPseudoRandom(lastTime + 2) * 1.0);
-                  const isUp = momentum > 0.15 || (momentum > -0.15 && getPseudoRandom(lastTime + 3) > 0.5);
-                  currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
-                  
-                  const upperWick = rangeVol * (0.2 + getPseudoRandom(lastTime + 4) * 0.4);
-                  const lowerWick = rangeVol * (0.2 + getPseudoRandom(lastTime + 5) * 0.4);
-                  high = Math.max(currentOpen, currentClose) + upperWick;
-                  low = Math.min(currentOpen, currentClose) - lowerWick;
-               }
-               
-               generated.push({
-                 time: lastTime,
-                 open: parseFloat(currentOpen.toFixed(8)),
-                 high: parseFloat(high.toFixed(8)),
-                 low: parseFloat(low.toFixed(8)),
-                 close: parseFloat(currentClose.toFixed(8)),
-                 volume: pr * 100,
-                 openTime: lastTime,
-                 closeTime: lastTime + tfSecs - 1
-               });
-               lastClose = currentOpen;
-            }
-           formattedRows = [...generated.reverse(), ...formattedRows];
+              if (typeRand < 0.12) {
+                 // Doji / Spinning Top
+                 const bodySize = rangeVol * (0.05 + getPseudoRandom(lastTime + 2) * 0.15);
+                 const isUp = getPseudoRandom(lastTime + 3) > 0.5;
+                 currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
+                 
+                 const upperWick = rangeVol * (0.1 + getPseudoRandom(lastTime + 4) * 0.4);
+                 const lowerWick = rangeVol * (0.1 + getPseudoRandom(lastTime + 5) * 0.4);
+                 high = Math.max(currentOpen, currentClose) + upperWick;
+                 low = Math.min(currentOpen, currentClose) - lowerWick;
+              } else if (typeRand < 0.35) {
+                 // Strong Candle (Large body, small wicks)
+                 const bodySize = rangeVol * (1.2 + getPseudoRandom(lastTime + 2) * 1.8);
+                 const isUp = momentum > 0 || getPseudoRandom(lastTime + 3) > 0.65;
+                 currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
+                 
+                 const tinyWick = bodySize * (getPseudoRandom(lastTime + 4) * 0.05);
+                 high = Math.max(currentOpen, currentClose) + tinyWick;
+                 low = Math.min(currentOpen, currentClose) - tinyWick;
+              } else {
+                 // Standard Candle
+                 const bodySize = rangeVol * (0.5 + getPseudoRandom(lastTime + 2) * 1.0);
+                 const isUp = momentum > 0.15 || (momentum > -0.15 && getPseudoRandom(lastTime + 3) > 0.5);
+                 currentOpen = isUp ? currentClose - bodySize : currentClose + bodySize;
+                 
+                 const upperWick = rangeVol * (0.2 + getPseudoRandom(lastTime + 4) * 0.4);
+                 const lowerWick = rangeVol * (0.2 + getPseudoRandom(lastTime + 5) * 0.4);
+                 high = Math.max(currentOpen, currentClose) + upperWick;
+                 low = Math.min(currentOpen, currentClose) - lowerWick;
+              }
+
+              if (currentOpen <= 0) currentOpen = 1.0;
+              if (high <= 0) high = 1.0;
+              if (low <= 0) low = 1.0;
+              
+              generated.push({
+                time: lastTime,
+                open: parseFloat(currentOpen.toFixed(8)),
+                high: parseFloat(high.toFixed(8)),
+                low: parseFloat(low.toFixed(8)),
+                close: parseFloat(currentClose.toFixed(8)),
+                volume: pr * 100,
+                openTime: lastTime,
+                closeTime: lastTime + tfSecs
+              });
+              lastClose = currentOpen;
+           }
         }
 
+        const resultCandles = [...formattedRows, ...generated].reverse();
 
         socket.emit('past_candles_response', {
           asset,
           timeframe,
-          candles: formattedRows
+          candles: resultCandles
         });
       } catch (err) {
         console.error('Failed to fetch past candles:', err);

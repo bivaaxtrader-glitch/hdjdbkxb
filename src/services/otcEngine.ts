@@ -8,6 +8,17 @@ import {
 import { getIO } from './socketService.ts';
 import { tradeExposureCache, manipulatedExposureCache } from './tradeService.ts';
 import { globalManipulationMode } from './marketService.ts';
+import { markets } from '../markets.ts';
+
+// Dynamic Trend State Tracker for realistic, unique, cyclic market movements (like professional trading apps)
+interface MarketTrend {
+  currentTrend: 'up' | 'down' | 'sideways';
+  trendIntensity: number;
+  cycleTicksRemaining: number;
+  momentum: number;
+}
+
+const marketTrendStates: Record<string, MarketTrend> = {};
 
 export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
   if (isMarketClosedAt(pair, now)) {
@@ -22,8 +33,65 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
 
   const currentPrice = Number(m.price) || 100.00;
 
-  // Clean, smooth random walk like the user's preferred trading app
-  let change = (Math.random() - 0.49) * 0.3 * (currentPrice * 0.0005);
+  // Initialize or update the cyclic trend state for this specific pair
+  const trendKey = `${pair}_${type}`;
+  if (!marketTrendStates[trendKey]) {
+    const trends: ('up' | 'down' | 'sideways')[] = ['up', 'down', 'sideways'];
+    // Use length and characters to seed different initial trends per pair
+    const seedIndex = (pair.length + pair.charCodeAt(0)) % trends.length;
+    marketTrendStates[trendKey] = {
+      currentTrend: trends[seedIndex],
+      trendIntensity: 0.15 + Math.random() * 0.35,
+      cycleTicksRemaining: 40 + Math.floor(Math.random() * 120), // tick lifetime
+      momentum: 0
+    };
+  }
+
+  const state = marketTrendStates[trendKey];
+  state.cycleTicksRemaining--;
+
+  if (state.cycleTicksRemaining <= 0) {
+    // Transition smoothly to a new market cycle
+    const trends: ('up' | 'down' | 'sideways')[] = ['up', 'down', 'sideways'];
+    const otherTrends = trends.filter(t => t !== state.currentTrend);
+    state.currentTrend = otherTrends[Math.floor(Math.random() * otherTrends.length)];
+    state.trendIntensity = 0.15 + Math.random() * 0.4;
+    state.cycleTicksRemaining = 50 + Math.floor(Math.random() * 150);
+  }
+
+  // Determine market-specific volatility multipliers (Forex is stable, Cryptos/OTC are erratic/high payout)
+  let volMult = 1.0;
+  if (pair.includes('(OTC)')) {
+    volMult = 1.35; // Rich OTC movements
+  } else if (pair.includes('Crypto IDX') || pair.includes('IDX')) {
+    volMult = 1.6;  // Highly volatile index
+  } else if (pair.includes('/USD') && !pair.includes('EUR/') && !pair.includes('GBP/') && !pair.includes('AUD/')) {
+    volMult = 1.2;  // Volatile cryptos
+  } else {
+    volMult = 0.75; // Standard, smooth Forex ranges
+  }
+
+  // Base random price change - perfectly balanced centered around 0.5 (noise)
+  const randNoise = (Math.random() - 0.5) * 2; // -1 to +1
+
+  // Set direction based on active trend state
+  let trendBias = 0;
+  if (state.currentTrend === 'up') {
+    trendBias = state.trendIntensity * 0.35;
+  } else if (state.currentTrend === 'down') {
+    trendBias = -state.trendIntensity * 0.35;
+  } else {
+    trendBias = (Math.random() - 0.5) * 0.08; // neutral drift
+  }
+
+  // Calculate smoothed momentum for fluid, professional candlestick movement
+  state.momentum = (state.momentum * 0.94) + (trendBias * 0.06);
+
+  // Combine lower noise and higher momentum for steady, non-jittery progression
+  const baseVolatility = markets[pair]?.volatility || 0.0002;
+  const tickChangePercent = (randNoise * 0.35 + state.momentum * 0.65) * baseVolatility * volMult;
+  
+  let change = currentPrice * tickChangePercent;
 
   // Admin Pressure / Manipulation support
   const exposureKey = `${pair}_${type}`;

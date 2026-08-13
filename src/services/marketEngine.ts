@@ -14,7 +14,7 @@ import { settleExpiredTrades, updateTradeExposureCache } from './tradeService.ts
 import { updatePair } from './otcEngine.ts';
 import { liveApiService } from './liveApiService.ts';
 
-const TICK_INTERVAL = 200;
+const TICK_INTERVAL = 1000;
 
 export async function startMarketEngine() {
   console.log('🚀 Starting Market Engine...');

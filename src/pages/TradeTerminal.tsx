@@ -4529,7 +4529,7 @@ const PROMOTED_ARTICLES = [
         } catch (e) {}
       }
       if (len > 0) {
-        ts.setVisibleLogicalRange({ from: len - 58, to: len + 2 });
+        ts.setVisibleLogicalRange({ from: len - 30, to: len + 2 });
       }
     } catch (e) {}
     
@@ -4550,7 +4550,7 @@ const PROMOTED_ARTICLES = [
             } catch (e) {}
           }
           if (len > 0) {
-            ts.setVisibleLogicalRange({ from: len - 58, to: len + 2 });
+            ts.setVisibleLogicalRange({ from: len - 30, to: len + 2 });
           }
         } catch (e) {}
       }, delay);
@@ -6028,7 +6028,7 @@ const PROMOTED_ARTICLES = [
         timeVisible: true, 
         secondsVisible: true,
         rightOffset: 2, 
-        barSpacing: 10,
+        barSpacing: 22,
         minBarSpacing: 2,
         fixLeftEdge: false, 
         lockVisibleTimeRangeOnResize: true,
@@ -6180,7 +6180,7 @@ const PROMOTED_ARTICLES = [
         timeVisible: true,
         secondsVisible: true,
         rightOffset: 2,
-        barSpacing: 10,
+        barSpacing: 22,
         minBarSpacing: 2,
       },
       rightPriceScale: {

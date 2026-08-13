@@ -43,7 +43,7 @@ export const OnyxTradingChart: React.FC = () => {
         borderColor: ONYX_THEME.borderColor,
         timeVisible: true,
         secondsVisible: true,
-        barSpacing: 10,
+        barSpacing: 22,
         fixLeftEdge: true,
         rightOffset: 10,
       },
@@ -55,14 +55,13 @@ export const OnyxTradingChart: React.FC = () => {
       },
       handleScale: {
         axisPressedMouseMove: false,
-        axisPressedPinch: false,
         mouseWheel: false,
         pinch: false,
       },
     });
 
     // 2. Pillar 4: Visual Polish (Emerald & Rose)
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = (chart as any).addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#f43f5e',
       borderVisible: false,
@@ -94,7 +93,7 @@ export const OnyxTradingChart: React.FC = () => {
 
       let updatedCandle;
 
-      if (!lastCandle || candleTime > lastCandle.time) {
+      if (!lastCandle || Number(candleTime) > Number(lastCandle.time)) {
         // Pillar 1: No-Gap Logic
         const openPrice = lastCandle ? lastCandle.close : currentPrice;
         
