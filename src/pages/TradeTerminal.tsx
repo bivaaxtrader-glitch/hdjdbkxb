@@ -4580,7 +4580,7 @@ const PROMOTED_ARTICLES = [
                }
 
                const ts = currentChart.timeScale();
-               const tsWidth = ts.width();
+               const tsWidth = currentContainer.clientWidth || 600;
                const visibleRange = ts.getVisibleLogicalRange();
                
                const timeSecs = Math.floor(purchaseDeadlineTime / 1000);
@@ -5956,9 +5956,9 @@ const PROMOTED_ARTICLES = [
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
-      autoSize: true,
-
-
+      width: chartContainerRef.current.clientWidth || 600,
+      height: chartContainerRef.current.clientHeight || 400,
+      
       layout: {
         background: { type: ColorType.Solid, color: "#131417" },
         textColor: "#d1d4dc",
@@ -6129,9 +6129,9 @@ const PROMOTED_ARTICLES = [
     }
 
     const chart = createChart(chartContainerRef2.current, {
-      autoSize: true,
-
-
+      width: chartContainerRef2.current.clientWidth || 600,
+      height: chartContainerRef2.current.clientHeight || 400,
+      
       layout: {
         background: { type: ColorType.Solid, color: "#131417" },
         textColor: "#d1d4dc",
