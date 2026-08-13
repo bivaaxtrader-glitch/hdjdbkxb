@@ -116,6 +116,37 @@ export function initSocket(server: HttpServer) {
       const currentCandles = accountType === 'real' ? currentCandles_real : currentCandles_demo;
       const pool = accountType === 'real' ? markets_real : markets_demo;
 
+      // If history for this asset/tf is empty, generate initial 200 candles so switching pairs instantly shows a full chart
+      if ((!history[asset] || !history[asset][tf] || history[asset][tf].length === 0) && pool[asset]) {
+        if (!history[asset]) history[asset] = {};
+        const tfSecs = getTimeSeconds(tf);
+        let basePrice = Number(pool[asset].price) || 100.00;
+        let tTime = Math.floor(Date.now() / 1000) - (200 * tfSecs);
+        const generated = [];
+        
+        for (let i = 0; i < 200; i++) {
+          const open = basePrice;
+          const change = (Math.random() - 0.49) * 0.3 * (basePrice * 0.0005);
+          const close = Number((open + change).toFixed(5));
+          const high = Number((Math.max(open, close) + Math.random() * 0.1 * basePrice * 0.0005).toFixed(5));
+          const low = Number((Math.min(open, close) - Math.random() * 0.1 * basePrice * 0.0005).toFixed(5));
+          
+          generated.push({
+            time: tTime,
+            open,
+            high,
+            low,
+            close,
+            volume: Math.random() * 50 + 10,
+            openTime: tTime,
+            closeTime: tTime + tfSecs
+          });
+          basePrice = close;
+          tTime += tfSecs;
+        }
+        history[asset][tf] = generated;
+      }
+
       const allCandles = (history[asset] && history[asset][tf]) ? history[asset][tf] : [];
       const candles = allCandles;
       const currentCandle = (currentCandles[asset] && currentCandles[asset][tf]) ? {

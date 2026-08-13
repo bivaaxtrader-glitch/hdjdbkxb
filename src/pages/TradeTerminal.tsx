@@ -9,6 +9,8 @@ import { Skeleton } from "../components/Skeleton";
 import signalsIllustration from "../assets/images/trading_signals_illustration_1779720241475.png";
 import { StoryViewer } from "../components/StoryViewer";
 import TradeHistoryModal from "../components/TradeHistoryModal";
+import { OnyxTradingChart } from "../components/OnyxTradingChart";
+import { TradingChart } from "../components/TradingChart";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import SEO from "../components/SEO";
@@ -921,6 +923,7 @@ const ActiveAISignals = ({ activeAsset, currentPrice, onExecute, onClose }: { ac
         </div>
         
         <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 scrollbar-hide pb-24">
+          <TradingChart />
           
           <div className="flex items-start justify-between">
             <div>
@@ -4501,6 +4504,12 @@ const PROMOTED_ARTICLES = [
   const crosshairCallbackRef = useRef<any>(null);
   const lastZoomedAssetRef = useRef<string | null>(null);
   const timerOverlayRef = useRef<HTMLDivElement | null>(null);
+  const purchaseLineXRef = useRef<number | null>(null);
+  const expirationLineXRef = useRef<number | null>(null);
+  const tradeElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const lastRenderedPriceRef = useRef<number>(0);
+  const lastRenderedTimeRef = useRef<number>(0);
+
   const [purchaseLineX, setPurchaseLineX] = useState<number | null>(null);
   const [expirationLineX, setExpirationLineX] = useState<number | null>(null);
 
@@ -4553,12 +4562,15 @@ const PROMOTED_ARTICLES = [
     const updateLine = () => {
       const chartConfigs = (isMultiChart && !isMobile ? [0, 1] : [0]);
       
-      // Use exact raw tick price without estimation or lagging interpolation to match history perfectly
       let newInterp = targetPriceRef.current;
       if (rawLastCandleRef.current && targetPriceRef.current > 0) {
           newInterp = targetPriceRef.current;
           currentInterpolatedPriceRef.current = newInterp;
       }
+
+      const hasPriceChanged = newInterp !== lastRenderedPriceRef.current;
+      const hasTimeChanged = rawLastCandleRef.current?.time !== lastRenderedTimeRef.current;
+      const needsSeriesUpdate = hasPriceChanged || hasTimeChanged;
 
       chartConfigs.forEach(idx => {
         const currentChart = idx === 0 ? chartRef.current : chartRef2.current;
@@ -4567,16 +4579,14 @@ const PROMOTED_ARTICLES = [
         
         if (currentChart && currentContainer) {
            try {
-               // Update interpolation smoothly on the series if it exists and price is valid
-               if (currentSeries && rawLastCandleRef.current && newInterp > 0) {
+               if (currentSeries && rawLastCandleRef.current && newInterp > 0 && needsSeriesUpdate) {
                    const newCandle = { ...rawLastCandleRef.current };
                    newCandle.close = newInterp;
                    newCandle.high = Math.max(newCandle.high, newInterp);
                    newCandle.low = Math.min(newCandle.low, newInterp);
                    
                    try {
-                       const isSecond = idx === 1;
-                       if (isSecond) {
+                       if (idx === 1) {
                            currentSeries.update(newCandle);
                        } else {
                            if (chartTypeRef.current === "Line" || chartTypeRef.current === "Mountain") {
@@ -4592,6 +4602,9 @@ const PROMOTED_ARTICLES = [
                }
 
                const ts = currentChart.timeScale();
+               const tsWidth = ts.width();
+               const visibleRange = ts.getVisibleLogicalRange();
+               
                const timeSecs = Math.floor(purchaseDeadlineTime / 1000);
                const expSecs = Math.floor(exactExpirationTime / 1000);
                
@@ -4600,66 +4613,73 @@ const PROMOTED_ARTICLES = [
                    if (x === null && rawLastCandleRef.current) {
                        const lastTime = rawLastCandleRef.current.time as number;
                        const lastX = ts.timeToCoordinate(lastTime as Time);
-                       if (lastX !== null) {
+                       if (lastX !== null && visibleRange) {
                            const secondsDiff = targetTimeSecs - lastTime;
                            const timeframeSeconds = getTimeSeconds(timeframe);
                            const candlesDiff = secondsDiff / timeframeSeconds;
-                           const range = ts.getVisibleLogicalRange();
-                           if (range) {
-                               const barSpacing = ts.width() / (range.to - range.from);
-                               x = lastX + candlesDiff * barSpacing;
-                           }
+                           const barSpacing = tsWidth / (visibleRange.to - visibleRange.from);
+                           x = lastX + candlesDiff * barSpacing;
                        }
                    }
                    return x;
                };
                
+               const pX = getX(timeSecs);
+               const eX = getX(expSecs);
+
                if (idx === 0) {
-                 setPurchaseLineX(getX(timeSecs));
-                 setExpirationLineX(getX(expSecs));
+                  if (pX !== purchaseLineXRef.current) {
+                    setPurchaseLineX(pX);
+                    purchaseLineXRef.current = pX;
+                  }
+                  if (eX !== expirationLineXRef.current) {
+                    setExpirationLineX(eX);
+                    expirationLineXRef.current = eX;
+                  }
                }
                
                if (currentSeries && (lastCandleRef.current || rawLastCandleRef.current)) {
                    if (idx === 0) {
-                     const priceY = currentSeries.priceToCoordinate(currentInterpolatedPriceRef.current);
-                     if (timerOverlayRef.current && priceY !== null) {
-                         timerOverlayRef.current.style.top = `${priceY}px`;
-                     }
-                     if (hoverTradeTypeRef.current && lastCandleRef.current) {
-                         const y = currentSeries.priceToCoordinate(lastCandleRef.current.close);
-                         setHoverLineY(y);
-                     } else {
-                         setHoverLineY(null);
-                     }
+                      const priceY = currentSeries.priceToCoordinate(currentInterpolatedPriceRef.current);
+                      if (timerOverlayRef.current && priceY !== null) {
+                          timerOverlayRef.current.style.transform = `translateY(${priceY}px)`;
+                      }
+                      if (hoverTradeTypeRef.current && lastCandleRef.current) {
+                          const y = currentSeries.priceToCoordinate(lastCandleRef.current.close);
+                          setHoverLineY(y);
+                      } else {
+                          setHoverLineY(null);
+                      }
                    }
 
                    if (activeTradesRef.current && activeAssetRef.current) {
                        const currentPrice = lastCandleRef.current?.close ?? rawLastCandleRef.current?.close ?? lastCandleRef.current?.value;
+                       let candleHalfWidth = 0;
+                       if (visibleRange && (visibleRange.to - visibleRange.from) > 0) {
+                           const barSpacing = tsWidth / (visibleRange.to - visibleRange.from);
+                           candleHalfWidth = barSpacing * 0.40;
+                       }
+
                        activeTradesRef.current.forEach(trade => {
-                           // If multi-chart, we might want to check if the asset matches the specific chart's asset
-                           // But here we assume they might be different or the same. 
-                           // For now, only show on chart if asset matches.
                            if (trade.asset === activeAssetRef.current) {
-                               const el = document.getElementById(`trade-overlay-${idx}-${trade.id}`);
+                               const elId = `trade-overlay-${idx}-${trade.id}`;
+                               let el = tradeElementsRef.current.get(elId);
+                               if (!el) {
+                                   el = document.getElementById(elId) as HTMLElement;
+                                   if (el) tradeElementsRef.current.set(elId, el);
+                               }
+                               
                                if (el) {
                                    const y = currentSeries.priceToCoordinate(trade.entryPrice);
                                    const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : (trade.createdAt instanceof Date ? Math.floor(trade.createdAt.getTime() / 1000) : Math.floor(Date.now() / 1000)))));
                                    const xBase = getX(entryTimeSecs as number);
                                    const xExp = getX(Math.floor(trade.expirationTime / 1000));
                                    
-                                   let candleHalfWidth = 0;
-                                   if (ts && typeof ts.width === 'function' && typeof ts.getVisibleLogicalRange === 'function') {
-                                       const logicalRange = ts.getVisibleLogicalRange();
-                                       if (logicalRange && (logicalRange.to - logicalRange.from) > 0) {
-                                           const barSpacing = ts.width() / (logicalRange.to - logicalRange.from);
-                                           candleHalfWidth = barSpacing * 0.40;
-                                       }
-                                   }
                                    const adjXBase = xBase !== null ? xBase - candleHalfWidth : null;
                                    
                                    if (y !== null && adjXBase !== null) {
                                        el.style.transform = `translate(${adjXBase}px, ${y}px)`;
-                                       el.style.display = 'block';
+                                       if (el.style.display !== 'block') el.style.display = 'block';
                                        
                                        const isProfit = trade.type === 'up' ? currentPrice > trade.entryPrice : currentPrice < trade.entryPrice;
                                        const line = el.querySelector('.trade-line') as HTMLElement;
@@ -4700,14 +4720,16 @@ const PROMOTED_ARTICLES = [
                                        }
 
                                        if (xExp !== null && xExp > adjXBase!) {
-                                           el.style.width = `${Math.max(1, xExp - adjXBase!)}px`;
+                                           const newWidth = `${Math.max(1, xExp - adjXBase!)}px`;
+                                           if (el.style.width !== newWidth) el.style.width = newWidth;
                                        } else if (xExp !== null) {
-                                           el.style.width = '0px';
+                                           if (el.style.width !== '0px') el.style.width = '0px';
                                        } else {
-                                            el.style.width = `calc(100% - ${adjXBase}px)`;
+                                            const newWidth = `calc(100% - ${adjXBase}px)`;
+                                            if (el.style.width !== newWidth) el.style.width = newWidth;
                                         }
                                    } else {
-                                       el.style.display = 'none';
+                                       if (el.style.display !== 'none') el.style.display = 'none';
                                    }
                                }
                            }
@@ -4719,6 +4741,9 @@ const PROMOTED_ARTICLES = [
            }
         }
       });
+      
+      lastRenderedPriceRef.current = newInterp;
+      lastRenderedTimeRef.current = rawLastCandleRef.current?.time as number || 0;
       rafId = requestAnimationFrame(updateLine);
     };
     rafId = requestAnimationFrame(updateLine);
@@ -5270,7 +5295,7 @@ const PROMOTED_ARTICLES = [
 
     const socket = io({
       path: '/socket.io',
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,

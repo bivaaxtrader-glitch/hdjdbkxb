@@ -319,7 +319,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
 
   try {
     // Attempt 1: ip-api.com
-    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`http://ip-api.com/json/${ip}`, { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.status === 'success') {
@@ -332,7 +332,7 @@ async function getCountryFromIp(ip: string): Promise<{ countryName: string; coun
 
   try {
     // Attempt 2: geojs.io
-    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(1000) });
+    const response = await fetch(`https://get.geojs.io/v1/ip/geo/${ip}.json`, { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
       const data = await response.json() as any;
       if (data && data.country) {
@@ -2226,7 +2226,7 @@ router.post('/trade', async (req, res) => {
         conn
       );
       
-      const tradeId = (insertRes as any).lastID;
+      const tradeId = (insertRes as any).lastInsertRowid;
 
       // Sync new trade to Firestore
       if (adminDb) {

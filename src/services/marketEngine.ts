@@ -22,15 +22,6 @@ export async function startMarketEngine() {
   // Initialize candles from the database asynchronously in background
   initializeCandlesFromDB().catch(err => console.error("Error initializing candles:", err));
   
-  // Prune historical candles on startup after 10 seconds, and then every 2 hours to keep the database small and fast
-  setTimeout(() => {
-    pruneHistoricalCandles().catch(err => console.error("Error pruning candles on startup:", err));
-  }, 10000);
-
-  setInterval(() => {
-    pruneHistoricalCandles().catch(err => console.error("Error pruning candles:", err));
-  }, 2 * 60 * 60 * 1000);
-  
   // Initialize user manipulation cache
   initializeUserManipulation().catch(err => console.error("Error initializing user manipulation:", err));
 
@@ -57,12 +48,6 @@ export async function startMarketEngine() {
   const runTicker = async () => {
     if (systemActive) {
       try {
-        // IDLE GUARD: If no clients are connected, sleep for 2 seconds to completely eliminate background CPU and DB load
-        if (getActiveConnections() === 0) {
-          setTimeout(runTicker, 2000);
-          return;
-        }
-
         const io = getIO();
         const marketKeys = Object.keys(markets);
         const nowMs = Date.now();
@@ -73,39 +58,27 @@ export async function startMarketEngine() {
         const isSummaryTick = tickCount % 5 === 0; // Every 1 second (5 * 200ms)
 
         for (const pair of marketKeys) {
-          // Process REAL market
+          // Process REAL market continuously for all pairs
           const roomNameReal = `market_${pair}_real`;
-          const roomReal = io.sockets.adapter.rooms.get(roomNameReal);
-          const hasListenersReal = roomReal && roomReal.size > 0;
-
-          if (hasListenersReal || isSummaryTick) {
-            const realTick = updatePair(pair, 'real', nowSec);
-            if (realTick) {
-              if (hasListenersReal) {
-                 io.to(roomNameReal).emit('market_tick', { pair, ...realTick });
-              }
-              if (isSummaryTick) {
-                tickDataReal[pair] = realTick;
-              }
-            }
+          const realTick = updatePair(pair, 'real', nowSec);
+          if (realTick) {
+            io.to(roomNameReal).emit('market_tick', { pair, ...realTick });
+            tickDataReal[pair] = realTick;
           }
 
-          // Process DEMO market
+          // Process DEMO market continuously for all pairs
           const roomNameDemo = `market_${pair}_demo`;
-          const roomDemo = io.sockets.adapter.rooms.get(roomNameDemo);
-          const hasListenersDemo = roomDemo && roomDemo.size > 0;
-
-          if (hasListenersDemo || isSummaryTick) {
-            const demoTick = updatePair(pair, 'demo', nowSec);
-            if (demoTick && hasListenersDemo) {
-               io.to(roomNameDemo).emit('market_tick', { pair, ...demoTick });
-            }
+          const demoTick = updatePair(pair, 'demo', nowSec);
+          if (demoTick) {
+            io.to(roomNameDemo).emit('market_tick', { pair, ...demoTick });
           }
         }
 
-        // Broadcast market summary (prices) less frequently to reduce global bandwidth
-        if (isSummaryTick && Object.keys(tickDataReal).length > 0) {
+        // Broadcast market summary (prices)
+        if (Object.keys(tickDataReal).length > 0) {
           io.emit('market_ticks', tickDataReal);
+        }
+        if (isSummaryTick) {
           tickCount = 0;
         }
       } catch (tickErr) {

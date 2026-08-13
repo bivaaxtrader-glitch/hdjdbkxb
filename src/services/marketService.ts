@@ -110,46 +110,13 @@ async function flushCandleBuffer() {
   }
 }
 
-// Periodically flush the buffer every 500ms
-setInterval(flushCandleBuffer, 500);
+// Background tasks for database flushing and pruning are disabled to maximize performance and prevent blocking.
 
 export function saveCandleToDB_v2(pair: string, type: 'real' | 'demo', timeframe: string, candle: any) {
   try {
-    // 5-second candles are ephemeral memory-only for real-time tick charts.
-    // Do NOT persist them to database to prevent database locking, disk I/O bottlenecks, and 2-3 hour app freezing.
-    if (timeframe === '5 seconds') {
-      return;
-    }
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    const isCompleted = candle.closeTime <= nowSec;
-
-    // Save only COMPLETED major candles to database.
-    if (isCompleted) {
-      candleBuffer.push({
-        pair,
-        type,
-        timeframe,
-        open: Number(candle.open).toFixed(6),
-        high: Number(candle.high).toFixed(6),
-        low: Number(candle.low).toFixed(6),
-        close: Number(candle.close).toFixed(6),
-        volume: Number(candle.volume).toFixed(2),
-        openTime: candle.openTime,
-        closeTime: candle.closeTime
-      });
-      
-      if (candleBuffer.length > 2000) {
-        flushCandleBuffer();
-      }
-
-      // Save only COMPLETED candles (1m+) to Firestore to significantly reduce write quota usage.
-      const isMajorTimeframe = ["1 minute", "5 minutes", "15 minutes", "30 minutes", "1 hour", "4 hours", "1 day"].includes(timeframe);
-
-      if (isMajorTimeframe) {
-        saveCandleToFirestore(pair, type, timeframe, candle);
-      }
-    }
+    // PERSISTENCE DISABLED as per user request to prevent database blocking/freezing.
+    // We only maintain in-memory state now for real-time charting.
+    return;
   } catch (err: any) {
     console.error(`Failed to save historical candle to DB for ${pair} (${type}) timeframe ${timeframe}:`, err.message);
   }
@@ -234,57 +201,9 @@ export function isMarketClosedAt(pair: string, timestampSec: number): boolean {
   return false;
 }
 
+// Pruning logic is handled in-memory for the current session.
 export async function pruneHistoricalCandles() {
-  console.log('🧹 Running automated historical candles pruning...');
-  try {
-    const pairKeys = Object.keys(markets);
-    let totalDeleted = 0;
-
-    for (const pair of pairKeys) {
-      for (const type of ['real', 'demo']) {
-        for (const tf of TIMEFRAMES) {
-          // Yield to event loop frequently to prevent blocking during heavy pruning
-          await new Promise(resolve => setImmediate(resolve));
-          
-          const limit = 1000;
-          
-          // Use a fast check to see if we exceed the limit
-          const countResult = db.prepare('SELECT COUNT(*) as count FROM historical_candles WHERE market = ? AND type = ? AND timeframe = ?').get(pair, type, tf) as any;
-          const count = countResult ? countResult.count : 0;
-          
-          if (count > limit) {
-            // Find the cutoff openTime of the 1000th latest candle
-            const cutoffRow = db.prepare(`
-              SELECT openTime FROM historical_candles 
-              WHERE market = ? AND type = ? AND timeframe = ?
-              ORDER BY openTime DESC
-              LIMIT 1 OFFSET ?
-            `).get(pair, type, tf, limit - 1) as any;
-            
-            if (cutoffRow) {
-              const cutoff = cutoffRow.openTime;
-              const result = db.prepare(`
-                DELETE FROM historical_candles 
-                WHERE market = ? AND type = ? AND timeframe = ? AND openTime < ?
-              `).run(pair, type, tf, cutoff);
-              
-              totalDeleted += result.changes;
-            }
-          }
-        }
-      }
-    }
-    
-    if (totalDeleted > 0) {
-      console.log(`🧹 Automated pruning complete: Deleted ${totalDeleted} obsolete historical candles.`);
-      // VACUUM removed from here as it locks the database for too long and causes 499 errors.
-      // It is now run once daily in backupDatabase() instead.
-    } else {
-      console.log('🧹 Automated pruning complete: No obsolete candles found.');
-    }
-  } catch (err: any) {
-    console.error('❌ Failed to prune historical candles:', err.message);
-  }
+  return;
 }
 
 export async function initializeCandlesFromDB() {
@@ -471,10 +390,8 @@ let isFlushingFirestore = false;
 
 // Firestore Persistence for candles (Master Store)
 export async function saveCandleToFirestore(pair: string, type: string, timeframe: string, candle: any) {
-  firestoreCandleBuffer.push({ pair, type, timeframe, candle });
-  if (firestoreCandleBuffer.length >= 450 && !isFlushingFirestore) {
-    flushFirestoreCandleBuffer();
-  }
+  // Firestore persistence disabled as per user request.
+  return;
 }
 
 async function flushFirestoreCandleBuffer() {
@@ -513,7 +430,7 @@ async function flushFirestoreCandleBuffer() {
   }
 }
 
-setInterval(flushFirestoreCandleBuffer, 5000);
+// setInterval(flushFirestoreCandleBuffer, 5000);
 
 export function setSystemActive(active: boolean) {
   systemActive = active;
