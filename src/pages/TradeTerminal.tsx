@@ -4515,43 +4515,17 @@ const PROMOTED_ARTICLES = [
 
   const alignChartRightByIdx = (idx: number, fallbackLen: number = 0, delay: number = 50) => {
     const chart = idx === 0 ? chartRef.current : chartRef2.current;
-    const series = idx === 0 ? seriesRef.current : seriesRef2.current;
     if (!chart) return;
     try {
-      const ts = chart.timeScale();
-      let len = fallbackLen;
-      if (series) {
-        try {
-          const d = series.data();
-          if (d && d.length > 0) {
-            len = d.length;
-          }
-        } catch (e) {}
-      }
-      if (len > 0) {
-        ts.setVisibleLogicalRange({ from: len - 30, to: len + 2 });
-      }
+      chart.timeScale().scrollToRealTime();
     } catch (e) {}
     
     if (delay > 0) {
       setTimeout(() => {
         const c = idx === 0 ? chartRef.current : chartRef2.current;
-        const s = idx === 0 ? seriesRef.current : seriesRef2.current;
         if (!c) return;
         try {
-          const ts = c.timeScale();
-          let len = fallbackLen;
-          if (s) {
-            try {
-              const d = s.data();
-              if (d && d.length > 0) {
-                len = d.length;
-              }
-            } catch (e) {}
-          }
-          if (len > 0) {
-            ts.setVisibleLogicalRange({ from: len - 30, to: len + 2 });
-          }
+          c.timeScale().scrollToRealTime();
         } catch (e) {}
       }, delay);
     }
@@ -4564,8 +4538,12 @@ const PROMOTED_ARTICLES = [
       
       let newInterp = targetPriceRef.current;
       if (rawLastCandleRef.current && targetPriceRef.current > 0) {
-          newInterp = targetPriceRef.current;
-          currentInterpolatedPriceRef.current = newInterp;
+          if (currentInterpolatedPriceRef.current === 0) {
+              currentInterpolatedPriceRef.current = targetPriceRef.current;
+          } else {
+              currentInterpolatedPriceRef.current += (targetPriceRef.current - currentInterpolatedPriceRef.current) * 0.18;
+          }
+          newInterp = currentInterpolatedPriceRef.current;
       }
 
       const hasPriceChanged = newInterp !== lastRenderedPriceRef.current;
@@ -6027,7 +6005,8 @@ const PROMOTED_ARTICLES = [
         borderColor: "#1c1f24",
         timeVisible: true, 
         secondsVisible: true,
-        rightOffset: 2, 
+        rightOffset: 15, 
+        fixRightEdge: false,
         barSpacing: 22,
         minBarSpacing: 2,
         fixLeftEdge: false, 
@@ -6179,7 +6158,8 @@ const PROMOTED_ARTICLES = [
         borderColor: "#1c1f24",
         timeVisible: true,
         secondsVisible: true,
-        rightOffset: 2,
+        rightOffset: 15,
+        fixRightEdge: false,
         barSpacing: 22,
         minBarSpacing: 2,
       },
