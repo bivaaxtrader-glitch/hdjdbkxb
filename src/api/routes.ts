@@ -4037,16 +4037,6 @@ router.post('/activities', async (req, res) => {
   res.json({ success: true });
 });
 
-// --- Legacy/Alias Routes for Compatibility ---
-router.post('/deposit', async (req, res) => {
-  // Redirect to wallet/deposit logic or just re-implement
-  res.status(200).json({ success: true, message: 'Deposit endpoint reached. Please use /api/wallet/deposit' });
-});
-
-router.post('/withdraw', async (req, res) => {
-  res.status(200).json({ success: true, message: 'Withdraw endpoint reached. Please use /api/wallet/withdraw' });
-});
-
 router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {
   const history = await query(
     `SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,

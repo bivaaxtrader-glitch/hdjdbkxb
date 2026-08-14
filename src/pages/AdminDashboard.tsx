@@ -138,7 +138,7 @@ export default function AdminDashboard() {
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<'news' | 'education' | 'promotions' | 'tournaments' | 'banner' | 'user' | 'deposit' | null>(null);
+  const [modalType, setModalType] = useState<'news' | 'education' | 'promotions' | 'tournaments' | 'banner' | 'user' | 'deposit' | 'promos' | 'signals' | 'promoMaterials' | 'masterTraders' | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);

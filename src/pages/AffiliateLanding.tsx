@@ -82,7 +82,7 @@ export default function AffiliateLandingPage() {
         <div className="max-w-7xl mx-auto h-full flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 group">
             <div className="p-2 bg-gradient-to-br from-[#ffcf00] to-[#ff9100] rounded-xl shadow-lg shadow-[#ffcf00]/20 group-hover:scale-110 transition-transform">
-              <Logo size={24} color="black" />
+              <Logo size={24} />
             </div>
             <div className="flex flex-col">
               <span className="text-[18px] font-black tracking-tighter leading-none mb-0.5">Bivaax</span>
@@ -152,7 +152,7 @@ export default function AffiliateLandingPage() {
             <div className="space-y-6 max-w-sm">
               <Link to="/" className="flex items-center gap-3">
                 <div className="p-2 bg-[#ffcf00] rounded-xl">
-                  <Logo size={20} color="black" />
+                  <Logo size={20} />
                 </div>
                 <span className="font-black text-white text-xl tracking-tighter">Bivaax PARTNERS</span>
               </Link>

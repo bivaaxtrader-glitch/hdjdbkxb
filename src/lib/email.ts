@@ -13,21 +13,35 @@ export async function sendEmail(to: string, subject: string, html: string, text?
     const brevoApiKey = dbConfig.brevoApiKey || process.env.BREVO_API_KEY || 'AQ.Ab8RN6JSAhga-vB62NB1E0hsOCV2rTV1wBP5dvHp92SmjdZMcQ';
 
     if (brevoApiKey) {
-      logger.info(`Using Brevo API to send email to ${to}`);
-      const client = new BrevoClient({ apiKey: brevoApiKey });
+      const isBrevoV3Key = brevoApiKey.startsWith('xkeysib-');
+      logger.info(`Email attempt to ${to} using key prefix: ${brevoApiKey.substring(0, 10)}... (Type: ${isBrevoV3Key ? 'V3 API' : 'Other/SMTP'})`);
 
-      const response = await client.transactionalEmails.sendTransacEmail({
-        subject,
-        htmlContent: html,
-        sender: { 
-          name: dbConfig.smtpFromName || process.env.SMTP_FROM_NAME || 'Bivaax Trade', 
-          email: dbConfig.smtpFromEmail || process.env.SMTP_FROM_EMAIL || 'no-reply@bivaax.trade' 
-        },
-        to: [{ email: to }]
-      });
+      if (isBrevoV3Key) {
+        const client = new BrevoClient({ apiKey: brevoApiKey });
+        const response = await client.transactionalEmails.sendTransacEmail({
+          subject,
+          htmlContent: html,
+          sender: { 
+            name: dbConfig.smtpFromName || process.env.SMTP_FROM_NAME || 'Bivaax Trade', 
+            email: dbConfig.smtpFromEmail || process.env.SMTP_FROM_EMAIL || 'no-reply@bivaax.trade' 
+          },
+          to: [{ email: to }]
+        });
 
-      logger.info(`Email sent via Brevo API: ${response.messageId}`);
-      return true;
+        logger.info(`Email sent via Brevo API: ${response.messageId}`);
+        return true;
+      } else {
+        // If it's not a V3 key, it might be an SMTP password. 
+        // We only use Brevo defaults if no host is specified in the database.
+        if (!dbConfig.smtpHost) {
+          dbConfig.smtpHost = 'smtp-relay.brevo.com';
+          dbConfig.smtpPort = 587;
+          // Brevo SMTP Username MUST be the account email address for authentication.
+          dbConfig.smtpUser = dbConfig.smtpUser || 'bivaaxtrader@gmail.com';
+          logger.info(`No SMTP host found, using Brevo defaults with user: ${dbConfig.smtpUser}`);
+        }
+        dbConfig.smtpPass = dbConfig.smtpPass || brevoApiKey;
+      }
     }
 
     // 2. Fallback to Nodemailer SMTP
@@ -90,7 +104,12 @@ export async function sendEmail(to: string, subject: string, html: string, text?
     logger.info(`Email sent via SMTP: ${info.messageId}`);
     return true;
   } catch (error: any) {
-    logger.error('Error sending email:', error.response?.body || error.message || error);
+    logger.error('Error sending email:', {
+      message: error.message,
+      body: error.response?.body,
+      stack: error.stack,
+      to
+    });
     return false;
   }
 }

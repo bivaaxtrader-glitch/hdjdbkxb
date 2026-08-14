@@ -1036,6 +1036,7 @@ interface Transaction {
   errorMsg?: string;
   successMsg?: string;
   bonusAmount?: number;
+  timestamp?: any;
 }
 
 const MOCK_TRANSACTIONS: Transaction[] = [
@@ -3778,13 +3779,13 @@ const PROMOTED_ARTICLES = [
           }
        }
 
-       if (seriesRef.current && typeof seriesRef.current.setMarkers === 'function') {
+       if (seriesRef.current && typeof (seriesRef.current as any).setMarkers === 'function') {
           chartMarkers.sort((a, b) => {
              const tA = typeof a.time === 'number' ? a.time : 0;
              const tB = typeof b.time === 'number' ? b.time : 0;
              return tA - tB;
           });
-          try { seriesRef.current.setMarkers(chartMarkers); } catch (e) {}
+          try { (seriesRef.current as any).setMarkers(chartMarkers); } catch (e) {}
        }
     } catch (globalError) {
         console.warn("Soft error in refreshIndicators. Attempted applyOptions on removed scale or offline:", globalError);
@@ -4070,7 +4071,7 @@ const PROMOTED_ARTICLES = [
   const [showBottomHistory, setShowBottomHistory] = useState(false);
   const [sidebarTradeTab, setSidebarTradeTab] = useState<"trades" | "history">("trades");
   const [isTradeHistoryVisible, setIsTradeHistoryVisible] = useState(true);
-  const [bottomTab, setBottomTab] = useState<"active" | "closed">("active");
+  const [bottomTab, setBottomTab] = useState<"active" | "closed" | "history">("active");
   const [isBottomPanelMinimized, setIsBottomPanelMinimized] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
 
@@ -4370,6 +4371,8 @@ const PROMOTED_ARTICLES = [
   type Trade = {
     id: string;
     type: "up" | "down";
+    direction?: "up" | "down";
+    payoutRate?: number;
     entryPrice: number;
     amount: number;
     timeLeft: number;
@@ -4380,7 +4383,7 @@ const PROMOTED_ARTICLES = [
     status?: 'open' | 'won' | 'lost' | 'draw';
     exitPrice?: number;
     closedAt?: number;
-    accountType?: 'real' | 'demo';
+    accountType?: 'real' | 'demo' | 'tournament';
     createdAt: number;
   };
 
@@ -4596,7 +4599,7 @@ const PROMOTED_ARTICLES = [
                            const timeframeSeconds = getTimeSeconds(timeframe);
                            const candlesDiff = secondsDiff / timeframeSeconds;
                            const barSpacing = tsWidth / (visibleRange.to - visibleRange.from);
-                           x = lastX + candlesDiff * barSpacing;
+                           x = (lastX + candlesDiff * barSpacing) as any;
                        }
                    }
                    return x;
@@ -4649,7 +4652,7 @@ const PROMOTED_ARTICLES = [
                                
                                if (el) {
                                    const y = currentSeries.priceToCoordinate(trade.entryPrice);
-                                   const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : (trade.createdAt instanceof Date ? Math.floor(trade.createdAt.getTime() / 1000) : Math.floor(Date.now() / 1000)))));
+                                   const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : ((trade.createdAt as any) instanceof Date ? Math.floor((trade.createdAt as any).getTime() / 1000) : Math.floor(Date.now() / 1000)))));
                                    const xBase = getX(entryTimeSecs as number);
                                    const xExp = getX(Math.floor(trade.expirationTime / 1000));
                                    
@@ -9370,7 +9373,7 @@ const PROMOTED_ARTICLES = [
       )}
 
       {/* COPY TRADING DRAWER */}
-      {activeTab === "copytrading" && (
+      {activeTab === "copy-trading" && (
         <div className="fixed md:absolute inset-y-0 left-0 w-full max-w-full md:max-w-[400px] md:left-[68px] md:right-auto md:w-[400px] z-[150] flex flex-col overflow-hidden bg-[#1f2026] border-r border-white/5 shadow-2xl animate-in slide-in-from-left duration-300">
            {/* Header */}
            <div className="h-16 flex items-center justify-between px-6 border-b border-white/5 shrink-0 bg-[#1f2026] z-[210]">
@@ -10903,7 +10906,7 @@ const PROMOTED_ARTICLES = [
                   key={lang.code}
                   onClick={async () => {
                     setSelectedLanguage(lang);
-                    setLanguage(lang.code);
+                    setLanguage(lang.code as any);
                     setShowLanguageModal(false);
                     // Save to Firestore
                     if (auth.currentUser) {
@@ -12533,10 +12536,21 @@ const PROMOTED_ARTICLES = [
                                         promoCode: appliedPromo,
                                         promoBonus: promoBonus
                                       };
-                                      const depositRes = await fetch('/api/deposit', {
+                                      const depositRes = await fetch('/api/wallet/deposit', {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ depositData: depositPayload })
+                                        headers: { 
+                                          'Content-Type': 'application/json',
+                                          'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
+                                        },
+                                        body: JSON.stringify({ 
+                                          amount: currentAmount,
+                                          currency: userCurrency,
+                                          method: selectedMethod?.name,
+                                          walletNumber: selectedMethod?.walletAddress || '01347249505',
+                                          trxId: paymentTrxId,
+                                          orderId,
+                                          userEmail: auth.currentUser.email
+                                        })
                                       });
                                       if (!depositRes.ok) throw new Error('Deposit failed');
                                       
@@ -13140,16 +13154,20 @@ const PROMOTED_ARTICLES = [
                                    if (auth?.currentUser) {
                                        try {
                                            const baseWithdrawAmount = convertToBase(amount, userCurrency);
-                                           const res = await fetch('/api/withdraw', {
+                                           const res = await fetch('/api/wallet/withdraw', {
                                                method: 'POST',
-                                               headers: { 'Content-Type': 'application/json' },
+                                               headers: { 
+                                                   'Content-Type': 'application/json',
+                                                   'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
+                                               },
                                                body: JSON.stringify({
-                                                   userId: auth.currentUser.uid,
                                                    amount: baseWithdrawAmount,
                                                    method: selectedMethod?.name,
-                                                   accountHolder: withdrawAccountHolder,
-                                                   walletNumber: withdrawAccountNumber,
-                                                   userCurrency
+                                                   details: {
+                                                       accountHolder: withdrawAccountHolder,
+                                                       walletNumber: withdrawAccountNumber,
+                                                       userCurrency
+                                                   }
                                                })
                                            });
                                            if (!res.ok) throw new Error('Withdrawal failed');
