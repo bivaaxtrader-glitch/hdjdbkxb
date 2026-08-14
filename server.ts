@@ -24,6 +24,7 @@ import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import { initSocket } from './src/services/socketService';
 import { startMarketEngine } from './src/services/marketEngine';
+import { loadMarketSettings } from './src/services/marketService';
 import { startMasterSimulation, seedMasterTraders } from './src/services/copyTradingService';
 import { backupDatabase } from './src/db/backup';
 import authRouter from './src/api/auth';
@@ -245,8 +246,9 @@ Sitemap: https://market.bivaax.trade/sitemap.xml`);
       } catch (err) {}
 
       // 3. Start Market Engine (starts price generation ticker)
-      setTimeout(() => {
+      setTimeout(async () => {
         console.log('📈 Starting Market Engine...');
+        await loadMarketSettings();
         startMarketEngine();
         
         // 4. Start Copy Trading Simulation

@@ -1,8 +1,10 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { get, query } from "../db/mysql-db.ts";
 
+const GEMINI_API_KEY = "AQ.Ab8RN6KFiSO65DCEo_A8KrqfdZqPtZhR-3BziLaOuhxnK0uMwg";
+
 const ai = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY,
+  apiKey: GEMINI_API_KEY,
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
@@ -60,12 +62,30 @@ async function callTool(name: string, args: any, userId: string) {
   }
 }
 
+async function generateContentWithFallback(params: { contents: any[]; config: any }) {
+  const modelsToTry = ["gemini-3.7-flash", "gemini-3.1-flash-lite"];
+  let lastError: any = null;
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config,
+      });
+      return response;
+    } catch (err: any) {
+      console.warn(`⚠️ Model ${model} failed or is overloaded, trying fallback. Error:`, err.message || err);
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 export async function generateChatResponse(message: string, history: any[] = [], userId?: string) {
   try {
     const contents = [...history, { role: 'user', parts: [{ text: message }] }];
     
-    let response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+    let response = await generateContentWithFallback({
       contents,
       config: {
         systemInstruction: `You are a professional B2B Support Agent for Bivaax Trader. 
@@ -109,10 +129,9 @@ export async function generateChatResponse(message: string, history: any[] = [],
 
       // Add the model's tool calls and our responses to the conversation
       contents.push({ role: 'model', parts: response.candidates[0].content.parts });
-      contents.push({ role: 'tool', parts: toolResponses.map(tr => ({ functionResponse: tr })) });
+      contents.push({ role: 'user', parts: toolResponses.map(tr => ({ functionResponse: tr })) });
 
-      response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
+      response = await generateContentWithFallback({
         contents,
         config: {
           systemInstruction: `Continue providing the professional response in JSON format.`,

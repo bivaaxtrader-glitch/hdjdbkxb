@@ -232,7 +232,12 @@ export function initSocket(server: HttpServer) {
               momentum = momentum * 0.85 + (getPseudoRandom(lastTime + 500) - 0.5) * 0.5;
               
               // Base range for the candle (relative to price)
-              const rangeVol = lastClose * 0.0015 * (0.8 + pr * 1.5);
+              const assetConfig = markets[asset];
+              const rawVol = assetConfig ? assetConfig.volatility : 0.0002;
+              const assetPrice = assetConfig ? assetConfig.price : 100;
+              const relativeVol = rawVol / assetPrice;
+              const stepVol = relativeVol * Math.sqrt(tfSecs) * 0.06;
+              const rangeVol = lastClose * stepVol * (0.8 + pr * 1.5);
               
               // Determine candle type
               const typeRand = getPseudoRandom(lastTime + 1000);

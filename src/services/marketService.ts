@@ -7,6 +7,20 @@ import { generateSingleCandleOHLC } from './candlestickEngine.ts';
 export const markets_real = JSON.parse(JSON.stringify(markets));
 export const markets_demo = markets_real;
 
+export async function loadMarketSettings() {
+  const marketSettings = await query('SELECT * FROM market_settings');
+  if (marketSettings && Array.isArray(marketSettings)) {
+    for (const row of marketSettings) {
+      if (markets_real[row.pair]) {
+        markets_real[row.pair].hidden = !!row.hidden;
+      }
+      if (markets_demo[row.pair]) {
+        markets_demo[row.pair].hidden = !!row.hidden;
+      }
+    }
+  }
+}
+
 export const history_real: Record<string, Record<string, any[]>> = {};
 export const history_demo = history_real;
 
@@ -209,6 +223,14 @@ export async function pruneHistoricalCandles() {
 export async function initializeCandlesFromDB() {
   console.log('📦 Initializing candle storage in-memory only (continuous flow without gaps)...');
   
+  // Load persistent market settings (like hidden/visible states) from DB
+  try {
+    await loadMarketSettings();
+    console.log('✅ Loaded persistent market settings (hidden/visible status) from database.');
+  } catch (err: any) {
+    console.error('Failed to load market settings on startup:', err.message);
+  }
+  
   const pairKeys = Object.keys(markets);
   const now = Math.floor(Date.now() / 1000);
 
@@ -225,7 +247,8 @@ export async function initializeCandlesFromDB() {
           const tfSeconds = timeframeSecondsMap[tf];
           const bucketTime = now - (now % tfSeconds);
           
-          const stepVol = volatility * Math.sqrt(tfSeconds);
+          // Scale volatility down to perfectly match live tick random walk volatility
+          const stepVol = volatility * Math.sqrt(tfSeconds) * 0.06;
           const seedCount = 200;
           const seedRows = [];
           let currentPrice = basePrice;

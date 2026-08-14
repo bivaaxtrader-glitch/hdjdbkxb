@@ -75,36 +75,6 @@ router.post('/admin/test-email', async (req, res) => {
   }
 
   try {
-    const brevoKey = config.brevoApiKey || 'AQ.Ab8RN6JSAhga-vB62NB1E0hsOCV2rTV1wBP5dvHp92SmjdZMcQ';
-    // If Brevo API Key is provided in the test config or we have a fallback, use Brevo
-    if (brevoKey) {
-      const { BrevoClient } = await import('@getbrevo/brevo');
-      const client = new BrevoClient({ apiKey: brevoKey });
-
-      const response = await client.transactionalEmails.sendTransacEmail({
-        subject: 'Brevo API Connection Test',
-        htmlContent: `
-          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-            <h2 style="color: #4CAF50;">Brevo API Success!</h2>
-            <p>Your Brevo API connection is working correctly.</p>
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-            <p style="font-size: 12px; color: #666;">
-              <strong>Method:</strong> Brevo Transactional API<br>
-              <strong>API Key:</strong> ${config.brevoApiKey.substring(0, 8)}...
-            </p>
-          </div>
-        `,
-        sender: { 
-          name: config.smtpFromName || 'Bivaax Trade', 
-          email: config.smtpFromEmail || 'no-reply@getbrevo.trade' 
-        },
-        to: [{ email }]
-      });
-
-      return res.json({ success: true, messageId: response.messageId });
-    }
-
-    // Default SMTP Test
     const nodemailer = (await import('nodemailer')).default;
     
     const transporter = nodemailer.createTransport({
@@ -161,8 +131,13 @@ router.post('/admin/manipulation/global', (req, res) => {
 
 router.post('/admin/market/update', (req, res) => {
   const { pair, triggerNews, ...updates } = req.body;
+  
   if (markets_real[pair]) {
     markets_real[pair] = { ...markets_real[pair], ...updates };
+    // Persist hidden status
+    if ('hidden' in updates) {
+      run('INSERT OR REPLACE INTO market_settings (pair, hidden) VALUES (?, ?)', [pair, updates.hidden ? 1 : 0]);
+    }
   }
   if (markets_demo[pair]) {
     markets_demo[pair] = { ...markets_demo[pair], ...updates };
@@ -4035,6 +4010,16 @@ router.get('/activities', async (req, res) => {
 
 router.post('/activities', async (req, res) => {
   res.json({ success: true });
+});
+
+// --- Legacy/Alias Routes for Compatibility ---
+router.post('/deposit', async (req, res) => {
+  // Redirect to wallet/deposit logic or just re-implement
+  res.status(200).json({ success: true, message: 'Deposit endpoint reached. Please use /api/wallet/deposit' });
+});
+
+router.post('/withdraw', async (req, res) => {
+  res.status(200).json({ success: true, message: 'Withdraw endpoint reached. Please use /api/wallet/withdraw' });
 });
 
 router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {

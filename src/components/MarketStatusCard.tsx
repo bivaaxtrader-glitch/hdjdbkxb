@@ -206,6 +206,8 @@ export const MarketStatusCard: React.FC = () => {
   ];
 
   const filteredCuratedPairs = curatedPairs.filter(p => {
+    const liveDetails: any = markets[p.pair];
+    if (liveDetails?.hidden) return false;
     if (activeTab === 'all') return true;
     return p.category === activeTab;
   });

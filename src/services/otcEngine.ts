@@ -88,7 +88,9 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
   state.momentum = (state.momentum * 0.94) + (trendBias * 0.06);
 
   // Combine lower noise and higher momentum for steady, non-jittery progression
-  const baseVolatility = markets[pair]?.volatility || 0.0002;
+  const rawVolatility = markets[pair]?.volatility || 0.0002;
+  // Convert absolute volatility from config into a relative fractional volatility
+  const baseVolatility = rawVolatility / currentPrice;
   const tickChangePercent = (randNoise * 0.35 + state.momentum * 0.65) * baseVolatility * volMult;
   
   let change = currentPrice * tickChangePercent;

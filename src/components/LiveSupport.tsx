@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, ChevronLeft, ChevronDown, Send, Paperclip } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { auth } from '../firebase';
 
 interface LiveSupportProps {
   onClose: () => void;
@@ -26,15 +27,38 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
     
+    if (text === "Go to Login") {
+      onClose();
+      window.location.href = "/login";
+      return;
+    }
+    
     const newUserMessage: Message = { text, sender: 'user' };
     setMessages(prev => [...prev, newUserMessage]);
     setInput('');
     setIsLoading(true);
 
     try {
+      let token = '';
+      try {
+        if (auth.currentUser) {
+          token = await auth.currentUser.getIdToken();
+        } else {
+          token = localStorage.getItem('bivax_token') || localStorage.getItem('token') || '';
+        }
+      } catch (e) {
+        console.warn("Could not retrieve token:", e);
+        token = localStorage.getItem('bivax_token') || localStorage.getItem('token') || '';
+      }
+
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({ 
           message: text, 
           history: messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })) 

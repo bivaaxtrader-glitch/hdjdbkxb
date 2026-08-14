@@ -1036,7 +1036,6 @@ interface Transaction {
   errorMsg?: string;
   successMsg?: string;
   bonusAmount?: number;
-  timestamp?: any;
 }
 
 const MOCK_TRANSACTIONS: Transaction[] = [
@@ -3779,13 +3778,13 @@ const PROMOTED_ARTICLES = [
           }
        }
 
-       if (seriesRef.current && typeof (seriesRef.current as any).setMarkers === 'function') {
+       if (seriesRef.current && typeof seriesRef.current.setMarkers === 'function') {
           chartMarkers.sort((a, b) => {
              const tA = typeof a.time === 'number' ? a.time : 0;
              const tB = typeof b.time === 'number' ? b.time : 0;
              return tA - tB;
           });
-          try { (seriesRef.current as any).setMarkers(chartMarkers); } catch (e) {}
+          try { seriesRef.current.setMarkers(chartMarkers); } catch (e) {}
        }
     } catch (globalError) {
         console.warn("Soft error in refreshIndicators. Attempted applyOptions on removed scale or offline:", globalError);
@@ -4071,7 +4070,7 @@ const PROMOTED_ARTICLES = [
   const [showBottomHistory, setShowBottomHistory] = useState(false);
   const [sidebarTradeTab, setSidebarTradeTab] = useState<"trades" | "history">("trades");
   const [isTradeHistoryVisible, setIsTradeHistoryVisible] = useState(true);
-  const [bottomTab, setBottomTab] = useState<"active" | "closed" | "history">("active");
+  const [bottomTab, setBottomTab] = useState<"active" | "closed">("active");
   const [isBottomPanelMinimized, setIsBottomPanelMinimized] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
 
@@ -4371,8 +4370,6 @@ const PROMOTED_ARTICLES = [
   type Trade = {
     id: string;
     type: "up" | "down";
-    direction?: "up" | "down";
-    payoutRate?: number;
     entryPrice: number;
     amount: number;
     timeLeft: number;
@@ -4383,7 +4380,7 @@ const PROMOTED_ARTICLES = [
     status?: 'open' | 'won' | 'lost' | 'draw';
     exitPrice?: number;
     closedAt?: number;
-    accountType?: 'real' | 'demo' | 'tournament';
+    accountType?: 'real' | 'demo';
     createdAt: number;
   };
 
@@ -4599,7 +4596,7 @@ const PROMOTED_ARTICLES = [
                            const timeframeSeconds = getTimeSeconds(timeframe);
                            const candlesDiff = secondsDiff / timeframeSeconds;
                            const barSpacing = tsWidth / (visibleRange.to - visibleRange.from);
-                           x = (lastX + candlesDiff * barSpacing) as any;
+                           x = lastX + candlesDiff * barSpacing;
                        }
                    }
                    return x;
@@ -4652,7 +4649,7 @@ const PROMOTED_ARTICLES = [
                                
                                if (el) {
                                    const y = currentSeries.priceToCoordinate(trade.entryPrice);
-                                   const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : ((trade.createdAt as any) instanceof Date ? Math.floor((trade.createdAt as any).getTime() / 1000) : Math.floor(Date.now() / 1000)))));
+                                   const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : (trade.createdAt instanceof Date ? Math.floor(trade.createdAt.getTime() / 1000) : Math.floor(Date.now() / 1000)))));
                                    const xBase = getX(entryTimeSecs as number);
                                    const xExp = getX(Math.floor(trade.expirationTime / 1000));
                                    
@@ -5310,6 +5307,26 @@ const PROMOTED_ARTICLES = [
     
     socket.on('trade_settled', (trade: any) => {
         console.log("Trade settled via socket:", trade);
+        
+        // Add Binomo-style notification inside the chart/terminal
+        const notifStatus = trade.status === 'win' ? 'won' : (trade.status === 'draw' ? 'draw' : 'lost');
+        const notifAmount = trade.status === 'win' ? trade.payoutAmount : trade.amount;
+        const newNotif = {
+            id: trade.id || Math.random().toString(),
+            status: notifStatus,
+            asset: trade.asset,
+            amount: notifAmount,
+            timestamp: Date.now()
+        };
+        setTradeNotifications(prev => [newNotif, ...prev]);
+
+        // Add toast notification for result
+        if (trade.status === 'win') {
+            toast.success(`Trade Won! +$${trade.payoutAmount.toFixed(2)}`, { icon: '💰' });
+        } else if (trade.status === 'loss') {
+            toast.error(`Trade Lost! -$${trade.amount.toFixed(2)}`, { icon: '💸' });
+        }
+
         setActiveTrades(prev => prev.filter(t => t.id !== trade.id));
         setUserTrades(prev => {
             const updated = prev.map(t => t.id === trade.id ? { ...t, ...trade } : t);
@@ -6388,7 +6405,7 @@ const PROMOTED_ARTICLES = [
       },
       lastValueVisible: true, 
       priceLineVisible: true, 
-      priceLineLabelVisible: true,
+      priceLineLabelVisible: false,
       priceLineSource: 1,
       priceLineColor: "rgba(255, 255, 255, 0.5)", 
       priceLineStyle: LineStyle.Dashed, 
@@ -6402,12 +6419,11 @@ const PROMOTED_ARTICLES = [
               const min = res.priceRange.min;
               const max = res.priceRange.max;
               const mid = (min + max) / 2;
-              // Enforce a minimum range but don't force centering
-              const minRange = Math.max(mid * 0.0005, 0.001);
+              // Enforce a professional spacing (minimum range of 0.3% of current price or 0.005 absolute)
+              const minRange = Math.max(mid * 0.003, 0.005);
               if ((max - min) < minRange) {
-                  const padding = (minRange - (max - min)) / 2;
-                  res.priceRange.min -= padding;
-                  res.priceRange.max += padding;
+                  res.priceRange.min = mid - minRange / 2;
+                  res.priceRange.max = mid + minRange / 2;
               }
           }
           return res;
@@ -6935,19 +6951,6 @@ const PROMOTED_ARTICLES = [
           {/* Chart Container */}
             <div className="relative w-full h-full">
               <div ref={containerRef} className="absolute top-0 left-0 right-0 bottom-0 w-full" style={{ touchAction: "none" }} />
-              
-              {/* Dynamic Price Line Indicator Overlay */}
-              <div 
-                ref={isSecond ? null : timerOverlayRef} 
-                className="absolute left-0 right-0 h-[1px] pointer-events-none z-[45] hidden md:block"
-                style={{ top: 0, transition: 'transform 0.05s linear' }}
-              >
-                 <div className="w-full h-full bg-white/20 border-t border-dashed border-white/40 relative">
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 bg-[#ff5252] text-white px-1.5 py-0.5 text-[10px] font-black rounded-l-sm shadow-xl z-10">
-                       {currentInterpolatedPriceRef.current.toFixed(markets[activeAsset]?.precision || 5)}
-                    </div>
-                 </div>
-              </div>
               
               {/* Chart Loading Overlay */}
               <AnimatePresence>
@@ -8874,7 +8877,7 @@ const PROMOTED_ARTICLES = [
             
             <div className="flex-1 overflow-y-auto w-full scrollbar-hide py-4 px-4 pb-20">
               <div className="grid gap-3">
-                {Object.keys(markets).sort((a, b) => {
+                {Object.keys(markets).filter(asset => !markets[asset].hidden).sort((a, b) => {
                   const isOTC_a = a.includes('(OTC)') || a.includes('Crypto IDX');
                   const isOTC_b = b.includes('(OTC)') || b.includes('Crypto IDX');
                   if (isOTC_a && !isOTC_b) return -1;
@@ -9188,41 +9191,33 @@ const PROMOTED_ARTICLES = [
                         // Fallback safety
                         setTimeout(() => setChartLoading(false), 3000);
                       }}
-                      className={`group flex items-center justify-between py-[12px] px-3 cursor-pointer transition-all rounded-[10px] mb-1.5 border border-transparent ${
-                        activeAsset === assetName ? "bg-[#33353e] border-white/10 shadow-lg" : "hover:bg-[#2C2D33] active:bg-white/5"
+                      className={`group flex items-center justify-between py-[12px] px-2 cursor-pointer transition-all rounded-[6px] mb-1 ${
+                        activeAsset === assetName ? "bg-[#33353e] hover:bg-[#3a3d46]" : "hover:bg-[#2C2D33]"
                       }`}
                     >
-                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                        <div className="w-8 h-8 flex justify-center items-center overflow-hidden shrink-0">
-                          <AssetLogo name={assetName} size={32} />
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 flex justify-center items-center overflow-hidden">
+                          <AssetLogo name={assetName} />
                         </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="font-bold text-white text-[13.5px] tracking-tight leading-tight truncate">
-                               {assetName}
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-white text-[13px] tracking-tight leading-tight">
+                              {assetName}
                             </span>
                             {assetData.isFrozen && (
-                              <span className="text-[8px] font-black text-sky-400 bg-sky-950/60 border border-sky-800/50 px-1 py-0.5 rounded flex items-center gap-0.5 tracking-tighter uppercase shrink-0">
+                              <span className="text-[9px] font-bold text-sky-400 bg-sky-950/60 border border-sky-800/50 px-1.5 py-0.2 select-none rounded flex items-center gap-0.5 tracking-wide uppercase">
                                 <Snowflake size={8} /> {assetData.freezeReason === 'maintenance' ? 'Maint' : 'Volat'}
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
-                             <span className="text-white/40 font-mono text-[10px] font-bold">
-                               {assetData.price ? assetData.price.toFixed(assetData.precision || (assetName.includes('USD') && !assetName.includes('BTC') ? 5 : 2)) : '---'}
-                             </span>
-                             <span className={`text-[10px] font-bold ${(assetData.change ?? assetData.lastChange ?? 0) >= 0 ? "text-[#00C980]" : "text-[#FF5252]"}`}>
-                               {(assetData.change ?? assetData.lastChange ?? 0) >= 0 ? "+" : ""}{(assetData.change ?? assetData.lastChange ?? 0)?.toFixed(2)}%
-                             </span>
-                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center shrink-0">
-                        <div className="text-right w-[65px] pr-2">
-                           <span className="text-[#00C980] font-black text-[15px]">{assetData.payout}%</span>
+                      <div className="flex items-center">
+                        <div className="text-center w-[70px]">
+                           <span className="text-[#00C980] font-bold text-[14px]">{assetData.payout}%</span>
                         </div>
-                        <div className="text-right w-[65px] pr-2 border-l border-white/5">
-                           <span className="text-white/30 font-black text-[14px]">{assetData.payout + 2}%</span>
+                        <div className="text-right w-[70px]">
+                           <span className="text-white font-bold text-[14px]">{assetData.payout + 2}%</span>
                         </div>
                       </div>
                     </div>
@@ -9373,7 +9368,7 @@ const PROMOTED_ARTICLES = [
       )}
 
       {/* COPY TRADING DRAWER */}
-      {activeTab === "copy-trading" && (
+      {activeTab === "copytrading" && (
         <div className="fixed md:absolute inset-y-0 left-0 w-full max-w-full md:max-w-[400px] md:left-[68px] md:right-auto md:w-[400px] z-[150] flex flex-col overflow-hidden bg-[#1f2026] border-r border-white/5 shadow-2xl animate-in slide-in-from-left duration-300">
            {/* Header */}
            <div className="h-16 flex items-center justify-between px-6 border-b border-white/5 shrink-0 bg-[#1f2026] z-[210]">
@@ -10906,7 +10901,7 @@ const PROMOTED_ARTICLES = [
                   key={lang.code}
                   onClick={async () => {
                     setSelectedLanguage(lang);
-                    setLanguage(lang.code as any);
+                    setLanguage(lang.code);
                     setShowLanguageModal(false);
                     // Save to Firestore
                     if (auth.currentUser) {
@@ -12536,21 +12531,10 @@ const PROMOTED_ARTICLES = [
                                         promoCode: appliedPromo,
                                         promoBonus: promoBonus
                                       };
-                                      const depositRes = await fetch('/api/wallet/deposit', {
+                                      const depositRes = await fetch('/api/deposit', {
                                         method: 'POST',
-                                        headers: { 
-                                          'Content-Type': 'application/json',
-                                          'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
-                                        },
-                                        body: JSON.stringify({ 
-                                          amount: currentAmount,
-                                          currency: userCurrency,
-                                          method: selectedMethod?.name,
-                                          walletNumber: selectedMethod?.walletAddress || '01347249505',
-                                          trxId: paymentTrxId,
-                                          orderId,
-                                          userEmail: auth.currentUser.email
-                                        })
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ depositData: depositPayload })
                                       });
                                       if (!depositRes.ok) throw new Error('Deposit failed');
                                       
@@ -13154,20 +13138,16 @@ const PROMOTED_ARTICLES = [
                                    if (auth?.currentUser) {
                                        try {
                                            const baseWithdrawAmount = convertToBase(amount, userCurrency);
-                                           const res = await fetch('/api/wallet/withdraw', {
+                                           const res = await fetch('/api/withdraw', {
                                                method: 'POST',
-                                               headers: { 
-                                                   'Content-Type': 'application/json',
-                                                   'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
-                                               },
+                                               headers: { 'Content-Type': 'application/json' },
                                                body: JSON.stringify({
+                                                   userId: auth.currentUser.uid,
                                                    amount: baseWithdrawAmount,
                                                    method: selectedMethod?.name,
-                                                   details: {
-                                                       accountHolder: withdrawAccountHolder,
-                                                       walletNumber: withdrawAccountNumber,
-                                                       userCurrency
-                                                   }
+                                                   accountHolder: withdrawAccountHolder,
+                                                   walletNumber: withdrawAccountNumber,
+                                                   userCurrency
                                                })
                                            });
                                            if (!res.ok) throw new Error('Withdrawal failed');

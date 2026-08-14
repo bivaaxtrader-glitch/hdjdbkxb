@@ -32,10 +32,9 @@ const SEO: React.FC<SEOProps> = ({
       <meta name="description" content={description} />
       <meta name="keywords" content={keywords} />
       <meta name="author" content="Bivaax Trading" />
-      <meta name="robots" content="index, follow, max-image-preview:large" />
       <link rel="canonical" href={effectiveUrl} />
 
-      {/* Cross Domain Alternates */}
+      {/* Cross Domain Alternates for Google indexing both bivaax.com and bivaax.trade */}
       <link rel="alternate" hrefLang="en" href="https://bivaax.com/" />
       <link rel="alternate" hrefLang="en" href="https://bivaax.trade/" />
       <link rel="alternate" hrefLang="x-default" href="https://bivaax.com/" />
@@ -46,21 +45,14 @@ const SEO: React.FC<SEOProps> = ({
       <meta property="og:title" content={siteTitle} />
       <meta property="og:description" content={description} />
       <meta property="og:image" content={image} />
-      <meta property="og:image:secure_url" content={image} />
-      <meta property="og:image:type" content="image/jpeg" />
-      <meta property="og:image:width" content="1200" />
-      <meta property="og:image:height" content="630" />
       <meta property="og:site_name" content="Bivaax Trade" />
-      <meta property="og:locale" content="en_US" />
 
       {/* Twitter */}
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:site" content="@Bivaaxtrade" />
-      <meta name="twitter:creator" content="@Bivaaxtrade" />
-      <meta name="twitter:url" content={effectiveUrl} />
-      <meta name="twitter:title" content={siteTitle} />
-      <meta name="twitter:description" content={description} />
-      <meta name="twitter:image" content={image} />
+      <meta property="twitter:card" content="summary_large_image" />
+      <meta property="twitter:url" content={effectiveUrl} />
+      <meta property="twitter:title" content={siteTitle} />
+      <meta property="twitter:description" content={description} />
+      <meta property="twitter:image" content={image} />
 
       {/* Mobile Apps */}
       <meta name="apple-mobile-web-app-title" content="Bivaax Trade" />

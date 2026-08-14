@@ -936,7 +936,7 @@ export default function ProfilePage() {
                       <span className="text-gray-900 font-bold block truncate max-w-xs">{user.email}</span>
                     </div>
                     {(user.isVerified || user.is_verified || user.emailVerified) ? (
-                      <BadgeCheck size={22} className="text-indigo-500 fill-indigo-100/20" />
+                      <BadgeCheck size={22} className="text-indigo-500 fill-indigo-100/20" title="Verified" />
                     ) : (
                       <button 
                         disabled={isSendingEmailOtp}

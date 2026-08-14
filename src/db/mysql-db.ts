@@ -22,6 +22,14 @@ db.pragma('mmap_size = 30000000000'); // Maximize memory mapping for faster read
 
 // Ensure tables exist
 db.exec(`
+CREATE TABLE IF NOT EXISTS market_settings (
+  pair TEXT PRIMARY KEY,
+  hidden INTEGER DEFAULT 0
+);
+`);
+
+// Ensure tables exist
+db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   uid TEXT NOT NULL UNIQUE,

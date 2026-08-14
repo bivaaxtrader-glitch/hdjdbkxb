@@ -104,10 +104,9 @@ export default function Homepage() {
   return (
     <div className="min-h-screen bg-[#1c1d22] text-white font-sans selection:bg-[#ffcf00]/30 overflow-x-hidden">
       <SEO 
-        title="Bivaax Trade | Professional Binary Options Platform in Bangladesh"
-        description="Experience high-yield trading with Bivaax. Payouts up to 95%, instant deposits via bKash, Nagad & Rocket. Secure, regulated, and 24/7 expert support for Bangladeshi traders."
-        keywords="Bivaax, Bivaax Bangladesh, Bivaax.com, Bivaax.trade, binary options trading BD, bKash trading platform, Nagad deposit trading, earn money online BD, professional trading terminal"
-        image="https://i.postimg.cc/yYSDXHm2/IMG-20260421-WA0036(2).jpg"
+        title="Bivaax Trade | High Yield Binary Options Trading in Bangladesh"
+        description="Bivaax is the most reliable binary options platform in Bangladesh. Trade global markets with up to 95% payout, secure bKash/Nagad withdrawals, and 24/7 support."
+        keywords="Bivaax Bangladesh, Bivaax trade BD, Bivaax trading, binary options BD, online trading platform Bangladesh, bKash trading, Nagad deposit trade, earn money online"
       />
       
       {/* Structured Data for SEO */}
