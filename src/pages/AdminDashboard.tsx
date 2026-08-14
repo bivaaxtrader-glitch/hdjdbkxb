@@ -207,8 +207,8 @@ export default function AdminDashboard() {
 
   const [isSendingTest, setIsSendingTest] = useState(false);
   const handleTestEmail = async () => {
-    if (!appConfig.smtpHost || !appConfig.smtpUser) {
-      toast.error("Please fill in SMTP details first");
+    if (!appConfig.brevoApiKey && (!appConfig.smtpHost || !appConfig.smtpUser)) {
+      toast.error("Please fill in Brevo API Key or SMTP details first");
       return;
     }
     
@@ -1958,6 +1958,19 @@ export default function AdminDashboard() {
 
                         <div className="space-y-6 pt-4 border-t border-white/5">
                             <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">SMTP Email Settings</h3>
+                            
+                            <div className="space-y-4 mb-6">
+                                <label className="text-[10px] font-black uppercase text-yellow-500">Brevo (Sendinblue) API Key (Preferred)</label>
+                                <input 
+                                  type="password" 
+                                  placeholder="xkeysib-..." 
+                                  value={appConfig.brevoApiKey || ""} 
+                                  onChange={e => setAppConfig({...appConfig, brevoApiKey: e.target.value})}
+                                  className="w-full bg-[#15161d] border border-yellow-500/20 rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none text-sm font-mono"
+                                />
+                                <p className="text-[10px] text-gray-500">If provided, Brevo API will be used instead of SMTP. High reliability & fast.</p>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-4">
                                     <label className="text-[10px] font-black uppercase text-gray-500">SMTP Host (e.g. mail.yourdomain.com)</label>
@@ -2019,6 +2032,17 @@ export default function AdminDashboard() {
                                       className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none text-sm"
                                     />
                                 </div>
+                            </div>
+                            
+                            <div className="pt-2">
+                                <button 
+                                  onClick={handleTestEmail}
+                                  disabled={isSendingTest}
+                                  className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                                >
+                                  {isSendingTest ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                                  {isSendingTest ? 'Sending...' : 'Send Test Email'}
+                                </button>
                             </div>
                         </div>
 
@@ -2148,6 +2172,19 @@ export default function AdminDashboard() {
                                         onChange={e => setAppConfig({...appConfig, socialTiktok: e.target.value})}
                                         className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-3 text-sm focus:border-yellow-500 outline-none transition-all"
                                     />
+                                </div>
+                                
+                                <div className="space-y-3 md:col-span-2">
+                                    <label className="text-[10px] font-black uppercase text-gray-500 flex items-center gap-2">
+                                        <MessageCircle size={12} className="text-emerald-500" /> Live Chat Script (Tawk.to / Crisp / Intercom)
+                                    </label>
+                                    <textarea 
+                                        placeholder="Paste your Tawk.to or Crisp javascript code here..." 
+                                        value={appConfig.liveChatScript || ""} 
+                                        onChange={e => setAppConfig({...appConfig, liveChatScript: e.target.value})}
+                                        className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-3 text-sm focus:border-yellow-500 outline-none transition-all min-h-[120px] font-mono text-gray-400 placeholder:text-gray-600"
+                                    />
+                                    <p className="text-[10px] text-gray-500">This script will be automatically injected into the platform so users can chat with your support team.</p>
                                 </div>
                             </div>
                         </div>

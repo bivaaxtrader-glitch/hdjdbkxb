@@ -6385,7 +6385,7 @@ const PROMOTED_ARTICLES = [
       },
       lastValueVisible: true, 
       priceLineVisible: true, 
-      priceLineLabelVisible: false,
+      priceLineLabelVisible: true,
       priceLineSource: 1,
       priceLineColor: "rgba(255, 255, 255, 0.5)", 
       priceLineStyle: LineStyle.Dashed, 
@@ -6399,11 +6399,12 @@ const PROMOTED_ARTICLES = [
               const min = res.priceRange.min;
               const max = res.priceRange.max;
               const mid = (min + max) / 2;
-              // Enforce a professional spacing (minimum range of 0.3% of current price or 0.005 absolute)
-              const minRange = Math.max(mid * 0.003, 0.005);
+              // Enforce a minimum range but don't force centering
+              const minRange = Math.max(mid * 0.0005, 0.001);
               if ((max - min) < minRange) {
-                  res.priceRange.min = mid - minRange / 2;
-                  res.priceRange.max = mid + minRange / 2;
+                  const padding = (minRange - (max - min)) / 2;
+                  res.priceRange.min -= padding;
+                  res.priceRange.max += padding;
               }
           }
           return res;
@@ -6931,6 +6932,19 @@ const PROMOTED_ARTICLES = [
           {/* Chart Container */}
             <div className="relative w-full h-full">
               <div ref={containerRef} className="absolute top-0 left-0 right-0 bottom-0 w-full" style={{ touchAction: "none" }} />
+              
+              {/* Dynamic Price Line Indicator Overlay */}
+              <div 
+                ref={isSecond ? null : timerOverlayRef} 
+                className="absolute left-0 right-0 h-[1px] pointer-events-none z-[45] hidden md:block"
+                style={{ top: 0, transition: 'transform 0.05s linear' }}
+              >
+                 <div className="w-full h-full bg-white/20 border-t border-dashed border-white/40 relative">
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 bg-[#ff5252] text-white px-1.5 py-0.5 text-[10px] font-black rounded-l-sm shadow-xl z-10">
+                       {currentInterpolatedPriceRef.current.toFixed(markets[activeAsset]?.precision || 5)}
+                    </div>
+                 </div>
+              </div>
               
               {/* Chart Loading Overlay */}
               <AnimatePresence>
@@ -9171,33 +9185,41 @@ const PROMOTED_ARTICLES = [
                         // Fallback safety
                         setTimeout(() => setChartLoading(false), 3000);
                       }}
-                      className={`group flex items-center justify-between py-[12px] px-2 cursor-pointer transition-all rounded-[6px] mb-1 ${
-                        activeAsset === assetName ? "bg-[#33353e] hover:bg-[#3a3d46]" : "hover:bg-[#2C2D33]"
+                      className={`group flex items-center justify-between py-[12px] px-3 cursor-pointer transition-all rounded-[10px] mb-1.5 border border-transparent ${
+                        activeAsset === assetName ? "bg-[#33353e] border-white/10 shadow-lg" : "hover:bg-[#2C2D33] active:bg-white/5"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 flex justify-center items-center overflow-hidden">
-                          <AssetLogo name={assetName} />
+                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                        <div className="w-8 h-8 flex justify-center items-center overflow-hidden shrink-0">
+                          <AssetLogo name={assetName} size={32} />
                         </div>
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-white text-[13px] tracking-tight leading-tight">
-                              {assetName}
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-bold text-white text-[13.5px] tracking-tight leading-tight truncate">
+                               {assetName}
                             </span>
                             {assetData.isFrozen && (
-                              <span className="text-[9px] font-bold text-sky-400 bg-sky-950/60 border border-sky-800/50 px-1.5 py-0.2 select-none rounded flex items-center gap-0.5 tracking-wide uppercase">
+                              <span className="text-[8px] font-black text-sky-400 bg-sky-950/60 border border-sky-800/50 px-1 py-0.5 rounded flex items-center gap-0.5 tracking-tighter uppercase shrink-0">
                                 <Snowflake size={8} /> {assetData.freezeReason === 'maintenance' ? 'Maint' : 'Volat'}
                               </span>
                             )}
                           </div>
+                          <div className="flex items-center gap-2">
+                             <span className="text-white/40 font-mono text-[10px] font-bold">
+                               {assetData.price ? assetData.price.toFixed(assetData.precision || (assetName.includes('USD') && !assetName.includes('BTC') ? 5 : 2)) : '---'}
+                             </span>
+                             <span className={`text-[10px] font-bold ${(assetData.change ?? assetData.lastChange ?? 0) >= 0 ? "text-[#00C980]" : "text-[#FF5252]"}`}>
+                               {(assetData.change ?? assetData.lastChange ?? 0) >= 0 ? "+" : ""}{(assetData.change ?? assetData.lastChange ?? 0)?.toFixed(2)}%
+                             </span>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center">
-                        <div className="text-center w-[70px]">
-                           <span className="text-[#00C980] font-bold text-[14px]">{assetData.payout}%</span>
+                      <div className="flex items-center shrink-0">
+                        <div className="text-right w-[65px] pr-2">
+                           <span className="text-[#00C980] font-black text-[15px]">{assetData.payout}%</span>
                         </div>
-                        <div className="text-right w-[70px]">
-                           <span className="text-white font-bold text-[14px]">{assetData.payout + 2}%</span>
+                        <div className="text-right w-[65px] pr-2 border-l border-white/5">
+                           <span className="text-white/30 font-black text-[14px]">{assetData.payout + 2}%</span>
                         </div>
                       </div>
                     </div>

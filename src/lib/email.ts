@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { BrevoClient } from '@getbrevo/brevo';
 import { adminDb } from './firebase-admin.ts';
 import logger from './logger.ts';
 
@@ -8,7 +9,28 @@ export async function sendEmail(to: string, subject: string, html: string, text?
     const settingsDoc = await adminDb.collection('app_config').doc('settings').get();
     const dbConfig = settingsDoc.data() || {};
 
-    // 2. Fallback to process.env if Firestore is missing critical SMTP info
+    // Check for Brevo API Key
+    const brevoApiKey = dbConfig.brevoApiKey || process.env.BREVO_API_KEY || 'AQ.Ab8RN6JSAhga-vB62NB1E0hsOCV2rTV1wBP5dvHp92SmjdZMcQ';
+
+    if (brevoApiKey) {
+      logger.info(`Using Brevo API to send email to ${to}`);
+      const client = new BrevoClient({ apiKey: brevoApiKey });
+
+      const response = await client.transactionalEmails.sendTransacEmail({
+        subject,
+        htmlContent: html,
+        sender: { 
+          name: dbConfig.smtpFromName || process.env.SMTP_FROM_NAME || 'Bivaax Trade', 
+          email: dbConfig.smtpFromEmail || process.env.SMTP_FROM_EMAIL || 'no-reply@bivaax.trade' 
+        },
+        to: [{ email: to }]
+      });
+
+      logger.info(`Email sent via Brevo API: ${response.messageId}`);
+      return true;
+    }
+
+    // 2. Fallback to Nodemailer SMTP
     const smtpHost = dbConfig.smtpHost || process.env.SMTP_HOST;
     const smtpPort = dbConfig.smtpPort || process.env.SMTP_PORT;
     const smtpUser = dbConfig.smtpUser || process.env.SMTP_USER;
@@ -27,7 +49,7 @@ export async function sendEmail(to: string, subject: string, html: string, text?
     };
     
     if (!config.smtpHost || !config.smtpPort || !config.smtpUser || !config.smtpPass) {
-      logger.warn('SMTP configuration is missing. Cannot send email to ' + to);
+      logger.warn('Email configuration (Brevo API or SMTP) is missing. Cannot send email to ' + to);
       return false;
     }
 
@@ -39,10 +61,9 @@ export async function sendEmail(to: string, subject: string, html: string, text?
         user: config.smtpUser,
         pass: config.smtpPass,
       },
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 10000,   // 10 seconds
-      socketTimeout: 30000,     // 30 seconds
-      // MailDNS sometimes needs this for verification
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 30000,
       tls: {
         rejectUnauthorized: false
       }
@@ -57,7 +78,7 @@ export async function sendEmail(to: string, subject: string, html: string, text?
       to,
       subject,
       html,
-      text: text || html.replace(/<[^>]*>?/gm, ''), // Basic fallback if text not provided
+      text: text || html.replace(/<[^>]*>?/gm, ''),
       headers: {
         'List-Unsubscribe': `<mailto:support@bivaax.com?subject=unsubscribe>`,
         'X-Entity-Ref-ID': Date.now().toString(),
@@ -66,10 +87,10 @@ export async function sendEmail(to: string, subject: string, html: string, text?
       }
     });
 
-    logger.info(`Email sent: ${info.messageId}`);
+    logger.info(`Email sent via SMTP: ${info.messageId}`);
     return true;
-  } catch (error) {
-    logger.error('Error sending email:', error);
+  } catch (error: any) {
+    logger.error('Error sending email:', error.response?.body || error.message || error);
     return false;
   }
 }

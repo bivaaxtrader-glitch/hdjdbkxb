@@ -49,6 +49,7 @@ import AuthPage from './pages/AuthPage';
 import AffiliateLandingPage from './pages/AffiliateLanding';
 import EnterpriseSupportCenter from './pages/EnterpriseSupportCenter';
 import ClientSupportCenter from './pages/ClientSupportCenter';
+import { ChatWidgetInjector } from './components/ChatWidgetInjector';
 
 // Loader for Suspense
 const PageLoader = () => (
@@ -686,6 +687,7 @@ export default function App() {
 
   return (
     <>
+      <ChatWidgetInjector />
       <Toaster position="top-right" 
                toastOptions={{ 
                  style: { background: '#262932', color: '#fff', border: '1px solid #3b3b3f' } 

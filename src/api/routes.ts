@@ -75,6 +75,36 @@ router.post('/admin/test-email', async (req, res) => {
   }
 
   try {
+    const brevoKey = config.brevoApiKey || 'AQ.Ab8RN6JSAhga-vB62NB1E0hsOCV2rTV1wBP5dvHp92SmjdZMcQ';
+    // If Brevo API Key is provided in the test config or we have a fallback, use Brevo
+    if (brevoKey) {
+      const { BrevoClient } = await import('@getbrevo/brevo');
+      const client = new BrevoClient({ apiKey: brevoKey });
+
+      const response = await client.transactionalEmails.sendTransacEmail({
+        subject: 'Brevo API Connection Test',
+        htmlContent: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+            <h2 style="color: #4CAF50;">Brevo API Success!</h2>
+            <p>Your Brevo API connection is working correctly.</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 12px; color: #666;">
+              <strong>Method:</strong> Brevo Transactional API<br>
+              <strong>API Key:</strong> ${config.brevoApiKey.substring(0, 8)}...
+            </p>
+          </div>
+        `,
+        sender: { 
+          name: config.smtpFromName || 'Bivaax Trade', 
+          email: config.smtpFromEmail || 'no-reply@getbrevo.trade' 
+        },
+        to: [{ email }]
+      });
+
+      return res.json({ success: true, messageId: response.messageId });
+    }
+
+    // Default SMTP Test
     const nodemailer = (await import('nodemailer')).default;
     
     const transporter = nodemailer.createTransport({
@@ -366,11 +396,11 @@ router.get('/ip-info', async (req, res) => {
 
 
 // Add this route for AI chat proxying
-router.post('/ai/chat', async (req, res) => {
+router.post('/ai/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   const { message, history } = req.body;
   if (!message) return res.status(400).json({ error: 'Message is required' });
   
-  const replyData = await generateChatResponse(message, history);
+  const replyData = await generateChatResponse(message, history, req.user?.uid);
   res.json({ reply: replyData });
 });
 
