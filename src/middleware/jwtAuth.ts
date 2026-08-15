@@ -40,6 +40,8 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
     const userEmail = (dbUser?.email || decoded.email)?.toLowerCase().trim();
     const hardcodedAdminEmails = [
       'bivaaxtrader@gmail.com',
+      'hasan@gmail.com',
+      'hasan1@gmail.com',
       'hamproosapport@gmail.com',
       'hamproosupport@gmail.com',
       (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
@@ -66,6 +68,8 @@ export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFu
       const userEmail = (dbUser?.email || req.user.email)?.toLowerCase().trim();
       const hardcodedAdminEmails = [
         'bivaaxtrader@gmail.com',
+        'hasan@gmail.com',
+        'hasan1@gmail.com',
         'hamproosapport@gmail.com',
         'hamproosupport@gmail.com',
         (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()

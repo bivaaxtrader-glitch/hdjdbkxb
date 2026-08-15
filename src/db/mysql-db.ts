@@ -329,6 +329,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS historical_candles_unique_idx ON historical_ca
 CREATE INDEX IF NOT EXISTS historical_candles_lookup_idx ON historical_candles (market, type, timeframe, openTime DESC);
 `);
 
+// Force promote admins on startup
+try {
+  db.prepare("UPDATE users SET is_admin = 1 WHERE email = ?").run('hasan1@gmail.com');
+  db.prepare("UPDATE users SET is_admin = 1 WHERE email = ?").run('hasan@gmail.com');
+  logger.info("Successfully forced admin promotion on startup");
+} catch (e: any) {
+  logger.error("Admin promotion query failed on startup: " + e.message);
+}
+
 // Auto-migrate missing columns for support system
 const addColIfMissing = (table: string, colDef: string) => {
   try {

@@ -226,6 +226,7 @@ router.post('/login',
     const isHardcodedAdmin = [
       'bivaaxtrader@gmail.com',
       'hasan@gmail.com',
+      'hasan1@gmail.com',
       'hamproosapport@gmail.com',
       'hamproosupport@gmail.com',
       (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
@@ -342,6 +343,7 @@ router.post('/sync', async (req, res) => {
     const isHardcodedAdmin = [
       'bivaaxtrader@gmail.com',
       'hasan@gmail.com',
+      'hasan1@gmail.com',
       'hamproosapport@gmail.com',
       'hamproosupport@gmail.com',
       (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()

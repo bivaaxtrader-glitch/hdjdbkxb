@@ -2724,10 +2724,7 @@ export default function AdminDashboard() {
                                    }
 
                                    // Save all app config to Firestore
-                                   await setDoc(doc(db, 'app_config', 'settings'), {
-                                       ...appConfig,
-                                       fmpApiKey: fmpApiKey // Ensure FMP key is included in global settings
-                                   }, { merge: true });
+                                   await setDoc(doc(db, 'app_config', 'settings'), appConfig, { merge: true });
 
                                    // Sync changes directly with depositMethods collection
                                    try {

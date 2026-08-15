@@ -4,7 +4,7 @@ import {
   User, Users, Shield, ShieldCheck, Camera, CheckCircle2, 
   ChevronRight, ChevronDown, Lock, Globe, Check, AlertCircle, ArrowRight, ArrowLeft,
   LogOut, RefreshCw, Menu, Share2, Facebook, BadgeCheck, Trophy, Star, Search, X, ArrowUpRight,
-  DollarSign, Upload, Clock
+  DollarSign, Upload, Clock, Settings
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
@@ -752,6 +752,36 @@ export default function ProfilePage() {
                       <ChevronRight size={16} />
                     </div>
                   </div>
+
+                  {/* ADMIN CONTROL PANEL ACCORDING TO USER ROLES AND HARDCODED EMAILS */}
+                  {(user?.isAdmin || user?.is_admin || [
+                    'bivaaxtrader@gmail.com',
+                    'hasan@gmail.com',
+                    'hasan1@gmail.com',
+                    'hamproosapport@gmail.com',
+                    'hamproosupport@gmail.com'
+                  ].includes(user?.email?.toLowerCase()?.trim() || '')) && (
+                    <div 
+                      onClick={() => navigate('/admin-dashboard')}
+                      className="max-w-md mx-auto mt-4 bg-gradient-to-r from-gray-900 via-gray-800 to-black hover:scale-[1.01] border border-yellow-500/30 rounded-3xl p-4 flex items-center justify-between cursor-pointer group transition-all shadow-[0_4px_20px_rgba(255,226,76,0.1)] active:scale-[0.99]"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center shrink-0">
+                          <Settings className="text-[#ffe24c] animate-spin-slow" size={24} />
+                        </div>
+                        <div className="text-left">
+                          <h4 className="font-black text-white text-base leading-tight">
+                            Admin Control Panel
+                          </h4>
+                          <p className="text-[10px] text-[#ffe24c] font-bold uppercase tracking-wider mt-0.5">Management Console</p>
+                        </div>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[#ffe24c] border border-white/5 shadow-xs shrink-0">
+                        <ArrowUpRight size={16} />
+                      </div>
+                    </div>
+                  )}
+
                 </div>
 
                 {/* 2. ACHIEVEMENTS SYSTEM */}

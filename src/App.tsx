@@ -58,7 +58,8 @@ const PageLoader = () => (
 );
 
 
-const RequireAuth = ({ children, user }: { children: React.ReactNode; user: User | null }) => {
+const RequireAuth = ({ children, user, loading }: { children: React.ReactNode; user: User | null; loading: boolean }) => {
+  if (loading) return null; // Or a loading spinner
   return user ? children : <Navigate to="/" replace />;
 };
 
