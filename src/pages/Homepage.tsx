@@ -820,6 +820,7 @@ export default function Homepage() {
                   {[
                     {
                       name: 'youtube',
+                      url: 'https://youtube.com/@bivaax',
                       icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M2.5 7.1c-.2.7-.3 1.5-.3 2.5v4.8c0 1 .1 1.8.3 2.5.3 1.1 1.1 1.9 2.2 2.2.7.2 1.5.3 2.5.3h9.6c1 0 1.8-.1 2.5-.3 1.1-.3 1.9-1.1 2.2-2.2.2-.7.3-1.5.3-2.5V9.6c0-1-.1-1.8-.3-2.5-.3-1.1-1.1-1.9-2.2-2.2-.7-.2-1.5-.3-2.5-.3H7.2c-1 0-1.8.1-2.5.3-1.1.3-1.9 1.1-2.2 2.2z"></path>
@@ -829,6 +830,7 @@ export default function Homepage() {
                     },
                     {
                       name: 'instagram',
+                      url: 'https://instagram.com/bivaax',
                       icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
@@ -839,6 +841,7 @@ export default function Homepage() {
                     },
                     {
                       name: 'telegram',
+                      url: 'https://t.me/Bivaax_Official',
                       icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21.5 2L2 10.5 7.5 13l2.5 7 2.5-4.5 5 4.5 2-18z"></path>
@@ -848,6 +851,7 @@ export default function Homepage() {
                     },
                     {
                       name: 'facebook',
+                      url: 'https://facebook.com/bivaax',
                       icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
@@ -856,6 +860,7 @@ export default function Homepage() {
                     },
                     {
                       name: 'tiktok',
+                      url: 'https://tiktok.com/@bivaax',
                       icon: (
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path>
@@ -863,7 +868,7 @@ export default function Homepage() {
                       )
                     }
                   ].map((social) => (
-                    <a key={`social-${social.name}`} href={`https://${social.name}.com`} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 hover:text-[#ffcf00] cursor-pointer text-white/70 transition-colors">
+                    <a key={`social-${social.name}`} href={social.url} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 hover:text-[#ffcf00] cursor-pointer text-white/70 transition-colors" title={social.name}>
                       {social.icon}
                     </a>
                   ))}

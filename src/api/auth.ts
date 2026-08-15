@@ -8,6 +8,7 @@ import { requireAuth } from '../middleware/jwtAuth.ts';
 import { mapUserForFrontend } from '../lib/user-utils.ts';
 import { syncUserToFirestore, adminAuth } from '../lib/firebase-admin.ts';
 import logger from '../lib/logger.ts';
+import { sendEmail, wrapEmail } from '../lib/email.ts';
 
 import { body, validationResult } from 'express-validator';
 
@@ -94,45 +95,27 @@ router.post('/register',
     // Send Welcome Email
     try {
       const welcomeSubject = 'Welcome to Bivaax Trade - Your account is ready!';
-      const welcomeHtml = `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
-          <div style="background-color: #1a1b23; padding: 40px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
-            <h1 style="color: #FFE24C; margin: 0; font-size: 28px; letter-spacing: 1px;">Welcome to Bivaax Trade</h1>
-            <p style="font-size: 16px; opacity: 0.9; margin-top: 10px;">The world's most advanced professional trading platform.</p>
-          </div>
-          <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <p style="font-size: 16px; color: #333;">Hello there,</p>
-            <p style="font-size: 16px; color: #333; line-height: 1.6;">Thank you for choosing <strong>Bivaax Trade</strong>. We're thrilled to have you as part of our global trading community!</p>
-            <p style="font-size: 16px; color: #333; line-height: 1.6;">Your account has been successfully created. You can now access professional charts, instant deposits, and secure withdrawals.</p>
-            
-            <div style="text-align: center; margin: 40px 0;">
-              <a href="${process.env.APP_URL || '#'}" style="background-color: #FFE24C; color: #1a1b23; padding: 15px 35px; text-decoration: none; border-radius: 8px; font-weight: bold; text-transform: uppercase; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(255, 226, 76, 0.3);">Start Trading Now</a>
-            </div>
-            
-            <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-              <h4 style="margin: 0 0 10px 0; color: #1e293b; font-size: 14px;">Next Steps:</h4>
-              <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.5;">
-                <li>Complete your profile details</li>
-                <li>Secure your account with 2FA</li>
-                <li>Make your first deposit to start live trading</li>
-              </ul>
-            </div>
+      const welcomeHtml = wrapEmail(welcomeSubject, `
+        <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; font-weight: 800;">Welcome to Bivaax Trade!</h2>
+        <p style="font-size: 16px; color: #334155;">Hello there,</p>
+        <p style="font-size: 15px; color: #334155; line-height: 1.6;">Thank you for joining <strong>Bivaax Trade</strong>. We are thrilled to welcome you to our next-generation global financial trading ecosystem.</p>
+        <p style="font-size: 15px; color: #334155; line-height: 1.6;">Your account has been successfully initialized. You can now access professional real-time charts, fast funding, and secure executions.</p>
+        
+        <div style="text-align: center; margin: 35px 0;">
+          <a href="${process.env.APP_URL || '#'}" style="background-color: #FFE24C; color: #1a1b23; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-weight: 900; text-transform: uppercase; font-size: 13px; display: inline-block; box-shadow: 0 4px 14px rgba(255, 226, 76, 0.4);">Launch Platform & Trade</a>
+        </div>
+        
+        <div style="background-color: #f8fafc; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #e2e8f0;">
+          <h4 style="margin: 0 0 10px 0; color: #0f172a; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Recommended Next Steps:</h4>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.6;">
+            <li>Complete your profile verification (KYC)</li>
+            <li>Fund your account securely</li>
+            <li>Explore live markets and instruments</li>
+          </ul>
+        </div>
 
-            <p style="font-size: 14px; color: #64748b;">Need help? Our expert support team is available 24/7 to assist you via the help center.</p>
-            
-            <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
-            
-            <div style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.6;">
-              <p style="margin: 0;">&copy; 2026 Bivaax Trade. Global Financial Services.</p>
-              <p style="margin: 5px 0;">123 Financial District, Hong Kong / London / New York</p>
-              <p style="margin: 10px 0;">
-                <a href="#" style="color: #94a3b8; text-decoration: underline;">Terms of Service</a> | 
-                <a href="#" style="color: #94a3b8; text-decoration: underline;">Privacy Policy</a> |
-                <a href="mailto:support@bivaax.com?subject=Unsubscribe" style="color: #94a3b8; text-decoration: underline;">Unsubscribe</a>
-              </p>
-            </div>
-          </div>
-        </div>`;
+        <p style="font-size: 14px; color: #64748b;">Need assistance? Our 24/7 expert support team is always ready to help via the platform help desk.</p>
+      `);
 
       await sendEmail(email, welcomeSubject, welcomeHtml);
     } catch (emailErr) {
@@ -551,8 +534,6 @@ router.get('/google/callback', async (req, res) => {
   }
 });
 
-import { sendEmail } from '../lib/email.ts';
-
 // 5. Forgot Password (OTP based)
 router.post('/forgot-password', 
   body('email').isEmail().normalizeEmail(),
@@ -582,100 +563,20 @@ router.post('/forgot-password',
         }
       }
 
-      await sendEmail(email, 'Password Reset Verification Code - Bivaax Trade', `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            .email-container {
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-              max-width: 600px;
-              margin: 0 auto;
-              background-color: #f8fafc;
-              padding: 40px 20px;
-            }
-            .card {
-              background-color: #ffffff;
-              padding: 48px;
-              border-radius: 24px;
-              border: 1px solid #e2e8f0;
-              text-align: center;
-              box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
-            }
-            .logo-header {
-              margin-bottom: 32px;
-            }
-            .title {
-              color: #0f172a;
-              margin: 0 0 12px 0;
-              font-size: 28px;
-              font-weight: 800;
-              letter-spacing: -0.025em;
-            }
-            .description {
-              color: #64748b;
-              font-size: 16px;
-              line-height: 1.6;
-              margin-bottom: 32px;
-            }
-            .otp-box {
-              font-size: 42px;
-              font-weight: 800;
-              color: #1e293b;
-              letter-spacing: 0.2em;
-              margin: 32px 0;
-              background: #f1f5f9;
-              padding: 24px;
-              border-radius: 16px;
-              border: 2px solid #e2e8f0;
-              display: inline-block;
-              width: 100%;
-              box-sizing: border-box;
-            }
-            .expiry {
-              color: #94a3b8;
-              font-size: 14px;
-              margin-top: 24px;
-            }
-            .footer {
-              margin-top: 32px;
-              padding-top: 32px;
-              border-top: 1px solid #f1f5f9;
-              text-align: center;
-            }
-            .footer-text {
-              color: #94a3b8;
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.1em;
-              font-weight: 700;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="email-container">
-            <div class="card">
-              <div class="logo-header">
-                <h1 style="color: #ffcf00; margin: 0; font-size: 32px; font-weight: 900;">BIVAAX</h1>
-              </div>
-              <h2 class="title">Security Verification</h2>
-              <p class="description">We received a request to reset the password for your Bivaax account. Use the verification code below to proceed:</p>
-              
-              <div class="otp-box">${otp}</div>
-              
-              <p class="description" style="font-size: 14px; margin-top: 0;">This code will expire in <strong>15 minutes</strong>.</p>
-              
-              <p style="color: #ef4444; font-size: 13px; font-weight: 600;">If you didn't request this code, someone else may be trying to access your account. Please secure your account immediately.</p>
-              
-              <div class="footer">
-                <p class="footer-text">Bivaax Trade Global Security</p>
-                <p style="color: #cbd5e1; font-size: 11px; margin-top: 8px;">© 2026 Bivaax Trading Platform. All rights reserved.</p>
-              </div>
-            </div>
-          </div>
-        </body>
-        </html>
-      `);
+      const resetSubject = 'Password Reset Verification Code - Bivaax Trade';
+      const resetHtml = wrapEmail(resetSubject, `
+        <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; font-weight: 800; text-align: center;">Security Verification</h2>
+        <p style="color: #64748b; font-size: 15px; line-height: 1.6; text-align: center; margin-bottom: 25px;">We received a request to reset the password for your Bivaax account. Use the security code below to proceed:</p>
+        
+        <div class="otp-code" style="font-size: 38px; font-weight: 900; color: #1e293b; letter-spacing: 8px; margin: 30px 0; background: #f8fafc; padding: 22px; border-radius: 14px; border: 2px dashed #cbd5e1; text-align: center;">
+          ${otp}
+        </div>
+        
+        <p style="color: #64748b; font-size: 14px; text-align: center; margin-bottom: 20px;">This code will expire in <strong>15 minutes</strong> for your security.</p>
+        <p style="color: #ef4444; font-size: 13px; font-weight: 600; text-align: center; margin: 0;">If you didn't request this code, someone else may be trying to access your account. Please secure your account immediately.</p>
+      `, '#FFE24C');
+
+      await sendEmail(email, resetSubject, resetHtml);
     }
     // Return standard message to protect privacy
     res.json({ success: true, message: 'If an account exists with this email, a 4-digit OTP has been sent.' });
@@ -762,20 +663,20 @@ router.post('/send-otp', async (req: any, res: any) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   
   // Store OTP somewhere (e.g., in user record or cache). For simplicity, we just send it.
-  const success = await sendEmail(
-    email,
-    'Your Verification Code - Bivaax Trade',
-    `<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 500px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
-        <div style="background-color: #ffffff; padding: 40px; border-radius: 12px; border: 1px solid #e1e8ed; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <h2 style="color: #1a1b23; margin-top: 0; font-size: 24px; font-weight: 800;">Verification Code</h2>
-            <p style="color: #64748b; font-size: 16px; line-height: 1.5;">Please use the following security code to complete your verification:</p>
-            <div style="font-size: 48px; font-weight: 900; color: #1a1b23; letter-spacing: 12px; margin: 30px 0; background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px dashed #cbd5e1; display: inline-block;">${otp}</div>
-            <p style="color: #94a3b8; font-size: 13px;">This code will expire in 10 minutes for your security. If you didn't request this, please secure your account immediately.</p>
-            <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
-            <p style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Bivaax Trade Security</p>
-        </div>
-    </div>`
-  );
+  const otpSubject = 'Your Verification Code - Bivaax Trade';
+  const otpHtml = wrapEmail(otpSubject, `
+    <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; font-weight: 800; text-align: center;">Verification Code</h2>
+    <p style="color: #64748b; font-size: 15px; line-height: 1.6; text-align: center; margin-bottom: 25px;">Please use the security code below to complete your authentication request:</p>
+    
+    <div class="otp-code" style="font-size: 38px; font-weight: 900; color: #1e293b; letter-spacing: 8px; margin: 30px 0; background: #f8fafc; padding: 22px; border-radius: 14px; border: 2px dashed #cbd5e1; text-align: center;">
+      ${otp}
+    </div>
+    
+    <p style="color: #64748b; font-size: 14px; text-align: center; margin-bottom: 20px;">This code will expire in <strong>10 minutes</strong> for your security.</p>
+    <p style="color: #94a3b8; font-size: 13px; text-align: center; margin: 0;">If you didn't request this code, please secure your account immediately.</p>
+  `, '#FFE24C');
+
+  const success = await sendEmail(email, otpSubject, otpHtml);
   
   if (success) {
     res.json({ success: true, message: 'OTP sent successfully' });
@@ -809,20 +710,20 @@ router.post('/send-verification-otp', requireAuth, async (req: any, res: any) =>
     }
   }
 
-  const success = await sendEmail(
-    email,
-    'Verify Your Email Address - Bivaax Trade',
-    `<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 500px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
-        <div style="background-color: #ffffff; padding: 40px; border-radius: 12px; border: 1px solid #e1e8ed; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <h2 style="color: #1a1b23; margin-top: 0; font-size: 24px; font-weight: 800;">Verify Your Email</h2>
-            <p style="color: #64748b; font-size: 16px; line-height: 1.5;">Welcome to Bivaax Trade! Please use the following code to verify your email address:</p>
-            <div style="font-size: 48px; font-weight: 900; color: #1a1b23; letter-spacing: 12px; margin: 30px 0; background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px dashed #cbd5e1; display: inline-block;">${otp}</div>
-            <p style="color: #94a3b8; font-size: 13px;">This code will expire in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
-            <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
-            <p style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Bivaax Trade Security</p>
-        </div>
-    </div>`
-  );
+  const verifySubject = 'Verify Your Email Address - Bivaax Trade';
+  const verifyHtml = wrapEmail(verifySubject, `
+    <h2 style="color: #0f172a; margin-top: 0; font-size: 24px; font-weight: 800; text-align: center;">Verify Your Email Address</h2>
+    <p style="color: #64748b; font-size: 15px; line-height: 1.6; text-align: center; margin-bottom: 25px;">Welcome to Bivaax Trade! Please use the verification code below to verify your email address:</p>
+    
+    <div class="otp-code" style="font-size: 38px; font-weight: 900; color: #1e293b; letter-spacing: 8px; margin: 30px 0; background: #f8fafc; padding: 22px; border-radius: 14px; border: 2px dashed #cbd5e1; text-align: center;">
+      ${otp}
+    </div>
+    
+    <p style="color: #64748b; font-size: 14px; text-align: center; margin-bottom: 20px;">This code will expire in <strong>10 minutes</strong>.</p>
+    <p style="color: #94a3b8; font-size: 13px; text-align: center; margin: 0;">If you didn't request this verification, you can safely ignore this email.</p>
+  `, '#FFE24C');
+
+  const success = await sendEmail(email, verifySubject, verifyHtml);
 
   if (success) {
     res.json({ success: true, message: 'Verification code sent to your email.' });

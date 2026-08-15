@@ -2,8 +2,8 @@ import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { get, query } from '../db/mysql-db.ts';
 import logger from '../lib/logger.ts';
 
-// Model selection: Use gemini-1.5-flash for stable and efficient support tasks.
-const MODEL_NAME = 'gemini-1.5-flash';
+// Model selection: Use gemini-2.5-flash with fallback to gemini-1.5-flash
+const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -198,18 +198,29 @@ export async function handleSupportQuery(uid: string, message: string, history: 
   ] : [];
 
   try {
-    // 1. Initial Request to model
-    const response = await client.models.generateContent({
-      model: MODEL_NAME,
-      contents: message,
-      config: {
-        systemInstruction,
-        tools: tools.length > 0 ? tools : undefined,
-        toolConfig: isAgentic ? { includeServerSideToolInvocations: true } : undefined,
-        responseMimeType: 'application/json'
-      }
-    });
+    let response: any = null;
+    let lastErr: any = null;
 
+    for (const mName of MODELS_TO_TRY) {
+      try {
+        response = await client.models.generateContent({
+          model: mName,
+          contents: message,
+          config: {
+            systemInstruction,
+            tools: tools.length > 0 ? tools : undefined,
+            toolConfig: isAgentic ? { includeServerSideToolInvocations: true } : undefined,
+            responseMimeType: 'application/json'
+          }
+        });
+        break;
+      } catch (mErr: any) {
+        lastErr = mErr;
+        logger.warn(`Model ${mName} failed in support agent: ${mErr.message}`);
+      }
+    }
+
+    if (!response && lastErr) throw lastErr;
     let currentResponse = response;
     
     // 2. Handle Tool Calls if any (only in agentic mode)
@@ -236,34 +247,44 @@ export async function handleSupportQuery(uid: string, message: string, history: 
             });
         }
 
-        // Send results back to model
-        const secondResponse = await client.models.generateContent({
-            model: MODEL_NAME,
-            contents: [
-                { role: 'user', parts: [{ text: message }] },
-                { role: 'model', parts: currentResponse.candidates?.[0]?.content?.parts },
-                { role: 'user', parts: toolResults.map(tr => ({
-                    functionResponse: {
-                        name: functionCalls.find(fc => fc.id === tr.callId)?.name || '',
-                        response: tr.response
-                    }
-                })) }
-            ],
-            config: {
-                systemInstruction,
-                responseMimeType: 'application/json'
-            }
-        });
-        currentResponse = secondResponse;
+        // Send results back to model with fallback
+        let secondResponse: any = null;
+        for (const mName of MODELS_TO_TRY) {
+          try {
+            secondResponse = await client.models.generateContent({
+                model: mName,
+                contents: [
+                    { role: 'user', parts: [{ text: message }] },
+                    { role: 'model', parts: currentResponse.candidates?.[0]?.content?.parts },
+                    { role: 'user', parts: toolResults.map(tr => ({
+                        functionResponse: {
+                            name: functionCalls.find(fc => fc.id === tr.callId)?.name || '',
+                            response: tr.response
+                        }
+                    })) }
+                ],
+                config: {
+                    systemInstruction,
+                    responseMimeType: 'application/json'
+                }
+            });
+            break;
+          } catch (e) {}
+        }
+        if (secondResponse) {
+          currentResponse = secondResponse;
+        }
     }
 
-    const finalJson = JSON.parse(currentResponse.text || '{}');
+    const rawText = currentResponse.text || '{}';
+    const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/) || rawText.match(/([\{\[][\s\S]*[\}\]])/);
+    const finalJson = jsonMatch ? JSON.parse(jsonMatch[1]) : { reply: rawText, transferToAgent: false };
     return finalJson;
 
   } catch (err: any) {
     logger.error(`Support Agent Error: ${err.message}`);
     return {
-      reply: "I am having trouble processing your request. Please try again or contact a human agent.",
+      reply: "দুঃখিত, বর্তমানে এআই সাপোর্ট সার্ভারে অতিরিক্ত ট্রাফিকের কারণে রিকোয়েস্ট প্রসেস করা যাচ্ছে না। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা সরাসরি লাইভ সাপোর্টে যোগাযোগ করুন।",
       transferToAgent: true,
       suggestedCategory: "Technical Issue"
     };

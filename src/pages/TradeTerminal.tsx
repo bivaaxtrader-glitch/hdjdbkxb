@@ -14598,7 +14598,17 @@ const PROMOTED_ARTICLES = [
                        <Gift size={40} className="text-gray-700" />
                     </div>
                     <p className="text-[22px] font-bold text-gray-400 mb-2">No promotions currently available</p>
-                    <p className="text-gray-500 max-w-sm">Sorry, there are no active events at the moment. Please check back later or watch our telegram channel.</p>
+                    <p className="text-gray-500 max-w-sm">
+                      Sorry, there are no active events at the moment. Please check back later or watch our{' '}
+                      <a 
+                        href="https://t.me/Bivaax_Official" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-yellow-500 hover:underline inline-flex items-center gap-1 font-medium"
+                      >
+                        Telegram Channel
+                      </a>.
+                    </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mt-12">

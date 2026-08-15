@@ -1556,6 +1556,7 @@ router.patch('/users/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 
   try {
+    const existingUser = await get('SELECT * FROM users WHERE uid = ?', [id]) as any;
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -1580,9 +1581,16 @@ router.patch('/users/:id', requireAuth, async (req: AuthRequest, res) => {
       balance: 'real_balance',
     };
 
+    let hasPersonalChanges = false;
+    const personalKeys = ['displayName', 'firstName', 'lastName', 'nickname', 'phone', 'country', 'gender'];
+
     for (const [key, value] of Object.entries(req.body)) {
       const dbField = fieldMap[key];
       if (dbField) {
+        if (existingUser && personalKeys.includes(key) && existingUser[dbField] !== value) {
+          hasPersonalChanges = true;
+        }
+
         if (typeof value === 'object' && value !== null && (value as any).increment !== undefined) {
           updates.push(`${dbField} = ${dbField} + ?`);
           params.push((value as any).increment);
@@ -1602,52 +1610,48 @@ router.patch('/users/:id', requireAuth, async (req: AuthRequest, res) => {
     if (updates.length > 0) {
       params.push(id);
       await run(`UPDATE users SET ${updates.join(', ')} WHERE uid = ?`, params);
-      
-      // Send Profile Update Notification Email
-      try {
-        const user = await get('SELECT * FROM users WHERE uid = ?', [id]) as any;
-        if (user && user.email) {
-          const personalFields = ['displayName', 'firstName', 'lastName', 'nickname', 'phone', 'country', 'gender', 'dob'];
-          const wasPersonalUpdate = Object.keys(req.body).some(k => personalFields.includes(k));
-          
-          if (wasPersonalUpdate) {
-            const subject = 'Profile Updated - Bivaax Trade';
-            const html = `
-              <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
-                <div style="background-color: #1a1b23; padding: 30px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
-                  <h2 style="color: #FFE24C; margin: 0;">Security Alert: Profile Update</h2>
-                </div>
-                <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed;">
-                  <p>Hello ${user.display_name || 'Trader'},</p>
-                  <p>This is a confirmation that your Bivaax Trade profile information was recently updated.</p>
-                  
-                  <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 25px 0;">
-                    <h4 style="margin: 0 0 15px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Updated Information:</h4>
-                    <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
-                      ${user.first_name ? `<tr><td style="padding: 8px 0; color: #64748b;">First Name:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${user.first_name}</td></tr>` : ''}
-                      ${user.last_name ? `<tr><td style="padding: 8px 0; color: #64748b;">Last Name:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${user.last_name}</td></tr>` : ''}
-                      ${user.nickname ? `<tr><td style="padding: 8px 0; color: #64748b;">Nickname:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${user.nickname}</td></tr>` : ''}
-                      ${user.phone ? `<tr><td style="padding: 8px 0; color: #64748b;">Phone:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${user.phone}</td></tr>` : ''}
-                      ${user.country ? `<tr><td style="padding: 8px 0; color: #64748b;">Country:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${user.country}</td></tr>` : ''}
-                    </table>
-                  </div>
+    }
 
-                  <p style="font-size: 14px; color: #64748b; line-height: 1.6;">If you did not make these changes, please contact our security team immediately or reset your password.</p>
-                  
-                  <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
-                  <p style="font-size: 12px; color: #94a3b8; text-align: center;">&copy; 2026 Bivaax Trade Security Department</p>
-                </div>
+    const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [id]) as any;
+    
+    // Send Profile Update Notification Email ONLY when personal info / username actually changes
+    if (hasPersonalChanges && updatedUser && updatedUser.email) {
+      try {
+        const subject = 'Profile Updated - Bivaax Trade';
+        const html = `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
+            <div style="background-color: #1a1b23; padding: 30px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
+              <h2 style="color: #FFE24C; margin: 0;">Security Alert: Profile Update</h2>
+            </div>
+            <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed;">
+              <p>Hello ${updatedUser.display_name || 'Trader'},</p>
+              <p>This is a confirmation that your Bivaax Trade profile personal information or username was recently updated.</p>
+              
+              <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                <h4 style="margin: 0 0 15px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Updated Account Details:</h4>
+                <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+                  ${updatedUser.first_name ? `<tr><td style="padding: 8px 0; color: #64748b;">First Name:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${updatedUser.first_name}</td></tr>` : ''}
+                  ${updatedUser.last_name ? `<tr><td style="padding: 8px 0; color: #64748b;">Last Name:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${updatedUser.last_name}</td></tr>` : ''}
+                  ${updatedUser.display_name ? `<tr><td style="padding: 8px 0; color: #64748b;">Display Name / Username:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${updatedUser.display_name}</td></tr>` : ''}
+                  ${updatedUser.nickname ? `<tr><td style="padding: 8px 0; color: #64748b;">Nickname:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${updatedUser.nickname}</td></tr>` : ''}
+                  ${updatedUser.phone ? `<tr><td style="padding: 8px 0; color: #64748b;">Phone:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${updatedUser.phone}</td></tr>` : ''}
+                  ${updatedUser.country ? `<tr><td style="padding: 8px 0; color: #64748b;">Country:</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${updatedUser.country}</td></tr>` : ''}
+                </table>
               </div>
-            `;
-            await sendEmail(user.email, subject, html);
-          }
-        }
+
+              <p style="font-size: 14px; color: #64748b; line-height: 1.6;">If you did not make these changes, please contact our security team immediately or reset your password.</p>
+              
+              <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
+              <p style="font-size: 12px; color: #94a3b8; text-align: center;">&copy; 2026 Bivaax Trade Security Department</p>
+            </div>
+          </div>
+        `;
+        await sendEmail(updatedUser.email, subject, html);
       } catch (e: any) {
         logger.error(`Failed to send profile update email: ${e.message}`);
       }
     }
 
-    const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [id]);
     const mappedData = mapUserForFrontend(updatedUser);
     if (mappedData) {
       await syncUserToFirestore(id, mappedData);
@@ -2686,25 +2690,10 @@ router.post('/wallet/deposit',
     const finalTxHash = trxId || txHash || '';
     const finalCurrency = currency || 'BDT';
 
-    await run(
-      `INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        uid, 
-        'deposit', 
-        amount.toString(), 
-        'pending', 
-        method, 
-        finalTxHash, 
-        finalCurrency, 
-        JSON.stringify({ walletNumber, orderId }),
-        Date.now()
-      ]
-    );
-
+    let firestoreId = '';
     if (adminDb) {
       try {
-        await adminDb.collection('deposits').add({
+        const depositRef = await adminDb.collection('deposits').add({
           userId: uid,
           userEmail: userEmail || req.user?.email || '',
           amount: Number(amount),
@@ -2716,11 +2705,28 @@ router.post('/wallet/deposit',
           timestamp: Date.now(),
           orderId: orderId || ''
         });
-        logger.info(`Deposit request successfully written to Firestore deposits collection for user ${uid}`);
+        firestoreId = depositRef.id;
+        logger.info(`Deposit request successfully written to Firestore deposits collection for user ${uid}, ID: ${firestoreId}`);
       } catch (firestoreErr: any) {
         logger.error(`Error writing deposit to Firestore: ${firestoreErr.message}`);
       }
     }
+
+    await run(
+      `INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uid, 
+        'deposit', 
+        amount.toString(), 
+        'pending', 
+        method, 
+        finalTxHash, 
+        finalCurrency, 
+        JSON.stringify({ walletNumber, orderId, firestoreId }),
+        Date.now()
+      ]
+    );
 
     await createAuditLog(uid, 'deposit_request', 'transaction', null, { amount, method, txHash: finalTxHash }, req.ip);
     logger.info(`Deposit request from ${uid}: ${amount}`);
@@ -2947,9 +2953,16 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
 
     if (depositDoc && depositDoc.exists) {
       depositData = depositDoc.data() || {};
-      if (depositData?.processedByServer === true) {
+      if (depositData?.processedByServer === true || depositData?.status === 'success' || depositData?.status === 'approved' || depositData?.status === 'completed') {
         return res.status(400).json({ error: 'This deposit has already been processed.' });
       }
+      // Immediately acquire lock in Firestore to prevent concurrent double-processing
+      try {
+        await adminDb.collection('deposits').doc(id).update({
+          processedByServer: true,
+          status: status === 'success' || status === 'approved' ? 'success' : status
+        });
+      } catch (lockErr) {}
     } else {
       logger.info(`[Deposit Status Update] Deposit ID ${id} not found in Firestore. Proceeding in offline/fallback mode.`);
     }
@@ -2969,15 +2982,6 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
 
     if (isAlreadyProcessedInSql) {
       logger.warn(`[Deposit Security] Deposit ID ${id} was already processed and credited in SQL transaction ID ${sqlTx.id}. Preventing double-crediting.`);
-      // Ensure Firestore deposit status is updated if document exists
-      if (depositDoc && depositDoc.exists) {
-        try {
-          await adminDb.collection('deposits').doc(id).update({
-            processedByServer: true,
-            status: 'success'
-          });
-        } catch (e) {}
-      }
       return res.json({ success: true, message: 'Deposit was already processed and credited.' });
     }
 
@@ -2993,9 +2997,15 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
     }
 
     // 1. Sync with SQL transactions table if applicable
-    const tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'deposit\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, finalAmountInBase]) as any;
+    let tx = sqlTx;
+    if (!tx) {
+      tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'deposit\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, finalAmountInBase]) as any;
+    }
     
     if (tx) {
+      if (tx.status === 'completed' || tx.status === 'success' || tx.status === 'approved') {
+        return res.status(400).json({ error: 'This transaction has already been completed.' });
+      }
       const newStatus = isSuccessOrApproved ? 'completed' : status === 'rejected' ? 'rejected' : status;
       await run('UPDATE transactions SET status = ?, updated_at = datetime(\'now\') WHERE id = ?', [newStatus, tx.id]);
     } else if (isSuccessOrApproved) {
@@ -3582,6 +3592,11 @@ router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {
 
 // --- Settings & Config ---
 const defaultSettings = {
+  socialTelegram: "https://t.me/Bivaax_Official",
+  socialYoutube: "https://youtube.com/@bivaax",
+  socialInstagram: "https://instagram.com/bivaax",
+  socialFacebook: "https://facebook.com/bivaax",
+  socialTiktok: "https://tiktok.com/@bivaax",
   maintenanceMode: false,
   minDeposit: 10,
   minWithdraw: 15,

@@ -138,7 +138,7 @@ export default function AdminDashboard() {
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<'news' | 'education' | 'promotions' | 'tournaments' | 'banner' | 'user' | 'deposit' | null>(null);
+  const [modalType, setModalType] = useState<'news' | 'education' | 'promotions' | 'promos' | 'tournaments' | 'banner' | 'user' | 'deposit' | 'signals' | 'promoMaterials' | 'masterTraders' | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -906,7 +906,7 @@ export default function AdminDashboard() {
 
   const handleSaveConfig = async () => {
     try {
-        await updateDoc(doc(db, 'app_config', 'settings'), appConfig);
+        await setDoc(doc(db, 'app_config', 'settings'), appConfig, { merge: true });
         toast.success("Configuration saved successfully!");
     } catch (e) {
         console.error('Failed to save config:', e);
@@ -2182,7 +2182,7 @@ export default function AdminDashboard() {
                                             onClick={async () => {
                                                 const newStatus = appConfig.btcEnabled === false ? true : false;
                                                 setAppConfig({ ...appConfig, btcEnabled: newStatus });
-                                                await updateDoc(doc(db, 'app_config', 'settings'), { btcEnabled: newStatus });
+                                                await setDoc(doc(db, 'app_config', 'settings'), { btcEnabled: newStatus }, { merge: true });
                                                 toast.success(`Bitcoin successfully turned ${newStatus ? 'ON' : 'OFF'}!`);
                                             }}
                                             className={`px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider transition-all ${appConfig.btcEnabled !== false ? 'bg-[#F7931A] text-white shadow-lg shadow-[#F7931A]/20' : 'bg-red-500 text-white'}`}
@@ -2255,7 +2255,7 @@ export default function AdminDashboard() {
                                     </label>
                                     <input 
                                         type="text" 
-                                        placeholder="https://t.me/..." 
+                                        placeholder="https://t.me/Bivaax_Official" 
                                         value={appConfig.socialTelegram || ""} 
                                         onChange={e => setAppConfig({...appConfig, socialTelegram: e.target.value})}
                                         className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-3 text-sm focus:border-yellow-500 outline-none transition-all"
@@ -2310,7 +2310,7 @@ export default function AdminDashboard() {
                                         setAppConfig({ ...appConfig, binancePayEnabled: newStatus });
                                         // Update in Firestore
                                         const { doc, updateDoc } = await import('../firebase');
-                                        await updateDoc(doc(db, 'app_config', 'settings'), { binancePayEnabled: newStatus });
+                                        await setDoc(doc(db, 'app_config', 'settings'), { binancePayEnabled: newStatus }, { merge: true });
                                         
                                         // Also find and update the Binance Pay document in depositMethods collection so they stay in sync
                                         try {
@@ -2372,7 +2372,7 @@ export default function AdminDashboard() {
                                             setAppConfig({ ...appConfig, usdtTrc20Enabled: newStatus });
                                             // Update in Firestore
                                             const { doc, updateDoc } = await import('../firebase');
-                                            await updateDoc(doc(db, 'app_config', 'settings'), { usdtTrc20Enabled: newStatus });
+                                            await setDoc(doc(db, 'app_config', 'settings'), { usdtTrc20Enabled: newStatus }, { merge: true });
                                             
                                             // Also find and update the USDT TRC-20 document in depositMethods collection so they stay in sync
                                             try {
@@ -2436,7 +2436,7 @@ export default function AdminDashboard() {
                                             setAppConfig({ ...appConfig, ethEnabled: newStatus });
                                             // Update in Firestore
                                             const { doc, updateDoc } = await import('../firebase');
-                                            await updateDoc(doc(db, 'app_config', 'settings'), { ethEnabled: newStatus });
+                                            await setDoc(doc(db, 'app_config', 'settings'), { ethEnabled: newStatus }, { merge: true });
                                             
                                             // Also find and update the Ethereum (ETH) document in depositMethods collection so they stay in sync
                                             try {

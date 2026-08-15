@@ -146,8 +146,12 @@ export default function App() {
         if (!data.ltcQrCode) {
           updates.ltcQrCode = "https://i.postimg.cc/9FCX4MCs/IMG-20260805-125156.png";
         }
-        if (data.ltcEnabled === undefined) {
+        if (!data.ltcEnabled) {
           updates.ltcEnabled = true;
+        }
+
+        if (!data.socialTelegram || data.socialTelegram.includes('telegram.com')) {
+          updates.socialTelegram = "https://t.me/Bivaax_Official";
         }
         
         if (Object.keys(updates).length > 0) {
@@ -709,25 +713,25 @@ export default function App() {
               <Route path="/login" element={user ? <Navigate to={isAffiliateSubdomain ? "/affiliate" : "/trade"} replace /> : <AuthPage />} />
               <Route path="/register" element={user ? <Navigate to={isAffiliateSubdomain ? "/affiliate" : "/trade"} replace /> : <AuthPage />} />
               <Route path="/signup" element={user ? <Navigate to={isAffiliateSubdomain ? "/affiliate" : "/trade"} replace /> : <AuthPage />} />
-              <Route path="/trade" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
-              <Route path="/leaderboard" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
-              <Route path="/promotions" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
-              <Route path="/calendar" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/trade" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/leaderboard" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/promotions" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/calendar" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
 
-              <Route path="/tournaments" element={<RequireAuth user={user}>{<Tournaments />}</RequireAuth>} />
-              <Route path="/tournaments/:id" element={<RequireAuth user={user}>{<TournamentDetails />}</RequireAuth>} />
-              <Route path="/education" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
-              <Route path="/statuses" element={<RequireAuth user={user}>{<TradeTerminal />}</RequireAuth>} />
-              <Route path="/help-center" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />
-              <Route path="/support" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />
+              <Route path="/tournaments" element={<RequireAuth user={user} loading={loading}>{<Tournaments />}</RequireAuth>} />
+              <Route path="/tournaments/:id" element={<RequireAuth user={user} loading={loading}>{<TournamentDetails />}</RequireAuth>} />
+              <Route path="/education" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/statuses" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/help-center" element={<RequireAuth user={user} loading={loading}><ClientSupportCenter /></RequireAuth>} />
+              <Route path="/support" element={<RequireAuth user={user} loading={loading}><ClientSupportCenter /></RequireAuth>} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/profile" element={<Navigate to="/profile/info" replace />} />
-              <Route path="/profile/info" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
-              <Route path="/profile/invite" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
-              <Route path="/profile/transactions" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
-              <Route path="/affiliate" element={<RequireAuth user={user}><AffiliatePage /></RequireAuth>} />
-              <Route path="/signals" element={<RequireAuth user={user}><SignalsPage /></RequireAuth>} />
-              <Route path="/copytrading" element={<RequireAuth user={user}><CopyTradingPage /></RequireAuth>} />
+              <Route path="/profile/info" element={<RequireAuth user={user} loading={loading}><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/invite" element={<RequireAuth user={user} loading={loading}><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/transactions" element={<RequireAuth user={user} loading={loading}><ProfilePage /></RequireAuth>} />
+              <Route path="/affiliate" element={<RequireAuth user={user} loading={loading}><AffiliatePage /></RequireAuth>} />
+              <Route path="/signals" element={<RequireAuth user={user} loading={loading}><SignalsPage /></RequireAuth>} />
+              <Route path="/copytrading" element={<RequireAuth user={user} loading={loading}><CopyTradingPage /></RequireAuth>} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin-dashboard" element={<AdminDashboard />} />
               <Route path="/support-center" element={<EnterpriseSupportCenter />} />
@@ -735,16 +739,16 @@ export default function App() {
               <Route path="/news/:slug" element={<NewsPage />} />
               <Route path="/page/:slug" element={<StaticPage />} />
               <Route path="/Bivaaxpay" element={<BinancePayPage />} />
-              <Route path="/crypto-deposit" element={<RequireAuth user={user}><CryptoDepositPage /></RequireAuth>} />
-              <Route path="/mfs-deposit" element={<RequireAuth user={user}><MFSDepositPage /></RequireAuth>} />
-              <Route path="/deposit/bkash" element={<RequireAuth user={user}><BkashDeposit /></RequireAuth>} />
-              <Route path="/deposit/nagad" element={<RequireAuth user={user}><NagadDeposit /></RequireAuth>} />
-              <Route path="/deposit/rocket" element={<RequireAuth user={user}><RocketDeposit /></RequireAuth>} />
-              <Route path="/deposit/usdt-trc20" element={<RequireAuth user={user}><UsdtTrc20Deposit /></RequireAuth>} />
-              <Route path="/deposit/bitcoin" element={<RequireAuth user={user}><BitcoinDeposit /></RequireAuth>} />
-              <Route path="/deposit/doge" element={<RequireAuth user={user}><DogeDeposit /></RequireAuth>} />
-              <Route path="/deposit/ltc" element={<RequireAuth user={user}><LtcDeposit /></RequireAuth>} />
-              <Route path="/deposit/gopay" element={<RequireAuth user={user}><GoPayDepositPage /></RequireAuth>} />
+              <Route path="/crypto-deposit" element={<RequireAuth user={user} loading={loading}><CryptoDepositPage /></RequireAuth>} />
+              <Route path="/mfs-deposit" element={<RequireAuth user={user} loading={loading}><MFSDepositPage /></RequireAuth>} />
+              <Route path="/deposit/bkash" element={<RequireAuth user={user} loading={loading}><BkashDeposit /></RequireAuth>} />
+              <Route path="/deposit/nagad" element={<RequireAuth user={user} loading={loading}><NagadDeposit /></RequireAuth>} />
+              <Route path="/deposit/rocket" element={<RequireAuth user={user} loading={loading}><RocketDeposit /></RequireAuth>} />
+              <Route path="/deposit/usdt-trc20" element={<RequireAuth user={user} loading={loading}><UsdtTrc20Deposit /></RequireAuth>} />
+              <Route path="/deposit/bitcoin" element={<RequireAuth user={user} loading={loading}><BitcoinDeposit /></RequireAuth>} />
+              <Route path="/deposit/doge" element={<RequireAuth user={user} loading={loading}><DogeDeposit /></RequireAuth>} />
+              <Route path="/deposit/ltc" element={<RequireAuth user={user} loading={loading}><LtcDeposit /></RequireAuth>} />
+              <Route path="/deposit/gopay" element={<RequireAuth user={user} loading={loading}><GoPayDepositPage /></RequireAuth>} />
             </Routes>
          </Suspense>
         </AppBoundary>

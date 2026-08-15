@@ -432,7 +432,7 @@ const menuItems = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'partner-bot', label: 'Partner Bot', icon: Bot, isNew: true },
   { id: 'rules', label: 'Rules', icon: ShieldAlert },
-  { id: 'support', label: 'Support', icon: Headphones },
+  { id: 'support', label: 'Telegram Manager', icon: Send },
 ];
 
 export default function AffiliatePage() {
@@ -1442,7 +1442,10 @@ export default function AffiliatePage() {
                          <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest">Signals & Stats</p>
                       </div>
                    </div>
-                   <button className="px-4 py-2 bg-[#3b66f5]/20 text-[#3b66f5] rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#3b66f5]/30 transition-colors">
+                   <button 
+                      onClick={() => window.open('https://t.me/Bivaax_Official', '_blank')}
+                      className="px-4 py-2 bg-[#3b66f5]/20 text-[#3b66f5] rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#3b66f5]/30 transition-colors cursor-pointer"
+                   >
                       <ExternalLink size={14} /> View on Telegram
                    </button>
                 </div>
@@ -2396,201 +2399,170 @@ export default function AffiliatePage() {
          {activeTab === 'support' && (
            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <SectionHeading 
-                icon={MessageSquare} 
-                title="Partner Support Hub" 
-                desc="Direct connection to our affiliate relations team" 
+                icon={Send} 
+                title="Affiliate Telegram Manager" 
+                desc="Direct 1-on-1 VIP Support & Growth Assistance via Telegram" 
               />
               
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-sm">
-                       <h3 className="text-[18px] font-black text-[#1c1d22] mb-6 flex items-center gap-2">
-                          <Zap className="text-amber-500" size={20} />
-                          Open a Ticket
-                       </h3>
-                       <div className="space-y-4">
-                          <div className="space-y-2">
-                             <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Subject</label>
-                             <input 
-                                type="text"
-                                value={ticketSubject}
-                                onChange={(e) => setTicketSubject(e.target.value)}
-                                placeholder="e.g. Traffic scaling advice"
-                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:outline-none focus:border-indigo-500 font-bold text-[#1c1d22]"
-                             />
-                          </div>
-                          <div className="space-y-2">
-                             <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest ml-1">Message</label>
-                             <textarea 
-                                value={ticketMessage}
-                                onChange={(e) => setTicketMessage(e.target.value)}
-                                rows={4}
-                                placeholder="How can we help you grow today?"
-                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:outline-none focus:border-indigo-500 font-medium text-[#1c1d22] resize-none"
-                             />
-                          </div>
-                          <button 
-                             onClick={() => {
-                                if (!ticketSubject.trim() || !ticketMessage.trim()) return toast.error("Please fill all fields");
-                                createSupportTicket(ticketSubject, ticketMessage);
-                                setTicketSubject("");
-                                setTicketMessage("");
-                             }}
-                             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl text-[13px] uppercase tracking-widest transition-all shadow-xl shadow-indigo-500/10 flex items-center justify-center gap-2"
-                          >
-                             Open Partner Ticket
-                          </button>
-                       </div>
-                    </div>
-
-                    <div className="bg-[#1c1d22] rounded-[32px] p-8 text-white relative overflow-hidden shadow-2xl border border-white/5 group">
-                        <div className="absolute right-0 top-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-[40px]"></div>
-                        <h4 className="text-[16px] font-black uppercase tracking-widest mb-4">Elite Concierge</h4>
-                        <p className="text-gray-400 text-[13px] leading-relaxed mb-6">Platinum partners with over 200 leads get access to a 24/7 dedicated account manager via Telegram.</p>
-                        <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
-                           <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center">
-                              <Star size={18} fill="white" />
-                           </div>
-                           <div>
-                              <div className="text-[12px] font-black">Telegram VIP</div>
-                              <div className="text-[10px] text-gray-500 font-bold uppercase">Locked for Starter</div>
-                           </div>
-                        </div>
-                    </div>
+              {/* Main VIP Manager Card */}
+              <div className="bg-[#1a2233] rounded-[36px] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl border border-white/10">
+                 <div className="absolute -right-16 -top-16 w-64 h-64 bg-[#0088cc]/20 rounded-full blur-[70px] pointer-events-none"></div>
+                 <div className="absolute right-10 bottom-6 opacity-5 pointer-events-none hidden md:block">
+                    <Send size={240} />
                  </div>
 
-                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100">
-                       <div className="p-8 border-b border-gray-50 flex justify-between items-center">
-                          <h3 className="text-[18px] font-black text-[#1c1d22]">My Support Logs</h3>
-                          <span className="text-[10px] font-black bg-gray-100 text-gray-500 px-3 py-1 rounded-full uppercase tracking-widest">{userTickets.length} Tickets</span>
-                       </div>
-                       
-                       <div className="divide-y divide-gray-50">
-                          {userTickets.length > 0 ? (
-                             userTickets.map((ticket, i) => (
-                                <div 
-                                   key={`ticket-row-${i}`}
-                                   onClick={() => {
-                                      setSelectedTicket(ticket);
-                                      setActiveTab('support-detail');
-                                   }}
-                                   className="p-6 hover:bg-gray-50 transition-all cursor-pointer group"
-                                >
-                                   <div className="flex items-center justify-between mb-2">
-                                      <div className="flex items-center gap-3">
-                                         <div className={`w-2 h-2 rounded-full ${ticket.status === 'open' ? 'bg-emerald-500' : 'bg-gray-300'}`}></div>
-                                         <h4 className="text-[15px] font-black text-[#1c1d22] group-hover:text-indigo-600 transition-colors">{ticket.subject}</h4>
-                                      </div>
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                         {new Date(ticket.updatedAt).toLocaleDateString()}
-                                      </span>
-                                   </div>
-                                   <p className="text-[13px] text-gray-500 font-medium truncate opacity-70 mb-3">{ticket.lastMessage || 'Open discussion...'}</p>
-                                   <div className="flex items-center gap-2">
-                                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${ticket.status === 'open' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>
-                                         {ticket.status}
-                                      </span>
-                                      <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">•</span>
-                                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Ref: {ticket.id.substring(0,6)}</span>
-                                   </div>
-                                </div>
-                             ))
-                          ) : (
-                             <div className="p-20 text-center space-y-4">
-                                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-300">
-                                   <MessageSquare size={32} />
-                                </div>
-                                <div className="text-gray-400 font-bold uppercase text-[12px] tracking-widest">No active support data</div>
-                             </div>
-                          )}
-                       </div>
+                 <div className="relative z-10 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0088cc]/20 border border-[#0088cc]/30 text-[#38bdf8] text-[11px] font-black uppercase tracking-widest mb-6">
+                       <span className="w-2 h-2 rounded-full bg-[#00dc74] animate-pulse"></span>
+                       24/7 Dedicated Manager Active
                     </div>
-                 </div>
-              </div>
-           </div>
-        )}
 
-        {activeTab === 'support-detail' && selectedTicket && (
-           <div className="max-w-4xl mx-auto animate-in fade-in zoom-in-95 duration-500">
-              <div className="bg-white rounded-[40px] overflow-hidden shadow-2xl border border-gray-100 flex flex-col h-[700px]">
-                 {/* Detail Header */}
-                 <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                    <div className="flex items-center gap-4">
+                    <h2 className="text-[28px] md:text-[36px] font-black tracking-tight text-white mb-3">
+                       Connect with Your Affiliate Manager
+                    </h2>
+
+                    <p className="text-gray-300 text-[15px] md:text-[16px] leading-relaxed mb-8 font-medium">
+                       We handle all partner queries, traffic scaling advice, custom RevShare rates, and expedited payouts directly through our official Telegram desk.
+                    </p>
+
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                       <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-[#0088cc] flex items-center justify-center shadow-lg shadow-[#0088cc]/30 flex-shrink-0">
+                             <Send size={24} className="text-white" />
+                          </div>
+                          <div>
+                             <div className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">Official Telegram Username</div>
+                             <div className="text-[18px] font-black text-white tracking-wide">@Bivaax_Official</div>
+                          </div>
+                       </div>
+
                        <button 
-                          onClick={() => { setActiveTab('support'); setSelectedTicket(null); }}
-                          className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:border-indigo-100 transition-all shadow-sm"
-                       >
-                          <ChevronDown className="rotate-90" size={20} />
-                       </button>
-                       <div>
-                          <h3 className="text-[18px] font-black text-[#1c1d22] leading-none mb-1">{selectedTicket.subject}</h3>
-                          <div className="flex items-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                             <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Agent Active</span>
-                          </div>
-                       </div>
-                    </div>
-                    <div className="px-4 py-1.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-widest">
-                       ID: {selectedTicket.id.substring(0,8)}
-                    </div>
-                 </div>
-
-                 {/* Message Scroller */}
-                 <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide bg-gray-50/30">
-                    {ticketMessages.map((msg, i) => {
-                       const isStaff = msg.senderType === 'support';
-                       return (
-                          <div key={`msg-${i}`} className={`flex ${isStaff ? 'justify-start' : 'justify-end'}`}>
-                             <div className={`max-w-[80%] ${isStaff ? 'bg-white border border-gray-100 shadow-sm' : 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/10'} p-5 rounded-[24px] rounded-tl-none`}>
-                                <div className={`text-[10px] font-black uppercase tracking-widest mb-1.5 ${isStaff ? 'text-indigo-400' : 'text-indigo-200'}`}>
-                                   {isStaff ? 'Bivaax Support' : 'You'}
-                                </div>
-                                <p className="text-[14px] font-medium leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                                <div className={`text-[9px] font-bold mt-2 text-right ${isStaff ? 'text-gray-300' : 'text-indigo-300'}`}>
-                                   {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                             </div>
-                          </div>
-                       );
-                    })}
-                    {isBotTyping && (
-                       <div className="flex justify-start">
-                          <div className="bg-white border border-gray-100 shadow-sm p-4 rounded-[20px] rounded-tl-none flex gap-1.5">
-                             <div className="w-1.5 h-1.5 rounded-full bg-gray-200 animate-bounce"></div>
-                             <div className="w-1.5 h-1.5 rounded-full bg-gray-200 animate-bounce [animation-delay:0.2s]"></div>
-                             <div className="w-1.5 h-1.5 rounded-full bg-gray-200 animate-bounce [animation-delay:0.4s]"></div>
-                          </div>
-                       </div>
-                    )}
-                 </div>
-
-                 {/* Reply Box */}
-                 <div className="p-8 border-t border-gray-100 bg-white">
-                    <div className="relative">
-                       <textarea 
-                          value={ticketReply}
-                          onChange={(e) => setTicketReply(e.target.value)}
-                          onKeyDown={(e) => {
-                             if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                sendTicketMessage();
-                             }
+                          onClick={() => {
+                             navigator.clipboard.writeText('@Bivaax_Official');
+                             toast.success('Telegram username copied: @Bivaax_Official');
                           }}
-                          placeholder="Type your response..."
-                          className="w-full bg-gray-50 border border-gray-100 rounded-[28px] px-8 py-5 pr-16 focus:outline-none focus:border-indigo-500 font-medium text-[#1c1d22] resize-none h-[80px]"
-                       />
-                       <button 
-                          onClick={sendTicketMessage}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20"
+                          className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[12px] font-bold tracking-wider uppercase flex items-center justify-center gap-2 transition cursor-pointer"
                        >
-                          <ArrowRight size={20} />
+                          <Copy size={16} /> Copy Handle
+                       </button>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                       <a 
+                          href="https://t.me/Bivaax_Official" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="px-8 py-4 bg-[#0088cc] hover:bg-[#0077b5] text-white font-black text-[14px] uppercase tracking-wider rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-[#0088cc]/30 transition-all transform active:scale-95"
+                       >
+                          <Send size={18} /> Open Chat on Telegram
+                       </a>
+
+                       <button 
+                          onClick={() => window.open('https://t.me/Bivaax_Official', '_blank')}
+                          className="px-6 py-4 bg-white/10 hover:bg-white/15 text-white font-bold text-[14px] rounded-2xl flex items-center justify-center gap-2 border border-white/10 transition cursor-pointer"
+                       >
+                          <ExternalLink size={16} /> Join Official Channel
                        </button>
                     </div>
                  </div>
               </div>
+
+              {/* Assistance Topics Grid */}
+              <div className="space-y-4">
+                 <h3 className="text-[20px] font-black text-[#1a2233] tracking-tight px-1">
+                    What You Can Discuss with Your Manager
+                 </h3>
+
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-sm space-y-3">
+                       <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                          <Zap size={22} />
+                       </div>
+                       <h4 className="text-[16px] font-black text-[#1a2233]">Higher Commission Rates</h4>
+                       <p className="text-[13px] text-gray-500 font-medium leading-relaxed">
+                          Request custom RevShare upgrades up to 80% or fixed CPA deals based on your daily trading volume.
+                       </p>
+                    </div>
+
+                    <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-sm space-y-3">
+                       <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                          <CreditCard size={22} />
+                       </div>
+                       <h4 className="text-[16px] font-black text-[#1a2233]">Priority Payout Approvals</h4>
+                       <p className="text-[13px] text-gray-500 font-medium leading-relaxed">
+                          Get instant status checks and express clearance on your affiliate commission payouts.
+                       </p>
+                    </div>
+
+                    <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-sm space-y-3">
+                       <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#3b66f5] flex items-center justify-center font-bold">
+                          <Image size={22} />
+                       </div>
+                       <h4 className="text-[16px] font-black text-[#1a2233]">Custom Promo Materials</h4>
+                       <p className="text-[13px] text-gray-500 font-medium leading-relaxed">
+                          Ask for customized high-converting banners, landing pages, and localized promo creatives.
+                       </p>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Direct Telegram Contacts Overview */}
+              <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-sm">
+                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-100">
+                    <div>
+                       <h4 className="text-[18px] font-black text-[#1a2233]">Affiliate Communications Policy</h4>
+                       <p className="text-[13px] text-gray-500 font-medium">All support requests and account escalations are handled exclusively via official Telegram.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                       <span className="text-[12px] font-black text-gray-700 uppercase tracking-wider">Direct Telegram Service</span>
+                    </div>
+                 </div>
+
+                 <div className="pt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#0088cc]/10 text-[#0088cc] flex items-center justify-center">
+                             <Send size={18} />
+                          </div>
+                          <div>
+                             <div className="text-[13px] font-black text-[#1a2233]">Affiliate Manager</div>
+                             <div className="text-[11px] font-bold text-gray-400 font-mono">@Bivaax_Official</div>
+                          </div>
+                       </div>
+                       <a 
+                          href="https://t.me/Bivaax_Official" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="px-3 py-1.5 bg-[#0088cc] text-white rounded-lg text-[11px] font-bold uppercase tracking-wider hover:bg-[#0077b5]"
+                       >
+                          Chat
+                       </a>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                             <Users size={18} />
+                          </div>
+                          <div>
+                             <div className="text-[13px] font-black text-[#1a2233]">Affiliate Community</div>
+                             <div className="text-[11px] font-bold text-gray-400 font-mono">Bivaax Official Channel</div>
+                          </div>
+                       </div>
+                       <a 
+                          href="https://t.me/Bivaax_Official" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[11px] font-bold uppercase tracking-wider hover:bg-indigo-700"
+                       >
+                          Join
+                       </a>
+                    </div>
+                 </div>
+              </div>
            </div>
-        )}
+         )}
 
         {activeTab === 'rules' && (
            <div className="max-w-4xl mx-auto space-y-12">
@@ -2737,7 +2709,7 @@ export default function AffiliatePage() {
            { id: 'dashboard', icon: Zap, label: 'Dash' },
            { id: 'statistics', icon: BarChart3, label: 'Stats' },
            { id: 'promo', icon: Award, label: 'Media' },
-           { id: 'support', icon: MessageSquare, label: 'Support' },
+           { id: 'support', icon: Send, label: 'Manager' },
            { id: 'rules', icon: ShieldAlert, label: 'Rules' }
          ].map((item) => (
            <button 
