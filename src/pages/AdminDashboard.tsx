@@ -904,6 +904,16 @@ export default function AdminDashboard() {
       } catch(e: any) { alert(e.message); }
   };
 
+  const handleSaveConfig = async () => {
+    try {
+        await updateDoc(doc(db, 'app_config', 'settings'), appConfig);
+        toast.success("Configuration saved successfully!");
+    } catch (e) {
+        console.error('Failed to save config:', e);
+        toast.error("Failed to save configuration");
+    }
+  };
+
   const updateMarket = async (pair: string, updates: any) => {
       // Optimistic update
       setMarketState((prev: any) => ({
@@ -2144,6 +2154,14 @@ export default function AdminDashboard() {
                                       className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none text-sm"
                                     />
                                 </div>
+                            </div>
+                            <div className="pt-6">
+                                <button
+                                    onClick={handleSaveConfig}
+                                    className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-3 rounded-xl font-bold shadow-lg transition-all"
+                                >
+                                    Save SMTP Settings
+                                </button>
                             </div>
                         </div>
 

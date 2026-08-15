@@ -401,6 +401,7 @@ export const updateDoc = (ref: any, data: any, ...args: any[]) => ref && typeof 
 export const addDoc = async (colRef: any, data: any) => {
   const name = colRef?._name || '';
   const token = getAuthToken();
+  console.log(`[DEBUG] addDoc for ${name}, token exists: ${!!token}, localStorage keys: ${Object.keys(localStorage)}`);
   
   let endpoint = `/api/${name}`;
   let method = 'POST';
