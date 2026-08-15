@@ -2497,6 +2497,7 @@ const PROMOTED_ARTICLES = [
   const [timeZone, setTimeZone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const timeZoneRef = useRef(timeZone);
   useEffect(() => { timeZoneRef.current = timeZone; }, [timeZone]);
+  const prevTabRef = useRef(activeTab);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showAchievementsModal, setShowAchievementsModal] = useState(false);
   const [showCopyTradingHowItWorks, setShowCopyTradingHowItWorks] = useState(false);
@@ -5946,14 +5947,14 @@ const PROMOTED_ARTICLES = [
     }
 
     return () => resizeObserver.disconnect();
-  }, [isMultiChart]);
+  }, [isMultiChart, isMobile]);
 
   useEffect(() => {
     timeZoneRef.current = timeZone;
     if (chartRef.current) {
       chartRef.current.applyOptions({
         timeScale: {
-          rightOffset: 2,
+          rightOffset: isMobile ? 8 : 25,
           tickMarkFormatter: (time: any) => {
              const date = new Date(time * 1000);
              return date.toLocaleString('en-US', { timeZone: timeZoneRef.current, hour: '2-digit', minute: '2-digit', hour12: false });
@@ -6025,9 +6026,9 @@ const PROMOTED_ARTICLES = [
         borderColor: "#1c1f24",
         timeVisible: true, 
         secondsVisible: true,
-        rightOffset: 15, 
+        rightOffset: isMobile ? 8 : 25, 
         fixRightEdge: false,
-        barSpacing: 22,
+        barSpacing: isMobile ? 12 : 22,
         minBarSpacing: 2,
         fixLeftEdge: false, 
         lockVisibleTimeRangeOnResize: true,
@@ -6178,9 +6179,9 @@ const PROMOTED_ARTICLES = [
         borderColor: "#1c1f24",
         timeVisible: true,
         secondsVisible: true,
-        rightOffset: 15,
+        rightOffset: isMobile ? 8 : 25,
         fixRightEdge: false,
-        barSpacing: 22,
+        barSpacing: isMobile ? 12 : 22,
         minBarSpacing: 2,
       },
       rightPriceScale: {
@@ -6546,12 +6547,15 @@ const PROMOTED_ARTICLES = [
           series.setData(uniqueData);
           lastCandleRef.current = uniqueData[uniqueData.length - 1];
           
+          const tabChanged = prevTabRef.current !== activeTab;
+          if (tabChanged) prevTabRef.current = activeTab;
+
           if (chartRef.current) {
               const hasZoom = currentZoom && (currentZoom.to - currentZoom.from) > 0;
               const layoutKey = activeAsset + "_" + timeframe;
               const assetChanged = lastZoomedAssetRef.current !== layoutKey;
               
-              if (assetChanged || forceRecreate) {
+              if (assetChanged || forceRecreate || (tabChanged && activeTab === 'trade')) {
                   alignChartRightByIdx(0, uniqueData.length, 50);
                   lastZoomedAssetRef.current = layoutKey;
               } else if (hasZoom && wasScrolledBack) {
@@ -6576,7 +6580,7 @@ const PROMOTED_ARTICLES = [
          setIsLoading(false);
       }
     } 
-  }, [activeAsset, timeframe, chartType, historyLoaded]);
+  }, [activeAsset, timeframe, chartType, historyLoaded, activeTab]);
 
   // Watchdog & Self-Healing Loop for Continuous, Freeze-Free Candle Updates (Professional Standard)
   useEffect(() => {

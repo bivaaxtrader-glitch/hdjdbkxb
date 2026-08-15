@@ -42,8 +42,8 @@ export default function AuthPage() {
   const [fullName, setFullName] = useState('');
   const [agreed, setAgreed] = useState(false);
   
-  // New states for custom 4-digit OTP password reset workflow
-  const [otpCode, setOtpCode] = useState<string[]>(['', '', '', '']);
+  // New states for custom 6-digit OTP password reset workflow
+  const [otpCode, setOtpCode] = useState<string[]>(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -54,7 +54,7 @@ export default function AuthPage() {
     setOtpCode(newOtp);
 
     // Auto-focus next input if a number is typed
-    if (cleaned && index < 3) {
+    if (cleaned && index < 5) {
       const nextInput = document.getElementById(`otp-input-${index + 1}`);
       nextInput?.focus();
     }
@@ -70,10 +70,10 @@ export default function AuthPage() {
   const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData('text').trim().replace(/[^0-9]/g, '');
-    if (pastedData.length >= 4) {
-      const newOtp = [pastedData[0], pastedData[1], pastedData[2], pastedData[3]];
+    if (pastedData.length >= 6) {
+      const newOtp = [pastedData[0], pastedData[1], pastedData[2], pastedData[3], pastedData[4], pastedData[5]];
       setOtpCode(newOtp);
-      document.getElementById('otp-input-3')?.focus();
+      document.getElementById('otp-input-5')?.focus();
     }
   };
   const [currency, setCurrency] = useState('BDT');
@@ -264,7 +264,7 @@ export default function AuthPage() {
         setView('verify_otp');
       } else if (view === 'verify_otp') {
         const otpStr = otpCode.join('');
-        if (otpStr.length < 4) throw new Error('Please enter the full 4-digit OTP code');
+        if (otpStr.length < 6) throw new Error('Please enter the full 6-digit OTP code');
         
         const response = await fetch('/api/auth/verify-reset-otp', {
           method: 'POST',
@@ -300,7 +300,7 @@ export default function AuthPage() {
         setPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        setOtpCode(['', '', '', '']);
+        setOtpCode(['', '', '', '', '', '']);
         setView('login');
       } else if (view === 'register') {
         if (!fullName.trim()) {
@@ -723,12 +723,12 @@ export default function AuthPage() {
                 </>
               )}
 
-              {/* NEUMORPHIC EMBOSSED 4-DIGIT OTP UI */}
+              {/* NEUMORPHIC EMBOSSED 6-DIGIT OTP UI */}
               {view === 'verify_otp' && (
                 <div className="flex flex-col items-center">
-                  <p className="text-gray-400 text-[14px] text-center mb-6">Enter the 4-digit security code</p>
+                  <p className="text-gray-400 text-[14px] text-center mb-6">Enter the 6-digit security code sent to your email</p>
                   
-                  <div className="flex gap-4.5 justify-center mb-8">
+                  <div className="flex gap-2.5 justify-center mb-8">
                     {otpCode.map((digit, idx) => (
                       <input
                         key={idx}
@@ -739,7 +739,7 @@ export default function AuthPage() {
                         onChange={(e) => handleOtpChange(idx, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                         onPaste={handleOtpPaste}
-                        className="w-[62px] h-[62px] bg-[#22242c] border border-white/5 rounded-xl text-center text-white text-[28px] font-black focus:outline-none focus:ring-2 focus:ring-[#ffcf00] focus:border-transparent transition-all shadow-[inset_3px_3px_6px_rgba(0,0,0,0.8),inset_-1px_-1px_3px_rgba(255,255,255,0.05),0_4px_8px_rgba(0,0,0,0.4)]"
+                        className="w-[48px] h-[58px] bg-[#22242c] border border-white/5 rounded-xl text-center text-white text-[24px] font-black focus:outline-none focus:ring-2 focus:ring-[#ffcf00] focus:border-transparent transition-all shadow-[inset_3px_3px_6px_rgba(0,0,0,0.8),inset_-1px_-1px_3px_rgba(255,255,255,0.05),0_4px_8px_rgba(0,0,0,0.4)]"
                       />
                     ))}
                   </div>
@@ -760,7 +760,7 @@ export default function AuthPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setOtpCode(['', '', '', '']);
+                        setOtpCode(['', '', '', '', '', '']);
                         setView('forgot_password');
                         setError(null);
                         setSuccessMsg(null);

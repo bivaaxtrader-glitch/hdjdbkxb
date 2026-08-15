@@ -527,9 +527,9 @@ router.post('/forgot-password',
     const user = await get('SELECT uid FROM users WHERE email = ?', [email]) as any;
     
     if (user) {
-      // Generate a highly secure 4-digit numeric OTP code
-      const otp = Math.floor(1000 + Math.random() * 9000).toString();
-      const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
+      // Generate a highly secure 6-digit numeric OTP code
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
 
       if (adminDb) {
         try {
@@ -537,7 +537,9 @@ router.post('/forgot-password',
             token: otp,
             otp: otp,
             expires,
-            uid: user.uid
+            uid: user.uid,
+            email: email,
+            createdAt: Date.now()
           });
         } catch (dbErr: any) {
           logger.error(`Error saving reset token to Firestore: ${dbErr.message}`);
@@ -545,17 +547,99 @@ router.post('/forgot-password',
         }
       }
 
-      await sendEmail(email, 'Your Password Reset OTP Code - Bivaax Trade', `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 500px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
-            <div style="background-color: #ffffff; padding: 40px; border-radius: 12px; border: 1px solid #e1e8ed; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-                <h2 style="color: #1a1b23; margin-top: 0; font-size: 24px; font-weight: 800;">Password Reset OTP</h2>
-                <p style="color: #64748b; font-size: 16px; line-height: 1.5;">You requested a password reset. Please use the following 4-digit security code to complete your password reset:</p>
-                <div style="font-size: 48px; font-weight: 900; color: #ffcf00; letter-spacing: 12px; margin: 30px 0; background: #1a1b23; padding: 25px; border-radius: 12px; border: 1.5px solid #ffcf00; display: inline-block;">${otp}</div>
-                <p style="color: #94a3b8; font-size: 13px;">This code will expire in 10 minutes. If you didn't request a password reset, please ignore this email or contact support.</p>
-                <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
-                <p style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">Bivaax Trade Security</p>
+      await sendEmail(email, 'Password Reset Verification Code - Bivaax Trade', `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            .email-container {
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              background-color: #f8fafc;
+              padding: 40px 20px;
+            }
+            .card {
+              background-color: #ffffff;
+              padding: 48px;
+              border-radius: 24px;
+              border: 1px solid #e2e8f0;
+              text-align: center;
+              box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+            }
+            .logo-header {
+              margin-bottom: 32px;
+            }
+            .title {
+              color: #0f172a;
+              margin: 0 0 12px 0;
+              font-size: 28px;
+              font-weight: 800;
+              letter-spacing: -0.025em;
+            }
+            .description {
+              color: #64748b;
+              font-size: 16px;
+              line-height: 1.6;
+              margin-bottom: 32px;
+            }
+            .otp-box {
+              font-size: 42px;
+              font-weight: 800;
+              color: #1e293b;
+              letter-spacing: 0.2em;
+              margin: 32px 0;
+              background: #f1f5f9;
+              padding: 24px;
+              border-radius: 16px;
+              border: 2px solid #e2e8f0;
+              display: inline-block;
+              width: 100%;
+              box-sizing: border-box;
+            }
+            .expiry {
+              color: #94a3b8;
+              font-size: 14px;
+              margin-top: 24px;
+            }
+            .footer {
+              margin-top: 32px;
+              padding-top: 32px;
+              border-top: 1px solid #f1f5f9;
+              text-align: center;
+            }
+            .footer-text {
+              color: #94a3b8;
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              font-weight: 700;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="email-container">
+            <div class="card">
+              <div class="logo-header">
+                <h1 style="color: #ffcf00; margin: 0; font-size: 32px; font-weight: 900;">BIVAAX</h1>
+              </div>
+              <h2 class="title">Security Verification</h2>
+              <p class="description">We received a request to reset the password for your Bivaax account. Use the verification code below to proceed:</p>
+              
+              <div class="otp-box">${otp}</div>
+              
+              <p class="description" style="font-size: 14px; margin-top: 0;">This code will expire in <strong>15 minutes</strong>.</p>
+              
+              <p style="color: #ef4444; font-size: 13px; font-weight: 600;">If you didn't request this code, someone else may be trying to access your account. Please secure your account immediately.</p>
+              
+              <div class="footer">
+                <p class="footer-text">Bivaax Trade Global Security</p>
+                <p style="color: #cbd5e1; font-size: 11px; margin-top: 8px;">© 2026 Bivaax Trading Platform. All rights reserved.</p>
+              </div>
             </div>
-        </div>
+          </div>
+        </body>
+        </html>
       `);
     }
     // Return standard message to protect privacy
@@ -612,7 +696,19 @@ router.post('/reset-password',
         }
 
         const hashedPassword = await hashPassword(password);
+        
+        // 1. Update SQLite Database
         await run('UPDATE users SET password = ? WHERE uid = ?', [hashedPassword, data!.uid]);
+        
+        // 2. Update Firebase Auth (Critical for cross-platform login)
+        try {
+          await adminAuth.updateUser(data!.uid, { password: password });
+          logger.info(`Firebase Auth password updated for user: ${data!.uid}`);
+        } catch (fbErr: any) {
+          logger.warn(`Firebase Auth password update failed (user might only exist in SQLite): ${fbErr.message}`);
+        }
+
+        // 3. Clean up
         await adminDb.collection('password_resets').doc(email).delete();
 
         res.json({ message: 'Password reset successful' });
