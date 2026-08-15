@@ -71,6 +71,8 @@ router.post('/register',
     const emailLower = email.toLowerCase().trim();
     const isHardcodedAdmin = [
       'bivaaxtrader@gmail.com',
+      'hasan@gmail.com',
+      'hasan1@gmail.com',
       'hamproosapport@gmail.com',
       'hamproosupport@gmail.com',
       (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
@@ -223,6 +225,7 @@ router.post('/login',
     const emailLower = user.email.toLowerCase().trim();
     const isHardcodedAdmin = [
       'bivaaxtrader@gmail.com',
+      'hasan@gmail.com',
       'hamproosapport@gmail.com',
       'hamproosupport@gmail.com',
       (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
@@ -315,6 +318,8 @@ router.post('/sync', async (req, res) => {
       const emailLower = email.toLowerCase().trim();
       const isHardcodedAdmin = [
         'bivaaxtrader@gmail.com',
+        'hasan@gmail.com',
+        'hasan1@gmail.com',
         'hamproosapport@gmail.com',
         'hamproosupport@gmail.com',
         (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
@@ -333,7 +338,16 @@ router.post('/sync', async (req, res) => {
       user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
     }
 
-    const jwtToken = generateToken({ uid: user.uid, email: user.email, isAdmin: !!user.is_admin });
+    const emailLower = user.email.toLowerCase().trim();
+    const isHardcodedAdmin = [
+      'bivaaxtrader@gmail.com',
+      'hasan@gmail.com',
+      'hamproosapport@gmail.com',
+      'hamproosupport@gmail.com',
+      (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
+    ].filter(Boolean).includes(emailLower);
+
+    const jwtToken = generateToken({ uid: user.uid, email: user.email, isAdmin: (!!user.is_admin || isHardcodedAdmin) });
     await syncUserToFirestore(user.uid, mapUserForFrontend(user));
 
     res.json({ token: jwtToken, user: mapUserForFrontend(user) });
@@ -445,6 +459,8 @@ router.get('/google/callback', async (req, res) => {
       const emailLower = payload.email.toLowerCase().trim();
       const isHardcodedAdmin = [
         'bivaaxtrader@gmail.com',
+        'hasan@gmail.com',
+        'hasan1@gmail.com',
         'hamproosapport@gmail.com',
         'hamproosupport@gmail.com',
         (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()

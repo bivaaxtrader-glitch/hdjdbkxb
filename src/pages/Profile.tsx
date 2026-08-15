@@ -199,7 +199,12 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [kycStatus, setKycStatus] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'invite' | 'transactions'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'invite' | 'transactions'>(() => {
+    const path = window.location.pathname;
+    if (path.includes('/invite')) return 'invite';
+    if (path.includes('/transactions')) return 'transactions';
+    return 'info';
+  });
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isFetchingTransactions, setIsFetchingTransactions] = useState(false);
   
@@ -652,7 +657,7 @@ export default function ProfilePage() {
         {/* HORIZONTAL SWAP TABS */}
         <div className="flex border-b border-gray-100 bg-white sticky top-[53px] z-20">
           <button 
-            onClick={() => { setActiveTab('info'); setShowKycFlow(false); }} 
+            onClick={() => { setActiveTab('info'); navigate('/profile/info'); setShowKycFlow(false); }} 
             className={`flex-1 text-center py-4 text-sm sm:text-base font-black transition-all relative ${
               activeTab === 'info' && !showKycFlow
                 ? 'text-gray-900 border-b-2 border-gray-900' 
@@ -662,7 +667,7 @@ export default function ProfilePage() {
             Account Details
           </button>
           <button 
-            onClick={() => { setActiveTab('invite'); setShowKycFlow(false); }} 
+            onClick={() => { setActiveTab('invite'); navigate('/profile/invite'); setShowKycFlow(false); }} 
             className={`flex-1 text-center py-4 text-sm sm:text-base font-black transition-all relative ${
               activeTab === 'invite' && !showKycFlow
                 ? 'text-gray-900 border-b-2 border-gray-900' 
@@ -672,7 +677,7 @@ export default function ProfilePage() {
             Invite Friends
           </button>
           <button 
-            onClick={() => { setActiveTab('transactions'); setShowKycFlow(false); }} 
+            onClick={() => { setActiveTab('transactions'); navigate('/profile/transactions'); setShowKycFlow(false); }} 
             className={`flex-1 text-center py-4 text-sm sm:text-base font-black transition-all relative ${
               activeTab === 'transactions' && !showKycFlow
                 ? 'text-gray-900 border-b-2 border-gray-900' 

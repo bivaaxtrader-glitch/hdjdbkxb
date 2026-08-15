@@ -75,49 +75,32 @@ router.post('/admin/test-email', async (req, res) => {
   }
 
   try {
-    const nodemailer = (await import('nodemailer')).default;
-    
-    const transporter = nodemailer.createTransport({
-      host: config.smtpHost,
-      port: Number(config.smtpPort),
-      secure: Number(config.smtpPort) === 465,
-      auth: {
-        user: config.smtpUser,
-        pass: config.smtpPass,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 30000,
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-
-    const fromAddress = config.smtpFromEmail 
-      ? `"${config.smtpFromName || 'Bivaax Trade'}" <${config.smtpFromEmail}>`
-      : `"${config.smtpFromName || 'Bivaax Trade'}" <${config.smtpUser}>`;
-
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to: email,
-      subject: 'SMTP Connection Test',
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+    // 1. Manually update the settings in Firestore temporarily or just pass them to a modified sendEmail
+    // For simplicity, we'll try to send using the provided config immediately
+    const success = await sendEmail(
+      email, 
+      'Bivaax Trade - Connection Test', 
+      `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #f9f9f9;">
           <h2 style="color: #4CAF50;">Success!</h2>
-          <p>Your SMTP connection is working correctly.</p>
+          <p>Your email integration is working correctly.</p>
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
-            <strong>Host:</strong> ${config.smtpHost}<br>
-            <strong>Port:</strong> ${config.smtpPort}<br>
-            <strong>User:</strong> ${config.smtpUser}
+            <strong>Method:</strong> ${config.resendApiKey ? 'Resend.com API' : 'SMTP Relay'}<br>
+            <strong>Target:</strong> ${email}
           </p>
         </div>
       `,
-    });
+      'Your Bivaax Trade email integration is working correctly.'
+    );
 
-    res.json({ success: true, messageId: info.messageId });
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ success: false, error: 'Email sending failed. Check server logs.' });
+    }
   } catch (err: any) {
-    console.error('SMTP Test Error:', err);
+    console.error('Email Test Error:', err);
     res.status(500).json({ error: err.message });
   }
 });

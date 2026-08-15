@@ -720,7 +720,10 @@ export default function App() {
               <Route path="/help-center" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />
               <Route path="/support" element={<RequireAuth user={user}><ClientSupportCenter /></RequireAuth>} />
               <Route path="/docs" element={<DocsPage />} />
-              <Route path="/profile" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
+              <Route path="/profile" element={<Navigate to="/profile/info" replace />} />
+              <Route path="/profile/info" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/invite" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
+              <Route path="/profile/transactions" element={<RequireAuth user={user}><ProfilePage /></RequireAuth>} />
               <Route path="/affiliate" element={<RequireAuth user={user}><AffiliatePage /></RequireAuth>} />
               <Route path="/signals" element={<RequireAuth user={user}><SignalsPage /></RequireAuth>} />
               <Route path="/copytrading" element={<RequireAuth user={user}><CopyTradingPage /></RequireAuth>} />

@@ -145,12 +145,17 @@ export default function AuthPage() {
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
         saveAuth(event.data.token, event.data.user);
         toast.success("Successfully logged in with Google!");
-        navigate('/trade');
+        const redirect = queryParams.get('redirect');
+        if (redirect) {
+          navigate(redirect);
+        } else {
+          navigate('/trade');
+        }
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [navigate]);
+  }, [navigate, queryParams]);
 
   const handleToggleView = (newView: 'login' | 'register') => {
     setError(null);
@@ -372,13 +377,13 @@ export default function AuthPage() {
 
         toast.success("Registration successful!");
         setCharacterState('success');
-        setTimeout(() => navigate('/trade'), 1500);
+        setTimeout(() => navigate(queryParams.get('redirect') || '/trade'), 1500);
 
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         toast.success("Welcome back!");
         setCharacterState('success');
-        setTimeout(() => navigate('/trade'), 1500);
+        setTimeout(() => navigate(queryParams.get('redirect') || '/trade'), 1500);
       }
     } catch (err: any) {
       setError(err.message || 'Operation failed');

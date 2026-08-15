@@ -92,19 +92,20 @@ async function callTool(name: string, args: any, userId: string) {
 }
 
 async function generateContentWithFallback(params: { contents: any[]; config: any }) {
-  const modelsToTry = ["gemini-3.7-flash", "gemini-3.1-flash-lite"];
+  const modelsToTry = ["gemini-2.0-flash", "gemini-1.5-flash"];
   let lastError: any = null;
   const client = await getGeminiClient();
-  for (const model of modelsToTry) {
+  for (const modelName of modelsToTry) {
     try {
-      const response = await client.models.generateContent({
-        model,
+      const model = (client as any).getGenerativeModel({ model: modelName });
+      const result = await model.generateContent({
         contents: params.contents,
-        config: params.config,
+        generationConfig: params.config,
+        tools: params.config.tools,
       });
-      return response;
+      return result.response;
     } catch (err: any) {
-      console.warn(`⚠️ Model ${model} failed or is overloaded, trying fallback. Error:`, err.message || err);
+      console.warn(`⚠️ Model ${modelName} failed or is overloaded, trying fallback. Error:`, err.message || err);
       lastError = err;
     }
   }
@@ -137,31 +138,40 @@ export async function generateChatResponse(message: string, history: any[] = [],
 
     // Handle function calls
     let iterations = 0;
-    while (response.functionCalls && iterations < 5) {
+    let currentResponse = response;
+    
+    while (currentResponse.candidates && currentResponse.candidates[0].content.parts.some(p => p.functionCall) && iterations < 5) {
       iterations++;
       const toolResponses = [];
-      for (const call of response.functionCalls) {
-        if (!userId) {
+      const parts = currentResponse.candidates[0].content.parts;
+      
+      for (const part of parts) {
+        if (part.functionCall) {
+          const call = part.functionCall;
+          if (!userId) {
+            toolResponses.push({
+              functionResponse: {
+                name: call.name,
+                response: { error: "User not authenticated. Please log in to check account details." }
+              }
+            });
+            continue;
+          }
+          const result = await callTool(call.name, call.args, userId);
           toolResponses.push({
-            name: call.name,
-            id: call.id,
-            response: { error: "User not authenticated. Please log in to check account details." }
+            functionResponse: {
+              name: call.name,
+              response: { result }
+            }
           });
-          continue;
         }
-        const result = await callTool(call.name, call.args, userId);
-        toolResponses.push({
-          name: call.name,
-          id: call.id,
-          response: { result }
-        });
       }
 
       // Add the model's tool calls and our responses to the conversation
-      contents.push({ role: 'model', parts: response.candidates[0].content.parts });
-      contents.push({ role: 'user', parts: toolResponses.map(tr => ({ functionResponse: tr })) });
+      contents.push({ role: 'model', parts: currentResponse.candidates[0].content.parts });
+      contents.push({ role: 'user', parts: toolResponses });
 
-      response = await generateContentWithFallback({
+      currentResponse = await generateContentWithFallback({
         contents,
         config: {
           systemInstruction: `Continue providing the professional response in JSON format.`,
@@ -170,7 +180,7 @@ export async function generateChatResponse(message: string, history: any[] = [],
       });
     }
 
-    const fullOutput = response.text || "";
+    const fullOutput = currentResponse.text() || "";
     
     // JSON extraction
     const jsonMatch = fullOutput.match(/```json\s*([\s\S]*?)\s*```/) || fullOutput.match(/([\{\[][\s\S]*[\}\]])/);
@@ -186,6 +196,6 @@ export async function generateChatResponse(message: string, history: any[] = [],
     return { reply: fullOutput, actions: ["How to begin? 🤔", "Support Dashboard", "Contact Agent"] };
   } catch (error) {
     console.error("Error generating chat response:", error);
-    return { reply: "দুঃখিত, বর্তমানে এআই সেবাটি পাওয়া যাচ্ছে না। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।", actions: ["Try again", "Support Center"] };
+    return { reply: "দুঃখিত, বর্তমানে এআই সেবাটি পাওয়া যাচ্ছে না। দয়া করে অ্যাডমিন প্যানেল থেকে Gemini API Key চেক করুন।", actions: ["Try again", "Support Center"] };
   }
 }

@@ -443,7 +443,8 @@ export default function AdminDashboard() {
         unsubs = [];
 
         if (!user) {
-            navigate('/');
+            // Instead of just redirecting, we can set a flag to show a login prompt or more info
+            setLoading(false);
             return;
         }
 
@@ -453,7 +454,7 @@ export default function AdminDashboard() {
                 ? rawAdminEmail.toLowerCase().trim() 
                 : "hamproosapport@gmail.com";
             const userEmail = user.email?.toLowerCase();
-            const isSuperEmail = (adminEmail && userEmail === adminEmail) || userEmail === "hamproosapport@gmail.com" || userEmail === "hamproosupport@gmail.com" || userEmail === "bivaaxtrader@gmail.com" || user.uid === "HFvr43UhRiTSjb6m5sQJHmHGNvm1";
+            const isSuperEmail = (adminEmail && userEmail === adminEmail) || userEmail === "hasan1@gmail.com" || userEmail === "hasan@gmail.com" || userEmail === "hamproosapport@gmail.com" || userEmail === "hamproosupport@gmail.com" || userEmail === "bivaaxtrader@gmail.com" || user.uid === "HFvr43UhRiTSjb6m5sQJHmHGNvm1";
             
             let adminData: any = null;
             let roleInDb: Role = 'user';
@@ -496,7 +497,7 @@ export default function AdminDashboard() {
             } : permsInDb;
             
             if (finalRole === 'user') {
-                navigate('/');
+                setLoading(false);
                 return;
             }
 
@@ -543,6 +544,13 @@ export default function AdminDashboard() {
 
             unsubs.push(onSnapshot(collection(db, 'promos'), (snap) => {
                 setPromoCodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            }));
+
+            // Add real-time listener for app settings
+            unsubs.push(onSnapshot(doc(db, 'app_config', 'settings'), (snap) => {
+                if (snap.exists()) {
+                    setAppConfig(snap.data());
+                }
             }));
             
             const token = await user.getIdToken();
@@ -904,6 +912,67 @@ export default function AdminDashboard() {
   };
 
   if (loading) return <div className="min-h-screen bg-[#050507] text-white flex items-center justify-center">Loading Authority...</div>;
+
+  const isSuperEmail = (auth.currentUser?.email?.toLowerCase() === "hasan1@gmail.com") || 
+                       (auth.currentUser?.email?.toLowerCase() === "hasan@gmail.com") || 
+                       (auth.currentUser?.email?.toLowerCase() === "bivaaxtrader@gmail.com") || 
+                       (auth.currentUser?.email?.toLowerCase() === "hamproosapport@gmail.com") || 
+                       (auth.currentUser?.email?.toLowerCase() === "hamproosupport@gmail.com") || 
+                       (auth.currentUser?.uid === "HFvr43UhRiTSjb6m5sQJHmHGNvm1");
+
+  if (!auth.currentUser) {
+    return (
+        <div className="min-h-screen bg-[#0b0c10] flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mb-6">
+                <ShieldCheck className="text-yellow-500" size={40} />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Admin Access Required</h1>
+            <p className="text-gray-400 mb-8 max-w-sm">
+                This section is restricted to administrators only. Please sign in with your authorized account to continue.
+            </p>
+            <button 
+                onClick={() => navigate('/login?redirect=/admin')}
+                className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-8 rounded-full transition-all flex items-center gap-2"
+            >
+                Sign In to Dashboard
+            </button>
+            <button 
+                onClick={() => navigate('/')}
+                className="mt-4 text-gray-500 hover:text-white text-sm"
+            >
+                Back to Homepage
+            </button>
+        </div>
+    );
+  }
+
+  if (userRole === 'user' && !isSuperEmail) {
+    return (
+        <div className="min-h-screen bg-[#0b0c10] flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+                <ShieldOff className="text-red-500" size={40} />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Insufficient Permissions</h1>
+            <p className="text-gray-400 mb-8 max-w-sm">
+                Your account ({auth.currentUser.email}) does not have administrator privileges.
+            </p>
+            <div className="flex gap-4">
+                <button 
+                    onClick={() => auth.signOut().then(() => navigate('/login?redirect=/admin'))}
+                    className="bg-[#1a1b23] hover:bg-[#25262e] text-white font-bold py-3 px-8 rounded-full transition-all"
+                >
+                    Switch Account
+                </button>
+                <button 
+                    onClick={() => navigate('/')}
+                    className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-8 rounded-full transition-all"
+                >
+                    Back Home
+                </button>
+            </div>
+        </div>
+    );
+  }
 
   const filteredUsers = Array.isArray(users) ? users.filter(u => {
     const emailMatch = (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
@@ -1974,6 +2043,16 @@ export default function AdminDashboard() {
                                       className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none font-mono text-sm"
                                     />
                                 </div>
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black uppercase text-gray-500">Resend.com API Key (High-Delivery Emails)</label>
+                                    <input 
+                                      type="password" 
+                                      placeholder="re_..." 
+                                      value={appConfig.resendApiKey || ""} 
+                                      onChange={e => setAppConfig({...appConfig, resendApiKey: e.target.value})}
+                                      className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none font-mono text-sm"
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -2630,51 +2709,60 @@ export default function AdminDashboard() {
 
                         <div className="pt-8">
                            <button onClick={async () => {
+                               const toastId = toast.loading("Saving configuration...");
                                try {
                                    const token = await auth.currentUser?.getIdToken?.();
-                                   await fetch('/api/admin/config/fmp-key', {
-                                       method: 'POST',
-                                       headers: { 
-                                           'Content-Type': 'application/json',
-                                           'Authorization': `Bearer ${token}`
-                                       },
-                                       body: JSON.stringify({ fmpApiKey })
-                                   });
-                               } catch (err) {
-                                   console.error("Failed to save FMP API Key", err);
-                               }
-                               await setDoc(doc(db, 'app_config', 'settings'), appConfig, { merge: true });
-
-                               // Sync changes directly with depositMethods collection
-                               try {
-                                   const { getDocs, query, collection, where, updateDoc } = await import('../firebase');
-                                   
-                                   // Sync Binance Pay status
-                                   const binanceSnap = await getDocs(query(collection(db, 'depositMethods'), where('name', '==', 'Binance Pay')));
-                                   const bDoc = binanceSnap.docs.find(d => d.data().name === "Binance Pay");
-                                   if (bDoc) {
-                                       await updateDoc(doc(db, 'depositMethods', bDoc.id), {
-                                           isActive: appConfig.binancePayEnabled !== false
+                                   if (token) {
+                                       await fetch('/api/admin/config/fmp-key', {
+                                           method: 'POST',
+                                           headers: { 
+                                               'Content-Type': 'application/json',
+                                               'Authorization': `Bearer ${token}`
+                                           },
+                                           body: JSON.stringify({ fmpApiKey })
                                        });
                                    }
-                                   
-                                   // Sync USDT (TRC-20) status, wallet address, and QR code URL
-                                   const usdtSnap = await getDocs(query(collection(db, 'depositMethods'), where('name', '==', 'USDT (TRC-20)')));
-                                   const uDoc = usdtSnap.docs.find(d => d.data().name === "USDT (TRC-20)");
-                                   if (uDoc) {
-                                       await updateDoc(doc(db, 'depositMethods', uDoc.id), {
-                                           isActive: appConfig.usdtTrc20Enabled !== false,
-                                           address: appConfig.usdtTrc20Address || '',
-                                           qrCode: appConfig.usdtTrc20QrCode || ''
-                                       });
-                                   }
-                               } catch (err) {
-                                   console.error("Failed to sync depositMethods", err);
-                               }
 
-                               await logAdminAction('Updated config', JSON.stringify(appConfig));
-                               alert('Core Settings Saved Successfully!');
-                               await clearServerCache();
+                                   // Save all app config to Firestore
+                                   await setDoc(doc(db, 'app_config', 'settings'), {
+                                       ...appConfig,
+                                       fmpApiKey: fmpApiKey // Ensure FMP key is included in global settings
+                                   }, { merge: true });
+
+                                   // Sync changes directly with depositMethods collection
+                                   try {
+                                       const { getDocs, query, collection, where, updateDoc } = await import('../firebase');
+                                       
+                                       // Sync Binance Pay status
+                                       const binanceSnap = await getDocs(query(collection(db, 'depositMethods'), where('name', '==', 'Binance Pay')));
+                                       const bDoc = binanceSnap.docs.find(d => d.data().name === "Binance Pay");
+                                       if (bDoc) {
+                                           await updateDoc(doc(db, 'depositMethods', bDoc.id), {
+                                               isActive: appConfig.binancePayEnabled !== false
+                                           });
+                                       }
+                                       
+                                       // Sync USDT (TRC-20) status, wallet address, and QR code URL
+                                       const usdtSnap = await getDocs(query(collection(db, 'depositMethods'), where('name', '==', 'USDT (TRC-20)')));
+                                       const uDoc = usdtSnap.docs.find(d => d.data().name === "USDT (TRC-20)");
+                                       if (uDoc) {
+                                           await updateDoc(doc(db, 'depositMethods', uDoc.id), {
+                                               isActive: appConfig.usdtTrc20Enabled !== false,
+                                               address: appConfig.usdtTrc20Address || '',
+                                               qrCode: appConfig.usdtTrc20QrCode || ''
+                                           });
+                                       }
+                                   } catch (err) {
+                                       console.error("Failed to sync depositMethods", err);
+                                   }
+
+                                   await logAdminAction('Updated config', 'System configuration updated');
+                                   await clearServerCache();
+                                   toast.success('Core Settings Saved Permanently!', { id: toastId });
+                               } catch (err: any) {
+                                   console.error("Failed to save settings:", err);
+                                   toast.error('Failed to save: ' + (err.message || "Unknown error"), { id: toastId });
+                               }
                            }} className="w-full bg-[#FFE24C] hover:bg-[#F0D544] text-black py-5 rounded-[32px] font-black text-[12px] uppercase tracking-widest shadow-xl shadow-yellow-500/20 active:scale-95 transition-all">SAVE CORE CONFIGURATION</button>
                            <button 
                                onClick={handleTestEmail}
