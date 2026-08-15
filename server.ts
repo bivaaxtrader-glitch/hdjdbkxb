@@ -121,6 +121,194 @@ async function startServer() {
     res.status(404).json({ error: 'API endpoint not found', path: req.path });
   });
 
+  // SEO: robots.txt (Served with high priority before wildcard handlers)
+  app.get('/robots.txt', (req, res) => {
+    res.type('text/plain');
+    res.send(`User-agent: *
+
+# Allow crawling of public pages & news
+Allow: /$
+Allow: /about-us$
+Allow: /docs$
+Allow: /news/
+Allow: /page/
+
+# Allow crawling of assets & bundles required for Google page rendering
+Allow: /assets/
+Allow: /public/
+Allow: /images/
+Allow: /favicon.jpg
+Allow: /icon-512.png
+Allow: /manifest.json
+
+# Disallow authentication & private accounts
+Disallow: /login
+Disallow: /register
+Disallow: /signup
+Disallow: /trade
+Disallow: /leaderboard
+Disallow: /promotions
+Disallow: /calendar
+Disallow: /tournaments
+Disallow: /education
+Disallow: /statuses
+Disallow: /help-center
+Disallow: /support
+Disallow: /profile
+Disallow: /affiliate
+Disallow: /signals
+Disallow: /copytrading
+Disallow: /crypto-deposit
+Disallow: /mfs-deposit
+Disallow: /deposit/
+Disallow: /Bivaaxpay
+
+# Disallow admin panels & sensitive support interfaces
+Disallow: /admin
+Disallow: /support-center
+
+# Disallow all backend API endpoints & internal system logic
+Disallow: /api/
+
+# Specify the absolute URL to the sitemap
+Sitemap: https://bivaax.com/sitemap.xml`);
+  });
+
+  // SEO: sitemap.xml (Served with high priority before wildcard handlers)
+  app.get('/sitemap.xml', (req, res) => {
+    res.type('application/xml');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+  <!-- Core Landing Pages -->
+  <url>
+    <loc>https://bivaax.com/</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/about-us</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/docs</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- News & Educational Articles (Dynamic) -->
+  <url>
+    <loc>https://bivaax.com/news/chart-basics</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/chart-scale</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/market-overview</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/history-nav</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/new-mechanics</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/trend-analysis</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/social-trading</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/smart-signals</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/crypto-profits</loc>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/news/deposit-bonus-50</loc>
+    <lastmod>2026-08-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Static Information & Legal Pages (Dynamic) -->
+  <url>
+    <loc>https://bivaax.com/page/contact</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/page/legal-agreement</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/page/risk-disclosure</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/page/privacy-policy</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/page/terms-of-service</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/page/aml-policy</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bivaax.com/page/payment-methods</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>`);
+  });
+
   // Vite middleware
   if (process.env.NODE_ENV !== "production") {
     console.log('📦 Initializing Vite middleware...');
@@ -140,60 +328,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
-
-  // SEO: robots.txt
-  app.get('/robots.txt', (req, res) => {
-    res.type('text/plain');
-    res.send(`User-agent: *
-Allow: /
-Disallow: /admin
-Disallow: /api/
-
-Sitemap: https://market.bivaax.trade/sitemap.xml`);
-  });
-
-  // SEO: sitemap.xml
-  app.get('/sitemap.xml', (req, res) => {
-    res.type('application/xml');
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://market.bivaax.trade/</loc>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://market.bivaax.trade/trade</loc>
-    <changefreq>always</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://market.bivaax.trade/affiliate</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://market.bivaax.trade/login</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://market.bivaax.trade/register</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://market.bivaax.trade/docs</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://market.bivaax.trade/about-us</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-</urlset>`);
-  });
 
   // Centralized Error Handler
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

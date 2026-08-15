@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT,
   nickname TEXT,
   photo_url TEXT,
-  password TEXT,
   password_hash TEXT,
   real_balance NUMERIC DEFAULT '0.00',
   demo_balance NUMERIC DEFAULT '10000.00',

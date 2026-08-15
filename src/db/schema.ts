@@ -8,7 +8,7 @@ export const users = sqliteTable('users', {
   displayName: text('display_name'),
   nickname: text('nickname'),
   photoURL: text('photo_url'),
-  password: text('password'),
+  passwordHash: text('password_hash'),
   realBalance: numeric('real_balance').default('0.00'),
   demoBalance: numeric('demo_balance').default('10000.00'),
   currency: text('currency').default('USD'),

@@ -59,6 +59,44 @@ export default function AboutUs() {
         description="Learn more about Bivaax Trading, a world-class binary options platform. Discover our mission, values, and commitment to providing high-quality trading services."
         keywords="about Bivaax, Bivaax mission, Bivaax trading history, binary options broker info"
       />
+
+      {/* Dynamic AboutPage Schema.org Structured Data */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "AboutPage",
+          "name": tr.title,
+          "description": "Learn more about Bivaax Trading, a world-class binary options platform. Discover our mission, values, and commitment to providing high-quality trading services.",
+          "url": typeof window !== "undefined" ? window.location.href : "https://bivaax.com/about-us",
+          "publisher": {
+            "@type": "Organization",
+            "name": "Bivaax"
+          }
+        })}
+      </script>
+
+      {/* Breadcrumb Schema */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://bivaax.com"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "About Us",
+              "item": "https://bivaax.com/about-us"
+            }
+          ]
+        })}
+      </script>
+
       <button 
         onClick={() => navigate('/')}
         className="flex items-center gap-2 text-gray-400 hover:text-white mb-8 transition-colors"

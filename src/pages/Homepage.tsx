@@ -107,54 +107,9 @@ export default function Homepage() {
         title="Bivaax Trade | High Yield Binary Options Trading in Bangladesh"
         description="Bivaax is the most reliable binary options platform in Bangladesh. Trade global markets with up to 95% payout, secure bKash/Nagad withdrawals, and 24/7 support."
         keywords="Bivaax Bangladesh, Bivaax trade BD, Bivaax trading, binary options BD, online trading platform Bangladesh, bKash trading, Nagad deposit trade, earn money online"
+        faqData={faqData}
       />
       
-      {/* Structured Data for SEO */}
-      <script type="application/ld+json">
-        {JSON.stringify([
-          faqSchema,
-          {
-            "@context": "https://schema.org",
-            "@type": "SoftwareApplication",
-            "name": "Bivaax Trading Platform Bangladesh",
-            "operatingSystem": "Web, Android, iOS",
-            "applicationCategory": "FinanceApplication",
-            "aggregateRating": {
-              "@type": "AggregateRating",
-              "ratingValue": "4.8",
-              "ratingCount": "983104"
-            },
-            "offers": {
-              "@type": "Offer",
-              "price": "0",
-              "priceCurrency": "USD"
-            }
-          },
-          {
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            "name": "Bivaax",
-            "url": "https://Bivaax.trade",
-            "logo": "https://Bivaax.trade/logo.png",
-            "sameAs": [
-              "https://www.facebook.com/Bivaaxtrade",
-              "https://www.instagram.com/Bivaaxtrade",
-              "https://t.me/Bivaaxtrade"
-            ],
-            "description": "Bivaax is a premium high-performance binary options trading platform offering global market access."
-          },
-          {
-            "@context": "https://schema.org",
-            "@type": "Service",
-            "name": "Bivaax Affiliate Program",
-            "description": "Join the Bivaax partnership program and earn up to 80% revenue share from referred traders.",
-            "provider": {
-              "@type": "Organization",
-              "name": "Bivaax"
-            }
-          }
-        ])}
-      </script>
       <AuthModal 
         isOpen={authModal.isOpen} 
         initialView={authModal.view} 

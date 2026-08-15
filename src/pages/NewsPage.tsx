@@ -37,6 +37,64 @@ export default function NewsPage() {
         image={news.imageUrl}
         type="article"
       />
+
+      {/* Dynamic NewsArticle Schema.org Structured Data */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "NewsArticle",
+          "headline": news.title,
+          "description": news.subtitle,
+          "image": [news.imageUrl],
+          "datePublished": "2026-08-03T00:00:00+06:00", // matching the date in news.ts
+          "dateModified": "2026-08-03T00:00:00+06:00",
+          "author": {
+            "@type": "Organization",
+            "name": "Bivaax Trading",
+            "url": "https://bivaax.com"
+          },
+          "publisher": {
+            "@type": "Organization",
+            "name": "Bivaax",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://i.postimg.cc/yYSDXHm2/IMG-20260421-WA0036(2).jpg"
+            }
+          },
+          "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": typeof window !== "undefined" ? window.location.href : `https://bivaax.com/news/${slug}`
+          }
+        })}
+      </script>
+
+      {/* Breadcrumb Schema */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://bivaax.com"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "News",
+              "item": "https://bivaax.com/#news"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": news.title,
+              "item": typeof window !== "undefined" ? window.location.href : `https://bivaax.com/news/${slug}`
+            }
+          ]
+        })}
+      </script>
       {/* Hero Header */}
       <div className="relative h-[60vh] min-h-[400px] w-full overflow-hidden">
         <motion.img 

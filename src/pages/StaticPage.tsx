@@ -169,6 +169,43 @@ export default function StaticPage() {
         description={`Read about ${page.title} on Bivaax Trade Platform.`}
         url={typeof window !== 'undefined' ? `${window.location.origin}/page/${slug}` : undefined}
       />
+
+      {/* Structured Data: WebPage Schema */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": page.title,
+          "description": `Read about ${page.title} on Bivaax Trade Platform. Official legal, informational and support documents.`,
+          "url": typeof window !== "undefined" ? window.location.href : `https://bivaax.com/page/${slug}`,
+          "publisher": {
+            "@type": "Organization",
+            "name": "Bivaax"
+          }
+        })}
+      </script>
+
+      {/* Structured Data: BreadcrumbList Schema */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://bivaax.com"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": page.title,
+              "item": typeof window !== "undefined" ? window.location.href : `https://bivaax.com/page/${slug}`
+            }
+          ]
+        })}
+      </script>
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#121316]/80 backdrop-blur-md border-b border-white/5 h-[72px] flex items-center px-4 md:px-8">
         <div className="flex items-center gap-4 flex-1">

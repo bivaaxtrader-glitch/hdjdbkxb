@@ -1,73 +1,91 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, signInWithPopup as fbSignInWithPopup, GoogleAuthProvider as FbGoogleAuthProvider } from "firebase/auth";
+import { 
+  getAuth, 
+  signInWithPopup as fbSignInWithPopup, 
+  GoogleAuthProvider as FbGoogleAuthProvider,
+  signInWithEmailAndPassword as fbSignInWithEmailAndPassword,
+  createUserWithEmailAndPassword as fbCreateUserWithEmailAndPassword,
+  updateProfile as fbUpdateProfile
+} from "firebase/auth";
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyB8miEUU7d5t3DFnhgo37qK_Jsf4t5KLl4",
-  authDomain: "bivaax-31aec.firebaseapp.com",
-  projectId: "bivaax-31aec",
-  storageBucket: "bivaax-31aec.firebasestorage.app",
-  messagingSenderId: "645553787289",
-  appId: "1:645553787289:web:59ff80f839f8446a370308",
-  measurementId: "G-YD969NY4BC"
-};
+import { 
+  getFirestore, 
+  doc as fbDoc, 
+  getDocFromServer,
+  collection as fbCollection,
+  query as fbQuery,
+  getDocs as fbGetDocs,
+  setDoc as fbSetDoc,
+  updateDoc as fbUpdateDoc,
+  addDoc as fbAddDoc,
+  deleteDoc as fbDeleteDoc,
+  onSnapshot as fbOnSnapshot
+} from "firebase/firestore";
+
+import firebaseConfig from "../firebase-applet-config.json";
 
 // Initialize Firebase
 const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const realFirebaseAuth = getAuth(firebaseApp);
+export const dbInstance = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+
+// Test connection
+async function testConnection() {
+  try {
+    await getDocFromServer(fbDoc(dbInstance, 'test', 'connection'));
+    console.log("✅ Firebase connection established");
+  } catch (error: any) {
+    if (error.message?.includes('offline')) {
+      console.error("❌ Firebase appears to be offline. Check configuration.");
+    }
+  }
+}
+testConnection();
 
 import { getAuthToken, clearAuth, saveAuth } from './lib/auth-client.ts';
 
-export enum OperationType {
-  CREATE = 'create',
-  READ = 'read',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  QUERY = 'query',
-  GET = 'get',
-}
-
+// Authentication Wrapper
 export const auth = {
   get currentUser() {
-    const user = localStorage.getItem('bivax_user');
-    if (user) {
-      try {
-        const parsed = JSON.parse(user);
-        return {
-          ...parsed,
-          getIdToken: async () => localStorage.getItem('bivax_token') || ''
-        };
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
+    return realFirebaseAuth.currentUser;
   },
   onAuthStateChanged: (callback: (user: any) => void) => {
-    const handler = () => {
-      const user = localStorage.getItem('bivax_user');
-      if (user) {
-        try {
-          const parsed = JSON.parse(user);
-          callback({
-            ...parsed,
-            getIdToken: async () => localStorage.getItem('bivax_token') || ''
-          });
-        } catch (e) {
-          callback(null);
+    return realFirebaseAuth.onAuthStateChanged(async (fbUser) => {
+      if (fbUser) {
+        // If we have a Firebase user but no local token, or if we want to ensure freshness
+        const localUser = localStorage.getItem('bivax_user');
+        const localToken = localStorage.getItem('bivax_token');
+        
+        if (!localToken || !localUser) {
+          try {
+            const token = await fbUser.getIdToken();
+            const res = await fetch('/api/auth/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              saveAuth(data.token, data.user);
+              callback({ ...fbUser, ...data.user });
+              return;
+            }
+          } catch (e) {
+            console.error("Auth sync failed on state change:", e);
+          }
         }
+        
+        const user = localUser ? JSON.parse(localUser) : null;
+        callback(fbUser ? { ...fbUser, ...user } : null);
       } else {
+        clearAuth();
         callback(null);
       }
-    };
-    window.addEventListener('auth_change', handler);
-    handler();
-    return () => window.removeEventListener('auth_change', handler);
+    });
   },
   signOut: async () => {
-    console.log("signOut called");
+    await realFirebaseAuth.signOut();
     clearAuth();
-    return Promise.resolve();
   }
 } as any;
 
@@ -89,6 +107,7 @@ async function safeJsonResponse(res: Response) {
 }
 
 export const db = {
+  // ... (keeping db proxy for compatibility with existing components)
   collection: (name: string) => ({
     _name: name,
     doc: (id: string) => ({
@@ -170,56 +189,69 @@ export const db = {
 } as any;
 
 export async function signInWithEmailAndPassword(a: any, email: string, pass: string) {
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: pass })
-  });
-  const data = await safeJsonResponse(res);
-  if (data.error) throw new Error(data.error);
-  saveAuth(data.token, data.user);
-  return { 
-    user: {
-      ...data.user,
-      getIdToken: async () => data.token || ''
-    } 
-  };
+  try {
+    const result = await fbSignInWithEmailAndPassword(realFirebaseAuth, email, pass);
+    const token = await result.user.getIdToken();
+    
+    const res = await fetch('/api/auth/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const data = await safeJsonResponse(res);
+    if (data.error) throw new Error(data.error);
+    saveAuth(data.token, data.user);
+    return { 
+      user: {
+        ...data.user,
+        getIdToken: async () => data.token || ''
+      } 
+    };
+  } catch (error: any) {
+    throw error;
+  }
 }
 
 export async function createUserWithEmailAndPassword(a: any, email: string, pass: string) {
-  const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '';
-  const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
-  const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
+  try {
+    const result = await fbCreateUserWithEmailAndPassword(realFirebaseAuth, email, pass);
+    const token = await result.user.getIdToken();
+    
+    const referralCode = localStorage.getItem('referralCode') || localStorage.getItem('referral_code') || '';
+    const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
+    const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
 
-  const res = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      email, 
-      password: pass,
-      referralCode,
-      referralSubId,
-      referralType
-    })
-  });
-  const data = await safeJsonResponse(res);
-  if (data.error) throw new Error(data.error);
-  saveAuth(data.token, data.user);
+    const res = await fetch('/api/auth/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        token, 
+        referralCode,
+        referralSubId,
+        referralType
+      })
+    });
+    const data = await safeJsonResponse(res);
+    if (data.error) throw new Error(data.error);
+    saveAuth(data.token, data.user);
 
-  // Clear referral data
-  localStorage.removeItem('referralCode');
-  localStorage.removeItem('referral_code');
-  localStorage.removeItem('referralSub');
-  localStorage.removeItem('referral_sub_id');
-  localStorage.removeItem('referralType');
-  localStorage.removeItem('referral_type');
+    // Clear referral data
+    localStorage.removeItem('referralCode');
+    localStorage.removeItem('referral_code');
+    localStorage.removeItem('referralSub');
+    localStorage.removeItem('referral_sub_id');
+    localStorage.removeItem('referralType');
+    localStorage.removeItem('referral_type');
 
-  return { 
-    user: {
-      ...data.user,
-      getIdToken: async () => data.token || ''
-    } 
-  };
+    return { 
+      user: {
+        ...data.user,
+        getIdToken: async () => data.token || ''
+      } 
+    };
+  } catch (error: any) {
+    throw error;
+  }
 }
 
 export const signInWithPopup = async (a: any, p: any) => {
@@ -231,7 +263,7 @@ export const signInWithPopup = async (a: any, p: any) => {
     const referralSubId = localStorage.getItem('referralSub') || localStorage.getItem('referral_sub_id') || '';
     const referralType = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || '';
 
-    const res = await fetch('/api/auth/firebase-google', {
+    const res = await fetch('/api/auth/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: idToken, referralCode, referralSubId, referralType })
@@ -258,6 +290,15 @@ export const signInWithPopup = async (a: any, p: any) => {
     throw error;
   }
 };
+
+export enum OperationType {
+  GET = 'get',
+  SET = 'set',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  ADD = 'add',
+  QUERY = 'query'
+}
 
 export function handleFirestoreError(error: any, operation?: OperationType, path?: string, ...args: any[]) {
   console.error(`API Error [${operation}] at ${path}:`, error, args);

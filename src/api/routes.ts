@@ -422,6 +422,11 @@ router.post('/auth/register', async (req, res) => {
 
     if (referredBy) {
       await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);
+      // Sync referrer to Firestore immediately to persist count
+      const updatedReferrer = await get('SELECT * FROM users WHERE uid = ?', [referredBy]);
+      if (updatedReferrer) {
+        syncUserToFirestore(referredBy, mapUserForFrontend(updatedReferrer));
+      }
     }
 
     const user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
@@ -875,60 +880,49 @@ export async function syncKYCRequestsFromFirestore() {
 export async function syncTradesFromFirestore() {
   if (!adminDb) return;
   try {
-    const snapshot = await adminDb.collection('trades').limit(500).get();
+    const snapshot = await adminDb.collection('trades').orderBy('createdAt', 'desc').limit(500).get();
     if (snapshot.empty) return;
 
-    const checkStmt = db.prepare('SELECT id FROM trades WHERE id = ?');
+    const checkStmt = db.prepare('SELECT id FROM trades WHERE firebase_id = ?');
     const insertStmt = db.prepare(`
-      INSERT INTO trades (id, user_id, market_id, amount, direction, entry_price, exit_price, duration, expiry_time, is_demo, status, payout_amount, settled_at, created_at)
+      INSERT INTO trades (firebase_id, user_id, market_id, amount, direction, entry_price, exit_price, duration, expiry_time, is_demo, status, payout_amount, settled_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const updateStmt = db.prepare(`
-      UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE id = ? AND status != ?
+      UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE firebase_id = ? AND status != ?
     `);
 
-    let i = 0;
-    const batchSize = 50;
-    
-    while (i < snapshot.docs.length) {
-      db.prepare('BEGIN').run();
-      try {
-        const batch = snapshot.docs.slice(i, i + batchSize);
-        for (const doc of batch) {
-          const data = doc.data();
-          const tradeId = parseInt(doc.id, 10);
-          if (isNaN(tradeId)) continue;
+    db.prepare('BEGIN').run();
+    try {
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const firebaseId = doc.id;
 
-          const userId = data.userId;
-          const marketId = data.marketId;
-          const amount = data.amount;
-          const direction = data.direction;
-          const entryPrice = data.entryPrice;
-          const exitPrice = data.exitPrice || null;
-          const duration = data.duration;
-          const expiryTime = data.expiryTime;
-          const isDemo = data.isDemo ? 1 : 0;
-          const status = data.status || 'open';
-          const payoutAmount = data.payoutAmount || 0;
-          const settledAt = data.settledAt || null;
-          const createdAt = data.createdAt || Date.now();
+        const userId = data.userId;
+        const marketId = data.marketId;
+        const amount = data.amount;
+        const direction = data.direction;
+        const entryPrice = data.entryPrice;
+        const exitPrice = data.exitPrice || null;
+        const duration = data.duration;
+        const expiryTime = data.expiryTime;
+        const isDemo = data.isDemo ? 1 : 0;
+        const status = data.status || 'open';
+        const payoutAmount = data.payoutAmount || 0;
+        const settledAt = data.settledAt || null;
+        const createdAt = data.createdAt || Date.now();
 
-          const existing = checkStmt.get(tradeId);
-          if (!existing) {
-            insertStmt.run(tradeId, userId, marketId, amount, direction, entryPrice, exitPrice, duration, expiryTime, isDemo, status, payoutAmount, settledAt, createdAt);
-          } else {
-            updateStmt.run(status, exitPrice, payoutAmount, settledAt, tradeId, status);
-          }
+        const existing = checkStmt.get(firebaseId);
+        if (!existing) {
+          insertStmt.run(firebaseId, userId, marketId, amount, direction, entryPrice, exitPrice, duration, expiryTime, isDemo, status, payoutAmount, settledAt, createdAt);
+        } else {
+          updateStmt.run(status, exitPrice, payoutAmount, settledAt, firebaseId, status);
         }
-        db.prepare('COMMIT').run();
-      } catch (txErr) {
-        db.prepare('ROLLBACK').run();
-        logger.error(`[syncTradesFromFirestore] Batch transaction failed: ${txErr}`);
       }
-      
-      i += batchSize;
-      // Yield to event loop between batches
-      await new Promise(resolve => setImmediate(resolve));
+      db.prepare('COMMIT').run();
+    } catch (txErr) {
+      db.prepare('ROLLBACK').run();
+      logger.error(`[syncTradesFromFirestore] Batch transaction failed: ${txErr}`);
     }
   } catch (err: any) {
     logger.error(`[syncTradesFromFirestore] Error: ${err.message}`);
@@ -950,7 +944,7 @@ export async function ensureSeedAdminUser() {
       const uid = 'admin_seed_' + Math.random().toString(36).substring(2, 10);
       const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
       await run(
-        `INSERT INTO users (uid, email, password, display_name, nickname, referral_code, is_admin, real_balance, demo_balance, created_at) 
+        `INSERT INTO users (uid, email, password_hash, display_name, nickname, referral_code, is_admin, real_balance, demo_balance, created_at) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [uid, adminEmail, hashedPassword, 'Bivaax Super Admin', 'Admin', affiliateId, 1, 1000.00, 10000.00, Date.now()]
       );
@@ -976,7 +970,7 @@ export async function ensureSeedAdminUser() {
       }
     } else {
       // User exists, update password and make sure they are admin
-      await run('UPDATE users SET password = ?, is_admin = 1 WHERE email = ?', [hashedPassword, adminEmail]);
+      await run('UPDATE users SET password_hash = ?, is_admin = 1 WHERE email = ?', [hashedPassword, adminEmail]);
       logger.info(`✅ Seed admin user password updated/verified in SQLite.`);
       
       if (adminDb) {
@@ -1131,10 +1125,10 @@ export async function syncAllUsersFromFirestore() {
     const snapshot = await adminDb.collection('users').limit(1000).get();
     if (snapshot.empty) return;
 
-    const checkStmt = db.prepare('SELECT id, real_balance, demo_balance, is_verified, kyc_status, display_name FROM users WHERE uid = ?');
+    const checkStmt = db.prepare('SELECT id, real_balance, demo_balance, is_verified, kyc_status, display_name, password_hash, affiliate_balance, total_affiliate_earnings, referral_count FROM users WHERE uid = ?');
     const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO users (uid, email, password, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO users (uid, email, password_hash, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code, affiliate_balance, total_affiliate_earnings, referral_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let i = 0;
@@ -1152,7 +1146,7 @@ export async function syncAllUsersFromFirestore() {
           const demoBalance = fbData.demoBalance || fbData.demo_balance || '10000.00';
           const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified) ? 1 : 0;
           const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
-          const password = fbData.password || null;
+          const passwordValue = fbData.password_hash || fbData.passwordHash || fbData.password || null;
           const displayName = fbData.displayName || fbData.display_name || '';
           const nickname = fbData.nickname || '';
           const photoURL = fbData.photoURL || fbData.photo_url || '';
@@ -1163,14 +1157,18 @@ export async function syncAllUsersFromFirestore() {
           const referralCode = fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase();
           const referredByUid = fbData.referredBy || fbData.referred_by_uid || null;
           const totalLiveVolume = fbData.totalLiveVolume || fbData.total_live_volume || '0.00';
+          const referralCount = fbData.referralCount || fbData.referral_count || 0;
+          const affiliateBalance = fbData.affiliateBalance || fbData.affiliate_balance || '0.00';
+          const totalAffiliateEarnings = fbData.totalAffiliateEarnings || fbData.total_affiliate_earnings || '0.00';
 
           const user = checkStmt.get(uid) as any;
 
           if (!user) {
             insertStmt.run(
-              uid, email, password, displayName, nickname, photoURL, 
+              uid, email, passwordValue, displayName, nickname, photoURL, 
               realBalance.toString(), demoBalance.toString(), currency, isVerified, is_admin, kycStatus, 
-              referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode
+              referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode,
+              affiliateBalance.toString(), totalAffiliateEarnings.toString(), referralCount
             );
           } else {
             let needsUpdate = false;
@@ -1187,6 +1185,21 @@ export async function syncAllUsersFromFirestore() {
               params.push(demoBalance.toString());
               needsUpdate = true;
             }
+            if (parseFloat(user.affiliate_balance || 0) !== parseFloat(affiliateBalance || 0)) {
+              updates.push('affiliate_balance = ?');
+              params.push(affiliateBalance.toString());
+              needsUpdate = true;
+            }
+            if (parseFloat(user.total_affiliate_earnings || 0) !== parseFloat(totalAffiliateEarnings || 0)) {
+              updates.push('total_affiliate_earnings = ?');
+              params.push(totalAffiliateEarnings.toString());
+              needsUpdate = true;
+            }
+            if (user.referral_count !== referralCount) {
+              updates.push('referral_count = ?');
+              params.push(referralCount);
+              needsUpdate = true;
+            }
             if (user.is_verified !== isVerified) {
               updates.push('is_verified = ?');
               params.push(isVerified);
@@ -1200,6 +1213,11 @@ export async function syncAllUsersFromFirestore() {
             if (displayName && user.display_name !== displayName) {
               updates.push('display_name = ?');
               params.push(displayName);
+              needsUpdate = true;
+            }
+            if (passwordValue && user.password_hash !== passwordValue) {
+              updates.push('password_hash = ?');
+              params.push(passwordValue);
               needsUpdate = true;
             }
 
@@ -1292,22 +1310,31 @@ router.post('/user/sync', async (req, res) => {
       const kycStatus = firestoreData?.kyc_status || firestoreData?.kycStatus || 'unverified';
       const realBalance = firestoreData?.balance || firestoreData?.real_balance || firestoreData?.realBalance || '0.00';
       const demoBalance = firestoreData?.demoBalance || firestoreData?.demo_balance || '10000.00';
+      const passwordValue = firestoreData?.password_hash || firestoreData?.passwordHash || firestoreData?.password || null;
+      const affiliateBalance = firestoreData?.affiliateBalance || firestoreData?.affiliate_balance || '0.00';
+      const totalAffiliateEarnings = firestoreData?.totalAffiliateEarnings || firestoreData?.total_affiliate_earnings || '0.00';
+      const referralCount = firestoreData?.referralCount || firestoreData?.referral_count || 0;
       const createdAt = Date.now();
 
       await run(
-        `INSERT OR IGNORE INTO users (uid, email, display_name, nickname, photo_url, referral_code, real_balance, demo_balance, country, country_code, referred_by_uid, referral_sub_id, referral_type, first_name, last_name, gender, dob, is_verified, kyc_status, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO users (uid, email, password_hash, display_name, nickname, photo_url, referral_code, real_balance, demo_balance, country, country_code, referred_by_uid, referral_sub_id, referral_type, first_name, last_name, gender, dob, is_verified, kyc_status, affiliate_balance, total_affiliate_earnings, referral_count, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          uid, email || '', displayName || '', nickname || '', photoURL || '', affiliateId, realBalance, demoBalance, 
+          uid, email || '', passwordValue, displayName || '', nickname || '', photoURL || '', affiliateId, realBalance, demoBalance, 
           countryName, countryCode || detectedCode, referredBy, referralSubId || null, referralType || null,
           firstName || null, lastName || null, gender || null, dob ? (typeof dob === 'object' ? JSON.stringify(dob) : dob) : null,
-          isVerified, kycStatus, createdAt
+          isVerified, kycStatus, affiliateBalance, totalAffiliateEarnings, referralCount, createdAt
         ]
       );
       logger.info(`Successfully ensured user ${uid} in SQLite`);
       
       if (referredBy) {
         await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);
+        // Sync referrer to Firestore immediately to persist count
+        const updatedReferrer = await get('SELECT * FROM users WHERE uid = ?', [referredBy]);
+        if (updatedReferrer) {
+          syncUserToFirestore(referredBy, mapUserForFrontend(updatedReferrer));
+        }
       }
       
       user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
@@ -1397,7 +1424,35 @@ router.post('/user/sync', async (req, res) => {
         const fsRealBalance = firestoreData.balance !== undefined ? firestoreData.balance : (firestoreData.real_balance !== undefined ? firestoreData.real_balance : firestoreData.realBalance);
         if (fsRealBalance !== undefined && fsRealBalance !== null && parseFloat(fsRealBalance) !== parseFloat(user.real_balance || 0)) {
           updates.push('real_balance = ?');
-          params.push(fsRealBalance);
+          params.push(fsRealBalance.toString());
+          needsUpdate = true;
+        }
+
+        const fsAffiliateBalance = firestoreData.affiliateBalance !== undefined ? firestoreData.affiliateBalance : firestoreData.affiliate_balance;
+        if (fsAffiliateBalance !== undefined && fsAffiliateBalance !== null && parseFloat(fsAffiliateBalance) !== parseFloat(user.affiliate_balance || 0)) {
+          updates.push('affiliate_balance = ?');
+          params.push(fsAffiliateBalance.toString());
+          needsUpdate = true;
+        }
+
+        const fsTotalAffiliateEarnings = firestoreData.totalAffiliateEarnings !== undefined ? firestoreData.totalAffiliateEarnings : firestoreData.total_affiliate_earnings;
+        if (fsTotalAffiliateEarnings !== undefined && fsTotalAffiliateEarnings !== null && parseFloat(fsTotalAffiliateEarnings) !== parseFloat(user.total_affiliate_earnings || 0)) {
+          updates.push('total_affiliate_earnings = ?');
+          params.push(fsTotalAffiliateEarnings.toString());
+          needsUpdate = true;
+        }
+
+        const fsReferralCount = firestoreData.referralCount !== undefined ? firestoreData.referralCount : firestoreData.referral_count;
+        if (fsReferralCount !== undefined && fsReferralCount !== null && parseInt(fsReferralCount) !== parseInt(user.referral_count || 0)) {
+          updates.push('referral_count = ?');
+          params.push(parseInt(fsReferralCount));
+          needsUpdate = true;
+        }
+
+        const fsPasswordHash = firestoreData.password_hash || firestoreData.passwordHash || firestoreData.password;
+        if (fsPasswordHash && user.password_hash !== fsPasswordHash) {
+          updates.push('password_hash = ?');
+          params.push(fsPasswordHash);
           needsUpdate = true;
         }
 
@@ -1424,6 +1479,8 @@ router.post('/user/sync', async (req, res) => {
 
     // Sync user transactions from Firestore to SQLite to guarantee persistence across app updates
     await syncUserTransactions(uid);
+    // Sync user specific trades from Firestore
+    await syncUserSpecificTradesFromFirestore(uid);
 
     const mappedData = mapUserForFrontend(user);
     if (mappedData) {
@@ -1435,6 +1492,57 @@ router.post('/user/sync', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+export async function syncUserSpecificTradesFromFirestore(uid: string) {
+  if (!adminDb || !uid) return;
+  try {
+    const snapshot = await adminDb.collection('trades').where('userId', '==', uid).get();
+    if (snapshot.empty) return;
+
+    const checkStmt = db.prepare('SELECT id FROM trades WHERE firebase_id = ?');
+    const insertStmt = db.prepare(`
+      INSERT INTO trades (firebase_id, user_id, market_id, amount, direction, entry_price, exit_price, duration, expiry_time, is_demo, status, payout_amount, settled_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const updateStmt = db.prepare(`
+      UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE firebase_id = ? AND status != ?
+    `);
+
+    db.prepare('BEGIN').run();
+    try {
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const firebaseId = doc.id;
+
+        const marketId = data.marketId;
+        const amount = data.amount;
+        const direction = data.direction;
+        const entryPrice = data.entryPrice;
+        const exitPrice = data.exitPrice || null;
+        const duration = data.duration;
+        const expiryTime = data.expiryTime;
+        const isDemo = data.isDemo ? 1 : 0;
+        const status = data.status || 'open';
+        const payoutAmount = data.payoutAmount || 0;
+        const settledAt = data.settledAt || null;
+        const createdAt = data.createdAt || Date.now();
+
+        const existing = checkStmt.get(firebaseId);
+        if (!existing) {
+          insertStmt.run(firebaseId, uid, marketId, amount, direction, entryPrice, exitPrice, duration, expiryTime, isDemo, status, payoutAmount, settledAt, createdAt);
+        } else {
+          updateStmt.run(status, exitPrice, payoutAmount, settledAt, firebaseId, status);
+        }
+      }
+      db.prepare('COMMIT').run();
+    } catch (txErr) {
+      db.prepare('ROLLBACK').run();
+      logger.error(`[syncUserSpecificTrades] Failed for ${uid}: ${txErr}`);
+    }
+  } catch (err: any) {
+    logger.error(`[syncUserSpecificTrades] Error: ${err.message}`);
+  }
+}
 
 // 2. Check 2FA Configuration
 router.get('/user/check-2fa', async (req, res) => {
@@ -2854,6 +2962,29 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
       return res.status(400).json({ error: 'This deposit has already been processed.' });
     }
 
+    // SQLite double-spend / duplicate crediting safety check
+    let isAlreadyProcessedInSql = false;
+    let sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${id}%`]) as any;
+    if (!sqlTx && depositData?.orderId) {
+      sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${depositData.orderId}%`]) as any;
+    }
+    if (!sqlTx && depositData?.trxId) {
+      sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND tx_hash = ?', [userId, depositData.trxId]) as any;
+    }
+    if (sqlTx && (sqlTx.status === 'completed' || sqlTx.status === 'success' || sqlTx.status === 'approved')) {
+      isAlreadyProcessedInSql = true;
+    }
+
+    if (isAlreadyProcessedInSql) {
+      logger.warn(`[Deposit Security] Deposit ID ${id} was already processed and credited in SQL transaction ID ${sqlTx.id}. Preventing double-crediting.`);
+      // Ensure Firestore deposit status is updated
+      await adminDb.collection('deposits').doc(id).update({
+        processedByServer: true,
+        status: 'success'
+      });
+      return res.json({ success: true, message: 'Deposit was already processed and credited.' });
+    }
+
     const isSuccessOrApproved = status === 'success' || status === 'approved';
     logger.info(`Processing deposit update for user ${userId}, status: ${status}, amount: ${finalAmountInBase}, isSuccessOrApproved: ${isSuccessOrApproved}`);
 
@@ -3018,6 +3149,20 @@ router.post('/admin/withdrawals/update', requireAuth, async (req: AuthRequest, r
     const withdrawalData = withdrawalDoc.data();
     if (withdrawalData?.status === 'success' || withdrawalData?.status === 'approved' || withdrawalData?.status === 'rejected' || withdrawalData?.status === 'completed') {
       return res.status(400).json({ error: 'This withdrawal has already been processed.' });
+    }
+
+    // SQLite double-spend / duplicate withdrawal processing safety check
+    let isAlreadyProcessedInSql = false;
+    let sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${id}%`]) as any;
+    if (sqlTx && (sqlTx.status === 'completed' || sqlTx.status === 'success' || sqlTx.status === 'approved' || sqlTx.status === 'rejected')) {
+      isAlreadyProcessedInSql = true;
+    }
+
+    if (isAlreadyProcessedInSql) {
+      logger.warn(`[Withdrawal Security] Withdrawal ID ${id} was already processed in SQL transaction ID ${sqlTx.id}. Preventing duplicate actions.`);
+      // Ensure Firestore withdrawal status is updated
+      await adminDb.collection('withdrawals').doc(id).update({ status });
+      return res.json({ success: true, message: 'Withdrawal was already processed.' });
     }
 
     const tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'withdrawal\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, amount]) as any;
@@ -3500,6 +3645,7 @@ router.get('/app_config/settings', async (req, res) => {
       delete responseData.smtpFromEmail;
       delete responseData.smtpFromName;
       delete responseData.fmpApiKey;
+      delete responseData.geminiApiKey;
     }
 
     res.json(responseData);

@@ -484,8 +484,8 @@ function createSelfHealingFirestoreWrapper(realDb: any, mockDb: any): any {
 }
 
 try {
-  let projectId = 'bvaax-trade';
-  let databaseId: string | undefined = undefined;
+  let projectId = 'gen-lang-client-0751918977';
+  let databaseId: string | undefined = 'ai-studio-bivaax-35757849-a9c8-4b69-8132-841aa70fcb62';
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));

@@ -1,16 +1,45 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { get, query } from "../db/mysql-db.ts";
+import { adminDb } from "./firebase-admin.ts";
 
-const GEMINI_API_KEY = "AQ.Ab8RN6KFiSO65DCEo_A8KrqfdZqPtZhR-3BziLaOuhxnK0uMwg";
+let cachedClient: { apiKey: string; client: GoogleGenAI } | null = null;
 
-const ai = new GoogleGenAI({ 
-  apiKey: GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
+async function getGeminiClient(): Promise<GoogleGenAI> {
+  let apiKey = "AQ.Ab8RN6KFiSO65DCEo_A8KrqfdZqPtZhR-3BziLaOuhxnK0uMwg"; // Secure, tested permanent default fallback
+  
+  try {
+    if (adminDb) {
+      const doc = await adminDb.collection('app_config').doc('settings').get();
+      if (doc.exists) {
+        const data = doc.data();
+        if (data && data.geminiApiKey) {
+          const key = data.geminiApiKey.trim();
+          if (key) {
+            apiKey = key;
+          }
+        }
+      }
     }
-  } 
-});
+  } catch (error) {
+    console.error("Error reading geminiApiKey from Firestore:", error);
+  }
+
+  if (cachedClient && cachedClient.apiKey === apiKey) {
+    return cachedClient.client;
+  }
+
+  const client = new GoogleGenAI({ 
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    } 
+  });
+
+  cachedClient = { apiKey, client };
+  return client;
+}
 
 const tools: FunctionDeclaration[] = [
   {
@@ -65,9 +94,10 @@ async function callTool(name: string, args: any, userId: string) {
 async function generateContentWithFallback(params: { contents: any[]; config: any }) {
   const modelsToTry = ["gemini-3.7-flash", "gemini-3.1-flash-lite"];
   let lastError: any = null;
+  const client = await getGeminiClient();
   for (const model of modelsToTry) {
     try {
-      const response = await ai.models.generateContent({
+      const response = await client.models.generateContent({
         model,
         contents: params.contents,
         config: params.config,

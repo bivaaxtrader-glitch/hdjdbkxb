@@ -8877,7 +8877,11 @@ const PROMOTED_ARTICLES = [
             
             <div className="flex-1 overflow-y-auto w-full scrollbar-hide py-4 px-4 pb-20">
               <div className="grid gap-3">
-                {Object.keys(markets).filter(asset => !markets[asset].hidden).sort((a, b) => {
+                {Object.keys(markets).filter(asset => {
+                  if (markets[asset].hidden) return false;
+                  if (isRealMarketClosed(asset)) return false;
+                  return true;
+                }).sort((a, b) => {
                   const isOTC_a = a.includes('(OTC)') || a.includes('Crypto IDX');
                   const isOTC_b = b.includes('(OTC)') || b.includes('Crypto IDX');
                   if (isOTC_a && !isOTC_b) return -1;
@@ -9050,9 +9054,9 @@ const PROMOTED_ARTICLES = [
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto px-5 pt-2 pb-6 custom-scrollbar">
               <div className="flex items-center justify-center gap-1.5 mb-5 text-[12px] font-bold">
-                <span className="text-[#a6aeb9]">{Object.keys(markets).length} in total</span>
+                <span className="text-[#a6aeb9]">{Object.keys(markets).filter(name => !isRealMarketClosed(name) && !markets[name].hidden).length} in total</span>
                 <span className="text-[#a6aeb9] opacity-30">•</span>
-                <span className="text-[#00C980]">{Object.values(markets).filter((m: any) => m.active).length} active</span>
+                <span className="text-[#00C980]">{Object.entries(markets).filter(([name, m]: [string, any]) => !isRealMarketClosed(name) && !m.hidden).length} available</span>
               </div>
 
               {/* Search Bar */}
@@ -9084,7 +9088,11 @@ const PROMOTED_ARTICLES = [
               <div className="flex items-center gap-2 mb-6 overflow-hidden relative">
                 <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pr-8 scroll-smooth" id="category-chips">
                   {["All", "Crypto", "Currencies", "Commodities", "Stocks"].map((cat) => {
-                    const activeMarkets = Object.entries(markets).filter(([_, d]: [string, any]) => !d.hidden);
+                    const activeMarkets = Object.entries(markets).filter(([name, d]: [string, any]) => {
+                      if (d.hidden) return false;
+                      if (isRealMarketClosed(name)) return false;
+                      return true;
+                    });
                     const totalCountInfo = activeMarkets.length;
                     
                     const count = activeMarkets.filter(([name, data]: [string, any]) => {
@@ -9140,6 +9148,7 @@ const PROMOTED_ARTICLES = [
                   const filteredAssets = Object.entries(markets)
                     .filter(([name, data]: [string, any]) => {
                       if (data.hidden) return false;
+                      if (isRealMarketClosed(name)) return false;
                       
                       let matchesSearch = true;
                       if (cleanQuery) {
@@ -12531,17 +12540,25 @@ const PROMOTED_ARTICLES = [
                                         promoCode: appliedPromo,
                                         promoBonus: promoBonus
                                       };
-                                      const depositRes = await fetch('/api/deposit', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ depositData: depositPayload })
+                                      await addDoc(collection(db, 'deposits'), {
+                                        userId: auth.currentUser.uid,
+                                        userEmail: auth.currentUser.email,
+                                        amount: Number(currentAmount),
+                                        currency: userCurrency,
+                                        method: selectedMethod?.name,
+                                        walletNumber: selectedMethod?.walletAddress || '01347249505',
+                                        trxId: paymentTrxId,
+                                        status: 'pending',
+                                        timestamp: Date.now(),
+                                        orderId,
+                                        promoCode: appliedPromo,
+                                        promoBonus: promoBonus
                                       });
-                                      if (!depositRes.ok) throw new Error('Deposit failed');
                                       
                                       toast.success(`Deposit request for ${userCurrency}${depositAmount} submitted successfully!`);
                                       setShowDeposit(false);
                                       setDepositStep("methods");
-                                      return; 
+                                      return;
                                       await addDoc(collection(db, 'deposits'), {
                                         userId: auth.currentUser.uid,
                                         userEmail: auth.currentUser.email,
@@ -13138,19 +13155,15 @@ const PROMOTED_ARTICLES = [
                                    if (auth?.currentUser) {
                                        try {
                                            const baseWithdrawAmount = convertToBase(amount, userCurrency);
-                                           const res = await fetch('/api/withdraw', {
-                                               method: 'POST',
-                                               headers: { 'Content-Type': 'application/json' },
-                                               body: JSON.stringify({
-                                                   userId: auth.currentUser.uid,
-                                                   amount: baseWithdrawAmount,
-                                                   method: selectedMethod?.name,
+                                           await addDoc(collection(db, 'withdrawals'), {
+                                               amount: Number(baseWithdrawAmount),
+                                               method: selectedMethod?.name,
+                                               details: {
                                                    accountHolder: withdrawAccountHolder,
                                                    walletNumber: withdrawAccountNumber,
                                                    userCurrency
-                                               })
+                                               }
                                            });
-                                           if (!res.ok) throw new Error('Withdrawal failed');
                                            toast.success('Withdrawal requested successfully!');
                                            setWithdrawStep("methods");
                                            setWithdrawAmount("");

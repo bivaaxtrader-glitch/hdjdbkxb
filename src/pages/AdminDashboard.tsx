@@ -1953,15 +1953,27 @@ export default function AdminDashboard() {
 
                         <div className="space-y-6 pt-4 border-t border-white/5">
                             <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">API Integrations</h3>
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-black uppercase text-gray-500">Financial Modeling Prep API Key</label>
-                                <input 
-                                  type="text" 
-                                  placeholder="Enter FMP API Key..." 
-                                  value={fmpApiKey} 
-                                  onChange={e => setFmpApiKey(e.target.value)}
-                                  className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none font-mono text-sm"
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black uppercase text-gray-500">Financial Modeling Prep API Key</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Enter FMP API Key..." 
+                                      value={fmpApiKey} 
+                                      onChange={e => setFmpApiKey(e.target.value)}
+                                      className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none font-mono text-sm"
+                                    />
+                                </div>
+                                <div className="space-y-4">
+                                    <label className="text-[10px] font-black uppercase text-gray-500">Google Gemini API Key (Support Team Chatbot)</label>
+                                    <input 
+                                      type="password" 
+                                      placeholder="Enter Gemini API Key (starts with AQ...)" 
+                                      value={appConfig.geminiApiKey || ""} 
+                                      onChange={e => setAppConfig({...appConfig, geminiApiKey: e.target.value})}
+                                      className="w-full bg-[#15161d] border border-[#1a1a24] rounded-3xl px-6 py-4 focus:border-yellow-500 outline-none font-mono text-sm"
+                                    />
+                                </div>
                             </div>
                         </div>
 

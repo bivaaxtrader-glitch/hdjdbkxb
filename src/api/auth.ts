@@ -239,29 +239,77 @@ router.post('/login',
   }
 });
 
-// 2.5 Firebase Google Auth Callback
-router.post('/firebase-google', async (req, res) => {
+// 2.5 Firebase Sync/Verify (Universal)
+router.post('/sync', async (req, res) => {
   try {
     const { token, referralCode, referralSubId, referralType } = req.body;
     if (!token) return res.status(400).json({ error: 'Missing token' });
 
     const decodedToken = await adminAuth.verifyIdToken(token);
-    const { uid: firebaseUid, email, name, picture } = decodedToken;
+    const { uid: firebaseUid, email, name, picture, email_verified } = decodedToken;
 
     if (!email) throw new Error('No email found in token');
 
-    let user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
+    // 1. Try to find user in SQLite by Firebase UID
+    let user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
 
+    // 2. If not found by UID, try to find by Email (for legacy accounts or if SQLite was wiped)
     if (!user) {
-      const uid = generateUid();
-      const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
       
+      // If found by email but UID is different, update UID to match Firebase (Standardization)
+      if (user && user.uid !== firebaseUid) {
+        logger.info(`Migrating user ${email} from legacy UID ${user.uid} to Firebase UID ${firebaseUid}`);
+        await run('UPDATE users SET uid = ? WHERE email = ?', [firebaseUid, email]);
+        // Update references in other tables
+        await run('UPDATE trades SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        await run('UPDATE transactions SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        await run('UPDATE audit_logs SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        await run('UPDATE login_history SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        await run('UPDATE kyc_requests SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        await run('UPDATE tickets SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        await run('UPDATE ticket_messages SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+        
+        user.uid = firebaseUid;
+      }
+    }
+
+    // 3. If still not found in SQLite, try to restore from Firestore
+    if (!user && adminDb) {
+      try {
+        const doc = await adminDb.collection('users').doc(firebaseUid).get();
+        if (doc.exists) {
+          const fbData = doc.data();
+          logger.info(`Restoring user ${email} from Firestore by UID...`);
+          
+          await run(
+            `INSERT INTO users (uid, email, display_name, photo_url, real_balance, demo_balance, is_verified, is_admin, country, country_code, referral_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              firebaseUid, email, fbData.displayName || fbData.display_name || name || '',
+              fbData.photoURL || fbData.photo_url || picture || '',
+              (fbData.realBalance || fbData.real_balance || 0).toString(),
+              (fbData.demoBalance || fbData.demo_balance || 10000).toString(),
+              (fbData.isVerified || fbData.is_verified || email_verified) ? 1 : 0,
+              (fbData.isAdmin || fbData.is_admin) ? 1 : 0,
+              fbData.country || '', fbData.countryCode || fbData.country_code || '',
+              fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase()
+            ]
+          );
+          user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
+        }
+      } catch (e: any) {
+        logger.error(`Firestore restore error: ${e.message}`);
+      }
+    }
+
+    // 4. Create new user if still not found
+    if (!user) {
+      const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
       let referredBy = null;
       if (referralCode) {
         const referrer = await get('SELECT uid FROM users WHERE referral_code = ? OR uid = ?', [referralCode, referralCode]);
-        if (referrer) {
-          referredBy = (referrer as any).uid;
-        }
+        if (referrer) referredBy = (referrer as any).uid;
       }
 
       const emailLower = email.toLowerCase().trim();
@@ -273,16 +321,16 @@ router.post('/firebase-google', async (req, res) => {
       ].filter(Boolean).includes(emailLower);
 
       await run(
-        `INSERT INTO users (uid, email, display_name, photo_url, referral_code, referred_by_uid, referral_sub_id, referral_type, is_admin) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uid, email, name || email.split('@')[0], picture, affiliateId, referredBy, referralSubId || null, referralType || null, isHardcodedAdmin ? 1 : 0]
+        `INSERT INTO users (uid, email, display_name, photo_url, referral_code, referred_by_uid, referral_sub_id, referral_type, is_admin, is_verified) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [firebaseUid, email, name || email.split('@')[0], picture || null, affiliateId, referredBy, referralSubId || null, referralType || null, isHardcodedAdmin ? 1 : 0, email_verified ? 1 : 0]
       );
       
       if (referredBy) {
         await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);
       }
 
-      user = await get('SELECT * FROM users WHERE uid = ?', [uid]);
+      user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
     }
 
     const jwtToken = generateToken({ uid: user.uid, email: user.email, isAdmin: !!user.is_admin });
@@ -290,9 +338,16 @@ router.post('/firebase-google', async (req, res) => {
 
     res.json({ token: jwtToken, user: mapUserForFrontend(user) });
   } catch (err: any) {
-    logger.error('Firebase Google Auth error:', err);
-    res.status(500).json({ error: 'Authentication failed' });
+    logger.error('Auth sync error:', err);
+    res.status(500).json({ error: 'Authentication sync failed' });
   }
+});
+
+// Backward compatibility for Google Login
+router.post('/firebase-google', async (req, res, next) => {
+  // Just proxy to /sync
+  req.url = '/sync';
+  return router(req, res, next);
 });
 
 // 3. Google OAuth URL
