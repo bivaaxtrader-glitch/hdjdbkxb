@@ -5310,8 +5310,10 @@ const PROMOTED_ARTICLES = [
         console.log("Trade settled via socket:", trade);
         
         // Add Binomo-style notification inside the chart/terminal
-        const notifStatus = trade.status === 'win' ? 'won' : (trade.status === 'draw' ? 'draw' : 'lost');
-        const notifAmount = trade.status === 'win' ? trade.payoutAmount : trade.amount;
+        const isWon = trade.status === 'win' || trade.status === 'won' || trade.status === 'profit';
+        const isDraw = trade.status === 'draw';
+        const notifStatus = isWon ? 'won' : (isDraw ? 'draw' : 'lost');
+        const notifAmount = isWon ? (trade.payoutAmount || trade.amount * 1.9) : trade.amount;
         const newNotif = {
             id: trade.id || Math.random().toString(),
             status: notifStatus,
@@ -5319,14 +5321,9 @@ const PROMOTED_ARTICLES = [
             amount: notifAmount,
             timestamp: Date.now()
         };
-        setTradeNotifications(prev => [newNotif, ...prev]);
+        setTradeNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
 
-        // Add toast notification for result
-        if (trade.status === 'win') {
-            toast.success(`Trade Won! +$${trade.payoutAmount.toFixed(2)}`, { icon: '💰' });
-        } else if (trade.status === 'loss') {
-            toast.error(`Trade Lost! -$${trade.amount.toFixed(2)}`, { icon: '💸' });
-        }
+
 
         setActiveTrades(prev => prev.filter(t => t.id !== trade.id));
         setUserTrades(prev => {
@@ -5856,6 +5853,19 @@ const PROMOTED_ARTICLES = [
           } else {
             updateTournamentScore(-trade.amount, false);
           }
+
+          // Trigger result notification for local settlement
+          const notifAmount = won ? returnAmt : trade.amount;
+          const newNotif = {
+              id: trade.id || Math.random().toString(),
+              status: tradeStatus,
+              asset: trade.asset,
+              amount: notifAmount,
+              timestamp: Date.now()
+          };
+          setTradeNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+
+
 
           setUserTrades(prev => {
             const settledTrade = { ...trade, status: tradeStatus, exitPrice: settlePrice, payoutAmount: won ? returnAmt : (isDraw ? trade.amount : 0) };
@@ -6927,23 +6937,23 @@ const PROMOTED_ARTICLES = [
                      exit={{ opacity: 0, x: 20, scale: 0.8 }}
                      className="pointer-events-auto"
                    >
-                     <div className={`flex items-center gap-2.5 h-[40px] min-w-[240px] pr-2 rounded-[6px] shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 overflow-hidden transition-all duration-300 ${notif.status === 'won' ? 'bg-[#FCD535]' : (notif.status === 'draw' ? 'bg-[#eeeeee]' : 'bg-[#33353b]')}`}>
-                        <div className={`ml-1.5 w-[22px] h-[22px] rounded-full flex items-center justify-center text-[12px] font-black shrink-0 ${notif.status === 'won' ? 'bg-white text-[#111111]' : (notif.status === 'draw' ? 'bg-[#111111] text-white' : 'bg-white text-[#111111]')}`}>
+                     <div className={`flex items-center gap-2.5 h-[40px] min-w-[240px] pr-2 rounded-[6px] shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 overflow-hidden transition-all duration-300 ${notif.status === 'won' ? 'bg-[#00C980]' : (notif.status === 'draw' ? 'bg-[#eeeeee]' : 'bg-[#222328] border border-rose-500/30')}`}>
+                        <div className={`ml-1.5 w-[22px] h-[22px] rounded-full flex items-center justify-center text-[12px] font-black shrink-0 ${notif.status === 'won' ? 'bg-white text-[#00C980]' : (notif.status === 'draw' ? 'bg-[#111111] text-white' : 'bg-rose-500/20 text-rose-400')}`}>
                            {tradeNotifications.length - nIdx}
                         </div>
                         
                         <div className="flex-1 flex items-center justify-between gap-4 overflow-hidden">
-                           <span className={`text-[13px] font-black truncate ${notif.status === 'won' ? 'text-[#111111]' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-white')}`}>
+                           <span className={`text-[13px] font-black truncate ${notif.status === 'won' ? 'text-white' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-white')}`}>
                               {notif.asset}
                            </span>
-                           <span className={`text-[14px] font-black shrink-0 ${notif.status === 'won' ? 'text-[#111111]' : (notif.status === 'draw' ? 'text-[#111111]' : (notif.status === 'lost' ? 'text-rose-400' : 'text-white'))}`}>
+                           <span className={`text-[14px] font-black shrink-0 ${notif.status === 'won' ? 'text-white font-extrabold' : (notif.status === 'draw' ? 'text-[#111111]' : (notif.status === 'lost' ? 'text-rose-400 font-extrabold' : 'text-white'))}`}>
                               {notif.status === 'won' ? '+' : (notif.status === 'lost' ? '-' : '+')}{formatWithCurrency(notif.amount, userCurrency)}
                            </span>
                         </div>
 
                         <button 
                           onClick={() => setTradeNotifications(prev => prev.filter(p => p.id !== notif.id))}
-                          className={`p-1 hover:opacity-100 opacity-60 transition-all ${notif.status === 'won' || notif.status === 'draw' ? 'text-[#111111]' : 'text-white'}`}
+                          className={`p-1 hover:opacity-100 opacity-80 transition-all ${notif.status === 'won' ? 'text-white' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-white')}`}
                         >
                            <X size={18} strokeWidth={2.5} />
                         </button>
@@ -7880,18 +7890,18 @@ const PROMOTED_ARTICLES = [
                         exit={{ opacity: 0, scale: 0.8 }}
                         className="pointer-events-auto"
                       >
-                         <div className={`flex items-center gap-2.5 h-[36px] min-w-[200px] max-w-[90vw] pr-2 rounded-[6px] shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 overflow-hidden transition-all duration-300 ${notif.status === 'won' ? 'bg-[#FCD535]' : (notif.status === 'draw' ? 'bg-[#eeeeee]' : 'bg-[#33353b]')}`}>
+                         <div className={`flex items-center gap-2.5 h-[38px] min-w-[200px] max-w-[90vw] pr-2 rounded-[6px] shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 overflow-hidden transition-all duration-300 ${notif.status === 'won' ? 'bg-[#00C980]' : (notif.status === 'draw' ? 'bg-[#eeeeee]' : 'bg-[#222328] border border-rose-500/30')}`}>
                             {/* Counter/Index - Binomo Style circle */}
-                            <div className={`ml-1.5 w-[20px] h-[20px] rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${notif.status === 'won' ? 'bg-white text-[#111111]' : (notif.status === 'draw' ? 'bg-[#111111] text-white' : 'bg-white text-[#111111]')}`}>
+                            <div className={`ml-1.5 w-[20px] h-[20px] rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${notif.status === 'won' ? 'bg-white text-[#00C980]' : (notif.status === 'draw' ? 'bg-[#111111] text-white' : 'bg-rose-500/20 text-rose-400')}`}>
                                {tradeNotifications.length - idx}
                             </div>
                             
                             {/* Text Content */}
                             <div className="flex-1 flex items-center justify-between gap-4 overflow-hidden">
-                               <span className={`text-[12px] font-black truncate max-w-[120px] ${notif.status === 'won' ? 'text-[#111111]' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-white')}`}>
+                               <span className={`text-[12px] font-black truncate max-w-[120px] ${notif.status === 'won' ? 'text-white' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-white')}`}>
                                   {notif.asset}
                                </span>
-                               <span className={`text-[13px] font-black shrink-0 ${notif.status === 'won' ? 'text-[#111111]' : (notif.status === 'draw' ? 'text-[#111111]' : (notif.status === 'lost' ? 'text-rose-400' : 'text-white'))}`}>
+                               <span className={`text-[13px] font-black shrink-0 ${notif.status === 'won' ? 'text-white font-extrabold' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-rose-400 font-extrabold')}`}>
                                   {notif.status === 'won' ? '+' : (notif.status === 'lost' ? '-' : '+')}{formatWithCurrency(notif.amount, userCurrency)}
                                </span>
                             </div>
@@ -7899,7 +7909,7 @@ const PROMOTED_ARTICLES = [
                             {/* Close Button */}
                             <button 
                               onClick={() => setTradeNotifications(prev => prev.filter(p => p.id !== notif.id))}
-                              className={`p-1 hover:opacity-100 opacity-60 transition-all ${notif.status === 'won' || notif.status === 'draw' ? 'text-[#111111]' : 'text-white'}`}
+                              className={`p-1 hover:opacity-100 opacity-80 transition-all ${notif.status === 'won' ? 'text-white' : (notif.status === 'draw' ? 'text-[#111111]' : 'text-white')}`}
                             >
                                <X size={16} strokeWidth={2.5} />
                             </button>

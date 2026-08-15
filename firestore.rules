@@ -57,6 +57,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isSupport();
       allow write: if isOwner(userId) || isAdmin();
+
+      // Transactions subcollection
+      match /transactions/{txId} {
+        allow read, write: if isOwner(userId) || isSupport();
+      }
     }
 
     // 2. Support Tickets & Conversations
