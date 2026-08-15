@@ -391,9 +391,15 @@ export default function ProfilePage() {
     
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (u) {
+        // Fallback: set initial user from auth state immediately so page doesn't hang in loading screen
+        setUser((prev: any) => prev || { uid: u.uid, email: u.email, name: u.displayName || u.email?.split('@')[0] || 'Trader' });
+
         userUnsub = onSnapshot(doc(db, 'users', u.uid), (snap) => {
           if (snap.exists()) {
             setUser({ uid: u.uid, ...snap.data() });
+          } else {
+            // Keep auth user if snapshot doc does not exist to avoid endless spinner
+            setUser((prev: any) => prev || { uid: u.uid, email: u.email, name: u.displayName || u.email?.split('@')[0] || 'Trader' });
           }
         }, (error) => {
           // Only show error if still authenticated
@@ -762,7 +768,7 @@ export default function ProfilePage() {
                     'hamproosupport@gmail.com'
                   ].includes(user?.email?.toLowerCase()?.trim() || '')) && (
                     <div 
-                      onClick={() => navigate('/admin-dashboard')}
+                      onClick={() => navigate('/admin')}
                       className="max-w-md mx-auto mt-4 bg-gradient-to-r from-gray-900 via-gray-800 to-black hover:scale-[1.01] border border-yellow-500/30 rounded-3xl p-4 flex items-center justify-between cursor-pointer group transition-all shadow-[0_4px_20px_rgba(255,226,76,0.1)] active:scale-[0.99]"
                     >
                       <div className="flex items-center gap-4">

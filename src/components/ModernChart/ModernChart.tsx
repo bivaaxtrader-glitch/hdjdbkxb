@@ -52,13 +52,22 @@ export const ModernChart: React.FC = () => {
   const handleResize = useCallback(() => {
     if (containerRef.current && rendererRef.current) {
       const { clientWidth, clientHeight } = containerRef.current;
-      rendererRef.current.setSize(clientWidth, clientHeight);
+      rendererRef.current.setSize(clientWidth || 800, clientHeight || 500);
     }
   }, []);
 
   useEffect(() => {
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (!containerRef.current) return;
+    
+    const observer = new ResizeObserver(() => {
+      handleResize();
+    });
+    
+    observer.observe(containerRef.current);
+    
+    return () => {
+      observer.disconnect();
+    };
   }, [handleResize]);
 
   // 3. Animation Loop (60 FPS)

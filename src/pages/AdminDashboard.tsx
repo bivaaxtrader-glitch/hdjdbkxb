@@ -567,6 +567,7 @@ export default function AdminDashboard() {
             setLoading(false);
         } catch(e) {
             console.error("Admin init error:", e);
+            setLoading(false);
         }
     });
 

@@ -729,6 +729,7 @@ export default function App() {
               <Route path="/signals" element={<RequireAuth user={user}><SignalsPage /></RequireAuth>} />
               <Route path="/copytrading" element={<RequireAuth user={user}><CopyTradingPage /></RequireAuth>} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin-dashboard" element={<AdminDashboard />} />
               <Route path="/support-center" element={<EnterpriseSupportCenter />} />
               <Route path="/about-us" element={<AboutUsPage />} />
               <Route path="/news/:slug" element={<NewsPage />} />

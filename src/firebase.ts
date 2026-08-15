@@ -67,7 +67,12 @@ export const auth = {
             if (res.ok) {
               const data = await res.json();
               saveAuth(data.token, data.user);
-              callback({ ...fbUser, ...data.user });
+              callback({
+                ...data.user,
+                uid: fbUser.uid,
+                email: fbUser.email,
+                getIdToken: (forceRefresh?: boolean) => fbUser.getIdToken(forceRefresh)
+              });
               return;
             }
           } catch (e) {
@@ -76,7 +81,12 @@ export const auth = {
         }
         
         const user = localUser ? JSON.parse(localUser) : null;
-        callback(fbUser ? { ...fbUser, ...user } : null);
+        callback(fbUser ? {
+          ...user,
+          uid: fbUser.uid,
+          email: fbUser.email,
+          getIdToken: (forceRefresh?: boolean) => fbUser.getIdToken(forceRefresh)
+        } : null);
       } else {
         clearAuth();
         callback(null);
