@@ -488,27 +488,49 @@ try {
   let databaseId: string | undefined = 'ai-studio-bivaax-35757849-a9c8-4b69-8132-841aa70fcb62';
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    if (config.projectId) projectId = config.projectId;
-    if (config.firestoreDatabaseId) databaseId = config.firestoreDatabaseId;
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config.projectId) projectId = config.projectId;
+      if (config.firestoreDatabaseId) databaseId = config.firestoreDatabaseId;
+    } catch (e) {
+      console.warn('⚠️ Could not parse firebase-applet-config.json');
+    }
   }
 
   let credential: any = null;
+  let serviceAccountObj: any = null;
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
-      credential = cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT));
+      serviceAccountObj = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      credential = cert(serviceAccountObj);
     } catch (e) {
       console.warn('⚠️ Could not parse FIREBASE_SERVICE_ACCOUNT env var');
     }
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     try {
-      credential = cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY));
+      serviceAccountObj = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+      credential = cert(serviceAccountObj);
     } catch (e) {
       console.warn('⚠️ Could not parse FIREBASE_SERVICE_ACCOUNT_KEY env var');
     }
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
-    credential = cert(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    try {
+      const fileContent = fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8');
+      serviceAccountObj = JSON.parse(fileContent);
+      credential = cert(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    } catch (e) {
+      console.warn('⚠️ Could not parse GOOGLE_APPLICATION_CREDENTIALS file');
+      credential = cert(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    }
+  }
+
+  // Authoritatively use the service account project_id if it exists to support external production hosting
+  if (serviceAccountObj && serviceAccountObj.project_id) {
+    projectId = serviceAccountObj.project_id;
+    // For custom production databases, prioritize explicit database ID envs, falling back to "(default)"
+    databaseId = process.env.FIREBASE_DATABASE_ID || process.env.FIRESTORE_DATABASE_ID || undefined;
+    console.log(`🔑 Service account detected for project: "${projectId}". Using databaseId: "${databaseId || '(default)'}"`);
   }
 
   // Check if running inside Google Cloud Platform (Cloud Run / App Engine)
@@ -536,9 +558,9 @@ try {
     realDb.settings({ ignoreUndefinedProperties: true });
     
     adminDb = createSelfHealingFirestoreWrapper(realDb, createMockDb());
-    console.log(`✅ Firebase Admin initialized with self-healing proxy wrapper.`);
+    console.log(`✅ Firebase Admin initialized with self-healing proxy wrapper for project "${projectId}".`);
   } else {
-    console.warn('ℹ️ Running on external hosting (e.g. Railway) without Google Cloud service account key. Using in-memory fallback database handler.');
+    console.warn('ℹ️ Running on external hosting (e.g. Railway/VPS) without Google Cloud service account key. Using in-memory fallback database handler.');
     adminDb = createMockDb();
     adminAuth = createMockAuth();
   }
