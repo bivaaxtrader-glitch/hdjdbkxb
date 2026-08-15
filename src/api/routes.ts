@@ -91,7 +91,8 @@ router.post('/admin/test-email', async (req, res) => {
           </p>
         </div>
       `,
-      'Your Bivaax Trade email integration is working correctly.'
+      'Your Bivaax Trade email integration is working correctly.',
+      config
     );
 
     if (success) {
@@ -4248,7 +4249,7 @@ router.get('/:collection/:id', async (req, res) => {
 router.patch('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   try {
-    await adminDb.collection(collection).doc(id).update(req.body);
+    await adminDb.collection(collection).doc(id).set(req.body, { merge: true });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

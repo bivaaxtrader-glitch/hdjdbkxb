@@ -3,19 +3,24 @@ import { Resend } from 'resend';
 import { adminDb } from './firebase-admin.ts';
 import logger from './logger.ts';
 
-export async function sendEmail(to: string, subject: string, html: string, text?: string) {
+export async function sendEmail(to: string, subject: string, html: string, text?: string, overrideConfig?: any) {
   try {
-    // 1. Fetch settings from Firestore FIRST (user-controlled)
-    const settingsDoc = await adminDb.collection('app_config').doc('settings').get();
-    const dbConfig = settingsDoc.data() || {};
+    let dbConfig: any = {};
+    if (overrideConfig) {
+      dbConfig = overrideConfig;
+    } else {
+      const settingsDoc = await adminDb.collection('app_config').doc('settings').get();
+      dbConfig = settingsDoc.data() || {};
+    }
 
     const smtpFromEmail = dbConfig.smtpFromEmail || process.env.SMTP_FROM_EMAIL || "bivaaxtrader@gmail.com";
     const smtpFromName = dbConfig.smtpFromName || process.env.SMTP_FROM_NAME || "Bivaax Trade";
 
     // 2. Check for Resend API Key (Highly Recommended for deliverability)
     const resendApiKey = dbConfig.resendApiKey || process.env.RESEND_API_KEY;
+    const isValidResendKey = resendApiKey && typeof resendApiKey === 'string' && resendApiKey.startsWith('re_') && resendApiKey.length > 15;
     
-    if (resendApiKey) {
+    if (isValidResendKey && !overrideConfig) {
       try {
         const resend = new Resend(resendApiKey);
         
@@ -53,6 +58,9 @@ export async function sendEmail(to: string, subject: string, html: string, text?
         }
       } catch (resendErr: any) {
         logger.error('Resend failed, falling back to SMTP:', resendErr);
+        if (overrideConfig) {
+          throw resendErr; // If direct config override was provided, throw error so test-email can show exact failure
+        }
       }
     }
 
@@ -90,7 +98,9 @@ export async function sendEmail(to: string, subject: string, html: string, text?
     };
     
     if (!config.smtpHost || !config.smtpPort || !config.smtpUser || !config.smtpPass) {
-      logger.warn('SMTP configuration is missing. Cannot send email to ' + to);
+      const errMsg = 'SMTP configuration is missing. Cannot send email to ' + to;
+      logger.warn(errMsg);
+      if (overrideConfig) throw new Error(errMsg);
       return false;
     }
 
@@ -128,9 +138,13 @@ export async function sendEmail(to: string, subject: string, html: string, text?
 
     logger.info(`Email sent via SMTP: ${info.messageId}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     logger.error('Error sending email:', error);
     
+    if (overrideConfig) {
+      throw error; // Let the test-email route return the exact SMTP error to the user
+    }
+
     // DEVELOPMENT & TEST RESILIENCY FALLBACK:
     // When both Resend and SMTP transports fail, print the email parameters 
     // to the server console log and return true. This prevents blocking key 

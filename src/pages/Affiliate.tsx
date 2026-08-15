@@ -441,7 +441,7 @@ export default function AffiliatePage() {
   const userCurrency = '$';
   const [activeTab, setActiveTab] = useState<'dashboard' | 'promo-perks' | 'statistics' | 'offers' | 'links' | 'promo' | 'postbacks' | 'payouts' | 'profile' | 'partner-bot' | 'support' | 'support-detail' | 'rules' | 'sub-affiliates'>('dashboard');
   const [subAffiliates, setSubAffiliates] = useState<any[]>([]);
-  const [campaigns, setCampaigns] = useState<{ id: string, name: string, subId: string }[]>([]);
+  const [campaigns, setCampaigns] = useState<{ id: string, name: string, subId: string, landingPage?: string, linkType?: string, isArchived?: boolean, clicks?: number }[]>([]);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newCampaignSubId, setNewCampaignSubId] = useState('');
   const [newCampaignType, setNewCampaignType] = useState('revshare');

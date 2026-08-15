@@ -150,6 +150,22 @@ export const db = {
         } catch (e: any) {
           return { error: e.message };
         }
+      },
+      set: async (data: any) => {
+        try {
+          const token = getAuthToken();
+          const res = await fetch(`/api/${name}/${id}`, {
+            method: 'PATCH',
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+          });
+          return await safeJsonResponse(res);
+        } catch (e: any) {
+          return { error: e.message };
+        }
       }
     }),
     async get(this: any) {
@@ -396,18 +412,30 @@ export const doc = (dbObj: any, ...path: string[]) => {
 
 export const getDoc = (ref: any) => ref && typeof ref.get === 'function' ? ref.get() : Promise.resolve({ exists: () => false, data: () => ({}) });
 export const getDocs = (queryRef: any) => queryRef && typeof queryRef.get === 'function' ? queryRef.get() : Promise.resolve({ docs: [], empty: true, forEach: () => {} });
-export const setDoc = (ref: any, data: any, ...args: any[]) => ref && typeof ref.update === 'function' ? ref.update(data) : Promise.resolve();
+export const setDoc = (ref: any, data: any, ...args: any[]) => ref && typeof ref.set === 'function' ? ref.set(data, ...args) : Promise.resolve();
 export const updateDoc = (ref: any, data: any, ...args: any[]) => ref && typeof ref.update === 'function' ? ref.update(data) : Promise.resolve();
 export const addDoc = async (colRef: any, data: any) => {
   const name = colRef?._name || '';
-  const token = getAuthToken();
-  console.log(`[DEBUG] addDoc for ${name}, token exists: ${!!token}, localStorage keys: ${Object.keys(localStorage)}`);
-  
+  let token = getAuthToken();
+  if (!token && auth.currentUser) {
+      try {
+          token = await auth.currentUser.getIdToken(true);
+      } catch (e) {
+          console.warn("Failed to get fresh Firebase token for addDoc", e);
+      }
+  }
+
+  // If frontend is adding to user's transaction subcollection directly, just mock success
+  // because the actual deposits/withdrawals API will handle creating the transaction record.
+  if (name.includes('/transactions')) {
+      return { id: 'txn_' + Math.random().toString(36).substring(2, 11) };
+  }
+
   let endpoint = `/api/${name}`;
   let method = 'POST';
   let bodyData: any = data;
 
-  if (name === 'deposits' || name === 'transactions') {
+  if (name === 'deposits') {
     endpoint = '/api/wallet/deposit';
   } else if (name === 'withdrawals') {
     endpoint = '/api/wallet/withdraw';

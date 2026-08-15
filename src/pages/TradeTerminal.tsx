@@ -774,7 +774,7 @@ const SidebarTradeHistory = ({
                   const isDraw = priceNum === entryNum;
                   
                   liveStatus = isWon ? 'won' : (isDraw ? 'draw' : 'lost');
-                  const payoutRate = trade.payoutRate || 80;
+                  const payoutRate = (trade as any).payoutRate || 80;
                   liveProfit = isWon ? (trade.amount * (payoutRate / 100)) : (isDraw ? 0 : -trade.amount);
                 }
               }
@@ -825,7 +825,7 @@ const SidebarTradeHistory = ({
                       </div>
                     ) : (
                       <span className={`text-[13px] font-bold ${trade.status === 'won' ? 'text-[#00c980]' : trade.status === 'draw' ? 'text-gray-400' : 'text-[#f45c5c]'}`}>
-                        {trade.status === 'won' ? `+${formatWithCurrency(trade.profit || trade.amount * (trade.payoutRate / 100 || 0.8), userCurrency)}` : trade.status === 'draw' ? formatWithCurrency(0, userCurrency) : `-${formatWithCurrency(trade.amount, userCurrency)}`}
+                        {trade.status === 'won' ? `+${formatWithCurrency(trade.profit || trade.amount * ((trade as any).payoutRate / 100 || 0.8), userCurrency)}` : trade.status === 'draw' ? formatWithCurrency(0, userCurrency) : `-${formatWithCurrency(trade.amount, userCurrency)}`}
                       </span>
                     )}
                   </div>
@@ -1036,6 +1036,7 @@ interface Transaction {
   errorMsg?: string;
   successMsg?: string;
   bonusAmount?: number;
+  timestamp?: number;
 }
 
 const MOCK_TRANSACTIONS: Transaction[] = [
@@ -2105,7 +2106,7 @@ export default function TradeTerminal() {
     | "news"
     | "news-detail"
     | "education"
-    | "copy-trading"
+    | "copy-trading" | "copytrading"
     | "tournaments"
     | "promotions"
     | "support"
@@ -3779,13 +3780,13 @@ const PROMOTED_ARTICLES = [
           }
        }
 
-       if (seriesRef.current && typeof seriesRef.current.setMarkers === 'function') {
+       if (seriesRef.current && typeof (seriesRef.current as any).setMarkers === 'function') {
           chartMarkers.sort((a, b) => {
              const tA = typeof a.time === 'number' ? a.time : 0;
              const tB = typeof b.time === 'number' ? b.time : 0;
              return tA - tB;
           });
-          try { seriesRef.current.setMarkers(chartMarkers); } catch (e) {}
+          try { (seriesRef.current as any).setMarkers(chartMarkers); } catch (e) {}
        }
     } catch (globalError) {
         console.warn("Soft error in refreshIndicators. Attempted applyOptions on removed scale or offline:", globalError);
@@ -4071,7 +4072,7 @@ const PROMOTED_ARTICLES = [
   const [showBottomHistory, setShowBottomHistory] = useState(false);
   const [sidebarTradeTab, setSidebarTradeTab] = useState<"trades" | "history">("trades");
   const [isTradeHistoryVisible, setIsTradeHistoryVisible] = useState(true);
-  const [bottomTab, setBottomTab] = useState<"active" | "closed">("active");
+  const [bottomTab, setBottomTab] = useState<"active" | "closed" | "history">("active");
   const [isBottomPanelMinimized, setIsBottomPanelMinimized] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
 
@@ -4381,7 +4382,7 @@ const PROMOTED_ARTICLES = [
     status?: 'open' | 'won' | 'lost' | 'draw';
     exitPrice?: number;
     closedAt?: number;
-    accountType?: 'real' | 'demo';
+    accountType?: 'real' | 'demo' | 'tournament';
     createdAt: number;
   };
 
@@ -4597,7 +4598,7 @@ const PROMOTED_ARTICLES = [
                            const timeframeSeconds = getTimeSeconds(timeframe);
                            const candlesDiff = secondsDiff / timeframeSeconds;
                            const barSpacing = tsWidth / (visibleRange.to - visibleRange.from);
-                           x = lastX + candlesDiff * barSpacing;
+                           x = (lastX + candlesDiff * barSpacing) as any;
                        }
                    }
                    return x;
@@ -4650,7 +4651,7 @@ const PROMOTED_ARTICLES = [
                                
                                if (el) {
                                    const y = currentSeries.priceToCoordinate(trade.entryPrice);
-                                   const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : (trade.createdAt instanceof Date ? Math.floor(trade.createdAt.getTime() / 1000) : Math.floor(Date.now() / 1000)))));
+                                   const entryTimeSecs = (trade.entryTime || (typeof trade.createdAt === 'number' ? Math.floor(trade.createdAt / 1000) : (trade.createdAt && typeof (trade.createdAt as any).toDate === 'function' ? Math.floor((trade.createdAt as any).toDate().getTime() / 1000) : ((trade.createdAt as any) instanceof Date ? Math.floor((trade.createdAt as any).getTime() / 1000) : Math.floor(Date.now() / 1000)))));
                                    const xBase = getX(entryTimeSecs as number);
                                    const xExp = getX(Math.floor(trade.expirationTime / 1000));
                                    
@@ -5826,14 +5827,14 @@ const PROMOTED_ARTICLES = [
           const diff = settlePrice - trade.entryPrice;
           const epsilon = 0.0000000001; 
           const isDraw = Math.abs(diff) < epsilon;
-          const dir = trade.type || trade.direction || 'up';
+          const dir = trade.type || (trade as any).direction || 'up';
           
           let won = false;
           if (!isDraw) {
             won = dir === "up" ? settlePrice > trade.entryPrice : settlePrice < trade.entryPrice;
           }
 
-          const payoutRate = trade.payoutRate || 80;
+          const payoutRate = (trade as any).payoutRate || 80;
           const returnAmt = trade.amount * (payoutRate / 100 + 1);
           const tradeStatus = isDraw ? 'draw' : won ? 'won' : 'lost';
 
@@ -5939,10 +5940,10 @@ const PROMOTED_ARTICLES = [
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           if (target === chartContainerRef.current && chartRef.current) {
-            chartRef.current.applyOptions({ width, height });
+            chartRef.current.resize(width, height);
             alignChartRightByIdx(0, 0, 10);
           } else if (target === chartContainerRef2.current && chartRef2.current) {
-            chartRef2.current.applyOptions({ width, height });
+            chartRef2.current.resize(width, height);
             alignChartRightByIdx(1, 0, 10);
           }
         }
@@ -6078,6 +6079,16 @@ const PROMOTED_ARTICLES = [
       }
     });
     chartRef.current = chart;
+    setTimeout(() => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.resize(chartContainerRef.current.clientWidth, chartContainerRef.current.clientHeight);
+      }
+    }, 50);
+    setTimeout(() => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.resize(chartContainerRef.current.clientWidth, chartContainerRef.current.clientHeight);
+      }
+    }, 300);
 
     const container = chartContainerRef.current;
     const handleDblClick = () => {
@@ -6226,6 +6237,16 @@ const PROMOTED_ARTICLES = [
     });
 
     chartRef2.current = chart;
+    setTimeout(() => {
+      if (chartContainerRef2.current && chartRef2.current) {
+        chartRef2.current.resize(chartContainerRef2.current.clientWidth, chartContainerRef2.current.clientHeight);
+      }
+    }, 50);
+    setTimeout(() => {
+      if (chartContainerRef2.current && chartRef2.current) {
+        chartRef2.current.resize(chartContainerRef2.current.clientWidth, chartContainerRef2.current.clientHeight);
+      }
+    }, 300);
 
     const container = chartContainerRef2.current;
     const handleDblClick = () => {
@@ -10924,7 +10945,7 @@ const PROMOTED_ARTICLES = [
                   key={lang.code}
                   onClick={async () => {
                     setSelectedLanguage(lang);
-                    setLanguage(lang.code);
+                    setLanguage(lang.code as any);
                     setShowLanguageModal(false);
                     // Save to Firestore
                     if (auth.currentUser) {
