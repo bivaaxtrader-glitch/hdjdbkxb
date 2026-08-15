@@ -191,7 +191,7 @@ export default function BinancePayPage() {
   const baseOrderId = searchParams.get('orderId') || Math.floor(Math.random() * 100000000).toString();
   
   const [appConfig, setAppConfig] = useState<any>({});
-  const [timeLeft, setTimeLeft] = useState(15 * 60); // 15 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(3 * 60 * 60 - 17); // 3 hours (almost) in seconds
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
 
   // Redesign state managers
@@ -215,35 +215,33 @@ export default function BinancePayPage() {
       hasAutoSubmitted.current = true;
       const autoSubmit = async () => {
         try {
-          const depositData = {
-            userId: currentUser.uid,
-            userEmail: currentUser.email || '',
-            amount: Number(amount) || 25,
-            currency: currency || 'USDT',
-            method: 'Binance Pay',
-            walletNumber: appConfig.binancePayUid || 'BinancePay',
-            trxId: `BP-${baseOrderId}`,
-            status: 'pending',
-            timestamp: Date.now(),
-            orderId: baseOrderId
-          };
-
-          const dDoc = await addDoc(collection(db, 'deposits'), depositData);
-          setDepositDocId(dDoc.id);
-
           const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
-            type: 'Deposit',
-            amount: Number(amount) || 25,
-            method: 'Binance Pay',
-            currency: currency || 'USDT',
-            status: 'Pending',
-            trxId: `BP-${baseOrderId}`,
-            orderId: baseOrderId,
-            timestamp: Date.now(),
-            category: 'Crypto'
+              type: 'Deposit',
+              amount: Number(amount),
+              method: 'Binance Pay',
+              currency: currency,
+              status: 'Pending',
+              trxId: 'Pending/BinancePay',
+              orderId: baseOrderId,
+              timestamp: Date.now(),
+              category: 'Crypto'
           });
           setTransactionDocId(tDoc.id);
   
+          const dDoc = await addDoc(collection(db, 'deposits'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email || '',
+              amount: Number(amount),
+              currency: currency,
+              method: 'Binance Pay',
+              walletNumber: appConfig.binancePayUid || 'BinancePay',
+              trxId: 'Pending/BinancePay',
+              status: 'pending',
+              timestamp: Date.now(),
+              orderId: baseOrderId
+          });
+          setDepositDocId(dDoc.id);
+          
           console.log("Auto-submitted pending Binance Pay deposit request:", dDoc.id);
         } catch (err) {
           console.error("Auto Binance Pay deposit failed:", err);
@@ -251,7 +249,7 @@ export default function BinancePayPage() {
       };
       autoSubmit();
     }
-  }, [currentUser, appConfig, amount, currency, baseOrderId]);
+  }, [currentUser, appConfig, amount]);
   
   useEffect(() => {
     const fetchConfig = async () => {
@@ -266,19 +264,18 @@ export default function BinancePayPage() {
     };
     fetchConfig();
     
-    // 15-Minute Timer with auto-redirect to /trade
+    // Timer
     const timer = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
+        if (prev <= 0) {
           clearInterval(timer);
-          navigate('/trade');
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [navigate]);
+  }, []);
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -549,25 +546,6 @@ export default function BinancePayPage() {
                   <p className={`text-xs font-semibold ${isDarkMode ? 'text-gray-200' : 'text-[#0F141E]'}`}>{t.merchantVal} Deposit ID: {baseOrderId}</p>
                 </div>
 
-                {/* Status Notice instead of Submit button as requested */}
-                <div className={`rounded-3xl p-5 border text-center flex flex-col items-center gap-2 mt-2 transition-colors ${
-                  isDarkMode ? 'bg-[#1B2233] border-white/[0.06]' : 'bg-white border-gray-100 shadow-sm'
-                }`}>
-                  <div className="flex items-center gap-2 text-yellow-400 font-black text-xs uppercase tracking-wider">
-                    <Icons.Clock size={16} className="animate-spin" />
-                    <span>Transaction Request Pending Admin Review</span>
-                  </div>
-                  <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Your deposit request is already logged in the Admin Panel. Scan the QR code or use the Binance Pay details to complete transfer.
-                  </p>
-                  <button 
-                    onClick={() => navigate('/trade')}
-                    className="mt-2 w-full py-3 bg-[#FFE24C] hover:bg-[#F5C300] text-black rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md"
-                  >
-                    Return to Trading Terminal
-                  </button>
-                </div>
-
                 {/* Footer and Brand */}
                 <div className="text-center mt-3 flex flex-col items-center gap-1.5">
                   <span className="text-gray-400/80 text-[10px] font-bold uppercase tracking-wider">{t.poweredBy}</span>
@@ -582,6 +560,33 @@ export default function BinancePayPage() {
             )}
           </AnimatePresence>
         </main>
+
+        {/* Sticky Action Button at the very bottom */}
+        {!isSuccess && (
+          <div className={`fixed bottom-0 left-0 right-0 p-4 border-t backdrop-blur-md z-40 transition-colors ${
+            isDarkMode ? 'bg-[#121622]/90 border-white/[0.06]' : 'bg-[#F4F6F9]/90 border-gray-200'
+          }`}>
+            <div className="w-full max-w-[480px] mx-auto">
+              <button 
+                onClick={handleConfirmPayment}
+                disabled={isSubmitting}
+                className="w-full h-14 bg-[#FFE24C] hover:bg-[#F5C300] active:scale-[0.98] transition-all text-black font-black text-sm uppercase tracking-widest rounded-3xl flex items-center justify-center gap-3 disabled:opacity-50 shadow-lg cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>
+                    <span className="text-xs font-extrabold animate-pulse">{submittingStep}</span>
+                  </>
+                ) : (
+                  <>
+                    <Icons.CheckCircle size={20} className="text-white" />
+                    <span>{t.confirmPayment}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
 

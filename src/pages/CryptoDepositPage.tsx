@@ -20,7 +20,7 @@ export default function CryptoDepositPage() {
   const methodId = searchParams.get('methodId');
   
   const [methodConfig, setMethodConfig] = useState<any>({});
-  const [timeLeft, setTimeLeft] = useState(15 * 60); // 15 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(24 * 60 * 60 - 7); // Exactly matching 23:59:53 countdown pattern from screenshot!
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
 
   // States for verification
@@ -142,16 +142,15 @@ export default function CryptoDepositPage() {
     // Timer countdown
     const timer = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
+        if (prev <= 0) {
           clearInterval(timer);
-          navigate('/trade');
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [methodId, navigate]);
+  }, [methodId]);
 
   useEffect(() => {
     if (activeAddress) {

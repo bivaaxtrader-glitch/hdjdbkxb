@@ -1,0 +1,16 @@
+                    snapUsers.forEach(u => uMap.set(u.uid || u.id, { ...(uMap.get(u.uid || u.id) || {}), ...u }));
+                    return Array.from(uMap.values());
+                });
+            }));
+
+            unsubs.push(onSnapshot(collection(db, 'deposits'), (snap) => {
+                setDepositRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+            }));
+            
+            unsubs.push(onSnapshot(collection(db, 'withdrawals'), (snap) => {
+                setWithdrawals(snap.docs.map(d => ({id: d.id, ...d.data()})));
+            }));
+
+            unsubs.push(onSnapshot(collection(db, 'kycRequests'), (snap) => {
+                setKycRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+            }));

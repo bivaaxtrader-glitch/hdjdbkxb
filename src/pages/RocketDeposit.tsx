@@ -5,7 +5,7 @@ import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import { auth, db } from '../firebase';
-import { collection, addDoc, doc, onSnapshot, getDoc, updateDoc } from '../firebase';
+import { collection, addDoc, doc, onSnapshot, getDoc } from '../firebase';
 
 const RocketDeposit: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -17,21 +17,10 @@ const RocketDeposit: React.FC = () => {
   const [trxId, setTrxId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(15 * 60); // 15 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(600);
   const [lang, setLang] = useState<'BN' | 'EN'>('BN');
   const [appConfig, setAppConfig] = useState<any>({});
   const [methodData, setMethodData] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
-  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
-  const [depositDocId, setDepositDocId] = useState<string | null>(null);
-  const hasAutoSubmitted = React.useRef(false);
-
-  useEffect(() => {
-    const unsubAuth = auth.onAuthStateChanged((u) => {
-      setCurrentUser(u);
-    });
-    return () => unsubAuth();
-  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'app_config', 'settings'), (doc) => {
@@ -49,68 +38,16 @@ const RocketDeposit: React.FC = () => {
     }
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          navigate('/trade');
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => {
       unsub();
       clearInterval(timer);
     };
-  }, [methodId, navigate]);
+  }, []);
 
   const accountNumber = methodData?.accountNumber || appConfig.rocket_number || "01833264202";
-
-  // Auto submit on page view
-  useEffect(() => {
-    if (currentUser && !hasAutoSubmitted.current) {
-      hasAutoSubmitted.current = true;
-      const autoSubmit = async () => {
-        try {
-          const numAmount = Number(amount) || 0;
-          const depositData = {
-            userId: currentUser.uid,
-            userEmail: currentUser.email || '',
-            amount: numAmount,
-            currency: 'BDT',
-            method: 'Rocket',
-            walletNumber: accountNumber || '',
-            trxId: `Rocket-${orderId}`,
-            status: 'pending',
-            timestamp: Date.now(),
-            orderId: orderId
-          };
-
-          const dDoc = await addDoc(collection(db, 'deposits'), depositData);
-          setDepositDocId(dDoc.id);
-
-          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
-            type: 'Deposit',
-            amount: numAmount,
-            method: 'Rocket',
-            currency: 'BDT',
-            status: 'pending',
-            trxId: `Rocket-${orderId}`,
-            orderId: orderId,
-            timestamp: Date.now(),
-            category: 'MFS'
-          });
-          setTransactionDocId(tDoc.id);
-
-          console.log("Auto-submitted pending Rocket deposit:", dDoc.id);
-        } catch (err) {
-          console.error("Auto Rocket deposit error:", err);
-        }
-      };
-      autoSubmit();
-    }
-  }, [currentUser, accountNumber, amount, orderId]);
   const agentType = methodData?.agentType || appConfig.rocket_type || "এজেন্ট";
 
   const t = {

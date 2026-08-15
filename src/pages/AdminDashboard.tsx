@@ -523,19 +523,43 @@ export default function AdminDashboard() {
             }));
 
             unsubs.push(onSnapshot(collection(db, 'deposits'), (snap) => {
-                setDepositRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                reqs.sort((a: any, b: any) => {
+                    const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
+                    const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
+                    return timeB - timeA;
+                });
+                setDepositRequests(reqs);
             }));
             
             unsubs.push(onSnapshot(collection(db, 'withdrawals'), (snap) => {
-                setWithdrawals(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                reqs.sort((a: any, b: any) => {
+                    const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
+                    const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
+                    return timeB - timeA;
+                });
+                setWithdrawals(reqs);
             }));
 
             unsubs.push(onSnapshot(collection(db, 'kycRequests'), (snap) => {
-                setKycRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                reqs.sort((a: any, b: any) => {
+                    const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
+                    const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
+                    return timeB - timeA;
+                });
+                setKycRequests(reqs);
             }));
 
             unsubs.push(onSnapshot(collection(db, 'tickets'), (snap) => {
-                setTickets(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                reqs.sort((a: any, b: any) => {
+                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt || a.timestamp || 0);
+                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt || b.timestamp || 0);
+                    return timeB - timeA;
+                });
+                setTickets(reqs);
             }));
 
             unsubs.push(onSnapshot(collection(db, 'depositMethods'), (snap) => {

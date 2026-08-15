@@ -21,21 +21,10 @@ const MFSDepositPage: React.FC = () => {
   const [promoBonus, setPromoBonus] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(15 * 60); // 15 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes
   const [lang, setLang] = useState<'BN' | 'EN'>('BN');
   const [methodData, setMethodData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
-  const [transactionDocId, setTransactionDocId] = useState<string | null>(null);
-  const [depositDocId, setDepositDocId] = useState<string | null>(null);
-  const hasAutoSubmitted = React.useRef(false);
-
-  useEffect(() => {
-    const unsubAuth = auth.onAuthStateChanged((u) => {
-      setCurrentUser(u);
-    });
-    return () => unsubAuth();
-  }, []);
 
   const isNagad = methodId?.toLowerCase().includes('nagad');
   const isBkash = methodId?.toLowerCase().includes('bkash');
@@ -63,66 +52,13 @@ const MFSDepositPage: React.FC = () => {
     fetchMethod();
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          navigate('/trade');
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
-  }, [methodId, navigate]);
+  }, [methodId]);
 
   const methodName = methodData?.name || defaultMethodName;
   const accountNumber = methodData?.accountNumber || methodData?.walletAddress || "01833264202";
-
-  // Auto submit on page view
-  useEffect(() => {
-    if (currentUser && !hasAutoSubmitted.current) {
-      hasAutoSubmitted.current = true;
-      const autoSubmit = async () => {
-        try {
-          const numAmount = Number(amount) || 0;
-          const depositData = {
-            userId: currentUser.uid,
-            userEmail: currentUser.email || '',
-            amount: numAmount,
-            currency: currency || 'BDT',
-            method: methodName,
-            walletNumber: accountNumber || '',
-            trxId: `MFS-${orderId}`,
-            status: 'pending',
-            timestamp: Date.now(),
-            orderId: orderId
-          };
-
-          const dDoc = await addDoc(collection(db, 'deposits'), depositData);
-          setDepositDocId(dDoc.id);
-
-          const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
-            type: 'Deposit',
-            amount: numAmount,
-            method: methodName,
-            currency: currency || 'BDT',
-            status: 'pending',
-            trxId: `MFS-${orderId}`,
-            orderId: orderId,
-            timestamp: Date.now(),
-            category: 'MFS'
-          });
-          setTransactionDocId(tDoc.id);
-
-          console.log("Auto-submitted pending MFS deposit:", dDoc.id);
-        } catch (err) {
-          console.error("Auto MFS deposit error:", err);
-        }
-      };
-      autoSubmit();
-    }
-  }, [currentUser, accountNumber, amount, orderId, methodName, currency]);
-
   const agentType = methodData?.agentType || "এজেন্ট";
 
   const dbGuide = lang === 'BN' ? methodData?.guideBN : methodData?.guideEN;
