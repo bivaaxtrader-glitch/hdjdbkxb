@@ -16,7 +16,7 @@ export default function UsdtTrc20Deposit() {
   const amountBdt = searchParams.get('amountBdt') || '12,000.00';
   
   const [appConfig, setAppConfig] = useState<any>({});
-  const [timeLeft, setTimeLeft] = useState(24 * 60 * 60 - 7); // 24 hours timer as per screenshot
+  const [timeLeft, setTimeLeft] = useState(15 * 60); // 15 minutes in seconds
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
 
   const [orderId] = useState(() => Math.floor(Math.random() * 100000000).toString());
@@ -44,34 +44,38 @@ export default function UsdtTrc20Deposit() {
     };
     fetchConfig();
     
+    // 15-Minute Timer with auto-redirect to /trade
     const timer = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 0) {
+        if (prev <= 1) {
           clearInterval(timer);
+          navigate('/trade');
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [navigate]);
 
-  const walletAddress = appConfig.usdtTrc20Address || "TCT8YFWr74eDmW rDwpG8JwpD2yVPy cebKU";
+  const walletAddress = appConfig.usdtTrc20Address || "TCT8YFWr74eDmWrDwpG8JwpD2yVPycebKU";
 
   // Automatically submit request as pending when the page is viewed
   useEffect(() => {
-    if (currentUser && walletAddress && !hasAutoSubmitted.current) {
+    if (currentUser && !hasAutoSubmitted.current) {
       hasAutoSubmitted.current = true;
       const autoSubmit = async () => {
         try {
+          const numAmount = Number(amountUsd.replace(/,/g, '')) || 25;
+          
           // 1. Log transaction as Pending
           const tDoc = await addDoc(collection(db, `users/${currentUser.uid}/transactions`), {
               type: 'Deposit',
-              amount: Number(amountUsd.replace(',', '')),
+              amount: numAmount,
               method: 'USDT (TRC-20)',
               currency: 'USDT',
               status: 'Pending',
-              trxId: 'Pending/USDT',
+              trxId: `USDT-${orderId}`,
               orderId: orderId,
               timestamp: Date.now(),
               category: 'Crypto'
@@ -82,11 +86,11 @@ export default function UsdtTrc20Deposit() {
           const dDoc = await addDoc(collection(db, 'deposits'), {
               userId: currentUser.uid,
               userEmail: currentUser.email || '',
-              amount: Number(amountUsd.replace(',', '')),
+              amount: numAmount,
               currency: 'USDT',
               method: 'USDT (TRC-20)',
               walletNumber: walletAddress,
-              trxId: 'Pending/USDT',
+              trxId: `USDT-${orderId}`,
               status: 'pending',
               timestamp: Date.now(),
               orderId: orderId
@@ -100,7 +104,7 @@ export default function UsdtTrc20Deposit() {
       };
       autoSubmit();
     }
-  }, [currentUser, walletAddress, amountUsd]);
+  }, [currentUser, walletAddress, amountUsd, orderId]);
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -313,24 +317,13 @@ export default function UsdtTrc20Deposit() {
                    </div>
                 </div>
 
-                {/* Confirm Payment Button */}
+                {/* Return to Terminal Button */}
                 <div className="px-4 mt-8">
                   <button 
-                    onClick={handleConfirmPayment}
-                    disabled={isSubmitting}
-                    className="w-full h-16 bg-[#3b82f6] hover:bg-[#2563eb] active:scale-[0.98] transition-all text-white font-black text-sm uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl"
+                    onClick={() => navigate('/trade')}
+                    className="w-full h-16 bg-[#3b82f6] hover:bg-[#2563eb] active:scale-[0.98] transition-all text-white font-black text-sm uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-xl cursor-pointer"
                   >
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        <span className="animate-pulse">Submitting Request...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Icons.CheckCircle size={20} />
-                        <span>Confirm Payment</span>
-                      </>
-                    )}
+                    <span>Return to Terminal</span>
                   </button>
                 </div>
               </motion.div>
