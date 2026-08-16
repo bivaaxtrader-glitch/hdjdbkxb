@@ -9,13 +9,21 @@ interface LogoProps {
 
 export const Logo: React.FC<LogoProps> = ({ className = '', size = 24, withBackground = false }) => {
   return (
-    <div className={`relative flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+    <div 
+      className={`relative flex items-center justify-center overflow-hidden rounded-xl shrink-0 bg-[#121316] ${className}`} 
+      style={{ width: size, height: size }}
+    >
       <img 
-        src="/bivaax-logo.png" 
+        src="https://i.postimg.cc/sXX8XQDV/file-000000005f788211bd6a5c656938f636.png" 
         alt="Bivaax Trade Logo" 
-        className="w-full h-full object-contain"
+        className="w-full h-full object-cover scale-[1.36] rounded-xl select-none pointer-events-none"
         referrerPolicy="no-referrer"
-        loading="lazy" 
+        crossOrigin="anonymous"
+        loading="eager"
+        onError={(e) => {
+          // Fallback to local copy if network fails
+          e.currentTarget.src = "/logo.png";
+        }}
       />
     </div>
   );
