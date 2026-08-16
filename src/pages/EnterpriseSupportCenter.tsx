@@ -83,7 +83,7 @@ export default function EnterpriseSupportCenter() {
           navigate('/trade');
         }
       } catch (err) {
-        handleFirestoreError(err, OperationType.READ, 'users/' + user.uid);
+        handleFirestoreError(err, OperationType.GET, 'users/' + user.uid);
       }
     };
     checkAccess();

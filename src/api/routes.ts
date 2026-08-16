@@ -2935,7 +2935,7 @@ router.post('/depositMethods', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res) => {
   if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' });
-  const { id, status, userId, finalAmountInBase } = req.body;
+  const { id, status, userId, amount, currency, orderId, finalAmountInBase } = req.body;
 
   try {
     if (!adminDb) {
@@ -2953,73 +2953,66 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
 
     if (depositDoc && depositDoc.exists) {
       depositData = depositDoc.data() || {};
-      if (depositData?.processedByServer === true || depositData?.status === 'success' || depositData?.status === 'approved' || depositData?.status === 'completed') {
-        return res.status(400).json({ error: 'This deposit has already been processed.' });
+      // If already marked as credited and admin clicks approve again, return gracefully
+      if (depositData?.credited === true && (status === 'success' || status === 'approved')) {
+        return res.json({ success: true, message: 'This deposit has already been credited to user balance.' });
       }
-      // Immediately acquire lock in Firestore to prevent concurrent double-processing
-      try {
-        await adminDb.collection('deposits').doc(id).update({
-          processedByServer: true,
-          status: status === 'success' || status === 'approved' ? 'success' : status
-        });
-      } catch (lockErr) {}
     } else {
-      logger.info(`[Deposit Status Update] Deposit ID ${id} not found in Firestore. Proceeding in offline/fallback mode.`);
+      logger.info(`[Deposit Status Update] Deposit ID ${id} not found in Firestore. Proceeding with payload data.`);
     }
 
-    // SQLite double-spend / duplicate crediting safety check
-    let isAlreadyProcessedInSql = false;
+    const isSuccessOrApproved = status === 'success' || status === 'approved';
+
+    // Determine the exact deposit amount requested by user
+    let rawDepositAmount = 0;
+    if (depositData?.amount !== undefined && !isNaN(Number(depositData.amount)) && Number(depositData.amount) > 0) {
+      rawDepositAmount = Number(depositData.amount);
+    } else if (amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0) {
+      rawDepositAmount = Number(amount);
+    } else if (finalAmountInBase !== undefined && !isNaN(Number(finalAmountInBase)) && Number(finalAmountInBase) > 0) {
+      rawDepositAmount = Number(finalAmountInBase);
+    }
+
+    logger.info(`Processing deposit update for user ${userId}, status: ${status}, rawAmount: ${rawDepositAmount}, isSuccessOrApproved: ${isSuccessOrApproved}`);
+
+    // Exact amount + bonus calculation (Bonus is separate system)
+    let depositAmountWithBonus = new Big(rawDepositAmount);
+    let bonusAmount = new Big(0);
+    const bonusPercent = Number(depositData?.promoBonus || 0);
+
+    if (isSuccessOrApproved && bonusPercent > 0) {
+      bonusAmount = new Big(rawDepositAmount).times(bonusPercent).div(100);
+      depositAmountWithBonus = depositAmountWithBonus.plus(bonusAmount);
+      logger.info(`Applying promo bonus: ${depositData?.promoCode || 'PROMO'} (${bonusPercent}%) for user ${userId}. Base: ${rawDepositAmount}, Bonus: ${bonusAmount.toFixed(2)}, Total: ${depositAmountWithBonus.toFixed(2)}`);
+    }
+
+    // 1. Sync with SQL transactions table if applicable
     let sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${id}%`]) as any;
-    if (!sqlTx && depositData?.orderId) {
-      sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${depositData.orderId}%`]) as any;
+    if (!sqlTx && (depositData?.orderId || orderId)) {
+      sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${depositData?.orderId || orderId}%`]) as any;
     }
     if (!sqlTx && depositData?.trxId) {
       sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND tx_hash = ?', [userId, depositData.trxId]) as any;
     }
-    if (sqlTx && (sqlTx.status === 'completed' || sqlTx.status === 'success' || sqlTx.status === 'approved')) {
-      isAlreadyProcessedInSql = true;
+    if (!sqlTx) {
+      sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'deposit\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, rawDepositAmount]) as any;
     }
 
-    if (isAlreadyProcessedInSql) {
-      logger.warn(`[Deposit Security] Deposit ID ${id} was already processed and credited in SQL transaction ID ${sqlTx.id}. Preventing double-crediting.`);
-      return res.json({ success: true, message: 'Deposit was already processed and credited.' });
-    }
-
-    const isSuccessOrApproved = status === 'success' || status === 'approved';
-    logger.info(`Processing deposit update for user ${userId}, status: ${status}, amount: ${finalAmountInBase}, isSuccessOrApproved: ${isSuccessOrApproved}`);
-
-    let depositAmountWithBonus = new Big(finalAmountInBase || 0);
-    if (isSuccessOrApproved && depositData?.promoCode && depositData?.promoBonus) {
-        const bonusPercent = new Big(depositData.promoBonus);
-        const bonusAmount = new Big(finalAmountInBase).times(bonusPercent).div(100);
-        depositAmountWithBonus = depositAmountWithBonus.plus(bonusAmount);
-        logger.info(`Applying promo bonus: ${depositData.promoCode} (${depositData.promoBonus}%) for user ${userId}. Bonus: ${bonusAmount.toFixed(2)}`);
-    }
-
-    // 1. Sync with SQL transactions table if applicable
-    let tx = sqlTx;
-    if (!tx) {
-      tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'deposit\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, finalAmountInBase]) as any;
-    }
-    
-    if (tx) {
-      if (tx.status === 'completed' || tx.status === 'success' || tx.status === 'approved') {
-        return res.status(400).json({ error: 'This transaction has already been completed.' });
-      }
+    if (sqlTx) {
       const newStatus = isSuccessOrApproved ? 'completed' : status === 'rejected' ? 'rejected' : status;
-      await run('UPDATE transactions SET status = ?, updated_at = datetime(\'now\') WHERE id = ?', [newStatus, tx.id]);
+      await run('UPDATE transactions SET status = ?, updated_at = datetime(\'now\') WHERE id = ?', [newStatus, sqlTx.id]);
     } else if (isSuccessOrApproved) {
-      // Robust fallback: insert the transaction into SQLite if it wasn't pre-synced
-      const detailsObj = { firestoreId: id, walletNumber: depositData?.walletNumber || '', orderId: depositData?.orderId || '' };
+      // Insert the transaction into SQLite if it wasn't pre-synced
+      const detailsObj = { firestoreId: id, walletNumber: depositData?.walletNumber || '', orderId: depositData?.orderId || orderId || '' };
       await run(
         `INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
          VALUES (?, 'deposit', ?, 'completed', ?, ?, ?, ?, ?)`,
         [
           userId,
-          finalAmountInBase.toString(),
+          rawDepositAmount.toString(),
           depositData?.method || 'direct',
           depositData?.trxId || '',
-          depositData?.currency || 'BDT',
+          depositData?.currency || currency || 'BDT',
           JSON.stringify(detailsObj),
           Date.now()
         ]
@@ -3027,94 +3020,121 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
     }
 
     if (isSuccessOrApproved) {
-        let user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
-        if (!user) {
-            // User not in SQL yet, sync from Firestore first
-            const fbUser = await adminDb.collection('users').doc(userId).get();
-            if (fbUser.exists) {
-                const fbData = fbUser.data();
-                await run(
-                    `INSERT INTO users (uid, email, display_name, real_balance, demo_balance, country) 
-                     VALUES (?, ?, ?, ?, ?, ?)`,
-                    [userId, fbData.email || '', fbData.displayName || fbData.name || '', fbData.balance || 0, fbData.demoBalance || 10000, fbData.country || '']
-                );
-                user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
-            }
+      let user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
+      if (!user) {
+        // User not in SQL yet, sync from Firestore first
+        const fbUser = await adminDb.collection('users').doc(userId).get();
+        if (fbUser.exists) {
+          const fbData = fbUser.data() || {};
+          await run(
+            `INSERT INTO users (uid, email, display_name, real_balance, demo_balance, country) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [userId, fbData.email || '', fbData.displayName || fbData.name || '', fbData.balance || 0, fbData.demoBalance || 10000, fbData.country || '']
+          );
+          user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
         }
+      }
 
-        if (user) {
-            const currentBalance = new Big(user.real_balance || 0);
-            const newBalance = currentBalance.plus(depositAmountWithBonus).toFixed(2);
-            await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, userId]);
-            
-            // Affiliate Commission (e.g., 10%) - based on original amount, not bonus
-            const depositAmount = new Big(finalAmountInBase);
-            if (user.referred_by_uid) {
-                const commission = depositAmount.times(0.10).toFixed(2);
-                await run(
-                    'UPDATE users SET affiliate_balance = affiliate_balance + ?, total_affiliate_earnings = total_affiliate_earnings + ? WHERE uid = ?',
-                    [commission, commission, user.referred_by_uid]
-                );
-                await createAuditLog(user.referred_by_uid, 'affiliate_commission', 'user', userId, { amount: finalAmountInBase, commission });
-                
-                // Write commission to Firestore collection for transaction list rendering
-                if (adminDb) {
-                    try {
-                        await adminDb.collection('affiliate_commissions').add({
-                            referrerUid: user.referred_by_uid,
-                            referredUid: userId,
-                            amount: parseFloat(commission),
-                            depositAmount: parseFloat(finalAmountInBase),
-                            currency: user.currency || 'USD',
-                            percent: 10,
-                            createdAt: Date.now(),
-                            type: 'deposit_commission'
-                        });
-                    } catch (fsErr: any) {
-                        logger.error(`Failed to write affiliate_commissions to Firestore: ${fsErr.message}`);
-                    }
-                }
-
-                const updatedReferrer = await get('SELECT * FROM users WHERE uid = ?', [user.referred_by_uid]);
-                if (updatedReferrer) {
-                  const mappedReferrer = mapUserForFrontend(updatedReferrer);
-                  getIO().to(`user_${user.referred_by_uid}`).emit('user_profile_update', mappedReferrer);
-                  syncUserToFirestore(user.referred_by_uid, mappedReferrer);
-                }
-            }
-
-            const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [userId]);
-            const mapped = mapUserForFrontend(updatedUser);
-            if (mapped) {
-                getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
-                syncUserToFirestore(userId, mapped);
-            }
-        }
+      if (user) {
+        const currentBalance = new Big(user.real_balance || 0);
+        const newBalance = currentBalance.plus(depositAmountWithBonus).toFixed(2);
+        await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, userId]);
         
-        // Update Firebase balance regardless of SQL user existence (Legacy Fallback)
-        try {
-          const fbUserDoc = await adminDb.collection('users').doc(userId).get();
-          if (fbUserDoc && fbUserDoc.exists) {
-              const fbData = fbUserDoc.data();
-              const currentFbBalance = fbData?.balance || 0;
-              const currentFbDeposits = fbData?.totalDeposits || 0;
-              await adminDb.collection('users').doc(userId).update({
-                  balance: currentFbBalance + parseFloat(depositAmountWithBonus.toFixed(2)),
-                  totalDeposits: currentFbDeposits + finalAmountInBase // keep totalDeposits as base amount for stats
+        // Affiliate Commission (10%) - based on base deposit amount (excluding bonus)
+        const depositAmountBase = new Big(rawDepositAmount);
+        if (user.referred_by_uid) {
+          const commission = depositAmountBase.times(0.10).toFixed(2);
+          await run(
+            'UPDATE users SET affiliate_balance = affiliate_balance + ?, total_affiliate_earnings = total_affiliate_earnings + ? WHERE uid = ?',
+            [commission, commission, user.referred_by_uid]
+          );
+          await createAuditLog(user.referred_by_uid, 'affiliate_commission', 'user', userId, { amount: rawDepositAmount, commission });
+          
+          if (adminDb) {
+            try {
+              await adminDb.collection('affiliate_commissions').add({
+                referrerUid: user.referred_by_uid,
+                referredUid: userId,
+                amount: parseFloat(commission),
+                depositAmount: rawDepositAmount,
+                currency: user.currency || depositData?.currency || currency || 'BDT',
+                percent: 10,
+                createdAt: Date.now(),
+                type: 'deposit_commission'
               });
+            } catch (fsErr: any) {
+              logger.error(`Failed to write affiliate_commissions to Firestore: ${fsErr.message}`);
+            }
           }
-        } catch (e: any) {
-          logger.warn(`Could not update legacy Firebase user balance: ${e.message}`);
+
+          const updatedReferrer = await get('SELECT * FROM users WHERE uid = ?', [user.referred_by_uid]);
+          if (updatedReferrer) {
+            const mappedReferrer = mapUserForFrontend(updatedReferrer);
+            getIO().to(`user_${user.referred_by_uid}`).emit('user_profile_update', mappedReferrer);
+            syncUserToFirestore(user.referred_by_uid, mappedReferrer);
+          }
         }
+
+        const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [userId]);
+        const mapped = mapUserForFrontend(updatedUser);
+        if (mapped) {
+          getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
+          syncUserToFirestore(userId, mapped);
+        }
+      }
+      
+      // Update Firebase balance directly
+      try {
+        const fbUserDoc = await adminDb.collection('users').doc(userId).get();
+        if (fbUserDoc && fbUserDoc.exists) {
+          const fbData = fbUserDoc.data() || {};
+          const currentFbBalance = Number(fbData?.balance || 0);
+          const currentFbDeposits = Number(fbData?.totalDeposits || 0);
+          const creditedAmountNum = parseFloat(depositAmountWithBonus.toFixed(2));
+          await adminDb.collection('users').doc(userId).update({
+            balance: currentFbBalance + creditedAmountNum,
+            totalDeposits: currentFbDeposits + rawDepositAmount
+          });
+        }
+      } catch (e: any) {
+        logger.warn(`Could not update Firebase user balance: ${e.message}`);
+      }
     }
-    // Also update the Firestore deposit request status
+
+    // Update Firestore deposit request status
     try {
       await adminDb.collection('deposits').doc(id).update({ 
         status: isSuccessOrApproved ? 'success' : status,
-        processedByServer: true
+        credited: isSuccessOrApproved ? true : false,
+        processedByServer: true,
+        baseAmount: rawDepositAmount,
+        bonusPercent: bonusPercent,
+        bonusAmount: parseFloat(bonusAmount.toFixed(2)),
+        creditedAmount: parseFloat(depositAmountWithBonus.toFixed(2)),
+        updatedAt: Date.now()
       });
     } catch (e: any) {
       logger.warn(`Could not update Firestore deposit status document: ${e.message}`);
+    }
+
+    // Update user subcollection transaction if present
+    try {
+      const txColl = adminDb.collection(`users/${userId}/transactions`);
+      let userTxDocs = null;
+      if (depositData?.orderId || orderId) {
+        userTxDocs = await txColl.where('orderId', '==', depositData?.orderId || orderId).get();
+      }
+      if ((!userTxDocs || userTxDocs.empty) && depositData?.trxId) {
+        userTxDocs = await txColl.where('trxId', '==', depositData.trxId).get();
+      }
+      if (userTxDocs && !userTxDocs.empty) {
+        const txStatus = isSuccessOrApproved ? 'Completed' : status === 'rejected' ? 'Rejected' : status;
+        for (const docSnap of userTxDocs.docs) {
+          await docSnap.ref.update({ status: txStatus, updatedAt: Date.now() });
+        }
+      }
+    } catch (e: any) {
+      logger.warn(`Could not update user transaction subcollection: ${e.message}`);
     }
       
       // 2. Send Email Notification

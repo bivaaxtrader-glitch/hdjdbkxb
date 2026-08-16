@@ -21,7 +21,11 @@ const PAGE_CONTENT: Record<string, { title: string; category: string; content: R
             <p><a href="https://t.me/Bivaax_Official" target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:underline font-medium">@Bivaax_Official</a></p>
           </div>
           <div className="bg-[#1a1b1f] p-6 rounded-2xl border border-white/5">
-            <h4 className="text-white font-bold mb-2">Partnerships</h4>
+            <h4 className="text-white font-bold mb-2">Affiliate & Partner Manager</h4>
+            <p><a href="https://t.me/bivaax_partner" target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:underline font-medium">@bivaax_partner</a></p>
+          </div>
+          <div className="bg-[#1a1b1f] p-6 rounded-2xl border border-white/5">
+            <h4 className="text-white font-bold mb-2">Partnerships Email</h4>
             <p>partners@Bivaax.trade</p>
           </div>
           <div className="bg-[#1a1b1f] p-6 rounded-2xl border border-white/5">

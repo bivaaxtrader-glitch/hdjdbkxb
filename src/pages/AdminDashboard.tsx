@@ -810,21 +810,26 @@ export default function AdminDashboard() {
       setProcessingDeposits(prev => new Set(prev).add(id));
       
       try {
-          // Calculate the base amount once for both operations
-          const currObj = currencies.find(c => c.code === currency) || currencies[0];
-          const finalAmountInBase = amount / currObj.rate;
-          
-          await updateDoc(doc(db, 'deposits', id), { status });
-          
-          // Call server database update
+          // Call server database update with exact requested amount
           const idToken = await auth.currentUser?.getIdToken?.();
-          await fetch('/api/admin/deposits/update', {
+          const response = await fetch('/api/admin/deposits/update', {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
                 ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
               },
-              body: JSON.stringify({ id, status, userId, finalAmountInBase })
+              body: JSON.stringify({ id, status, userId, amount, currency, orderId })
+          });
+          
+          const resData = await response.json().catch(() => ({}));
+          if (!response.ok && !resData.success) {
+              throw new Error(resData.error || `Failed with HTTP status ${response.status}`);
+          }
+          
+          // Update local status in Firestore
+          await updateDoc(doc(db, 'deposits', id), { 
+              status: (status === 'success' || status === 'approved') ? 'success' : status,
+              processedAt: Date.now()
           });
           
           const txQuery = orderId 
@@ -832,12 +837,20 @@ export default function AdminDashboard() {
               : query(collection(db, `users/${userId}/transactions`), where('amount', '==', amount), where('type', '==', 'Deposit'), limit(1));
           const txSnap = await getDocs(txQuery);
           if (!txSnap.empty) {
-              const txStatus = status === 'success' ? 'Completed' : status === 'rejected' ? 'Rejected' : status;
+              const txStatus = (status === 'success' || status === 'approved') ? 'Completed' : status === 'rejected' ? 'Rejected' : status;
               await updateDoc(doc(db, `users/${userId}/transactions`, txSnap.docs[0].id), { status: txStatus });
           }
           
-          await logAdminAction('Processed Deposit', `Marked deposit ${id} as ${status}`);
-      } catch(e: any) { alert(e.message); }
+          await logAdminAction('Processed Deposit', `Marked deposit ${id} as ${status} (Amount: ${amount} ${currency || 'BDT'})`);
+          if (status === 'success' || status === 'approved') {
+              toast.success(`Deposit request for ${amount} ${currency || 'BDT'} successfully credited!`);
+          } else {
+              toast.success(`Deposit request marked as ${status}`);
+          }
+      } catch(e: any) { 
+          toast.error(e.message || "Failed to process deposit"); 
+          console.error("Deposit processing error:", e);
+      }
       finally {
           setProcessingDeposits(prev => { const next = new Set(prev); next.delete(id); return next; });
       }
@@ -1416,14 +1429,26 @@ export default function AdminDashboard() {
                                             <h4 className="font-bold text-lg">{d.userEmail || d.userId}</h4>
                                             <p className="text-sm text-gray-400">{d.method}: <span className="font-mono text-white">{d.walletNumber}</span></p>
                                             {d.trxId && <p className="text-xs text-blue-400 mt-1">TrxID: <span className="font-mono">{d.trxId}</span></p>}
+                                            {d.promoBonus > 0 && (
+                                                <div className="mt-1 flex items-center gap-1.5">
+                                                    <span className="px-2 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-[10px] font-black">
+                                                        +{d.promoBonus}% Promo Bonus {d.promoCode ? `(${d.promoCode})` : ''}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-8 w-full lg:w-auto">
                                             <div className="text-right">
-                                                <p className="text-[9px] font-bold text-gray-500 uppercase">Amount</p>
+                                                <p className="text-[9px] font-bold text-gray-500 uppercase">Requested Deposit</p>
                                                 <p className="text-2xl font-black text-green-500">
                                                     {getCurrencySymbol(d.currency)}{d.amount} {d.currency || 'BDT'}
                                                 </p>
-                                                {d.currency && d.currency !== 'BDT' && (
+                                                {d.promoBonus > 0 && (
+                                                    <p className="text-[10px] text-yellow-400 font-bold tracking-tight">
+                                                        + {getCurrencySymbol(d.currency)}{((d.amount * d.promoBonus) / 100).toFixed(0)} Bonus (Total: {getCurrencySymbol(d.currency)}{(d.amount * (1 + d.promoBonus / 100)).toFixed(0)})
+                                                    </p>
+                                                )}
+                                                {d.currency && d.currency !== 'BDT' && !d.promoBonus && (
                                                     <p className="text-[10px] text-gray-400 font-bold tracking-tight">
                                                         ≈ {getCurrencySymbol('BDT')}{(d.amount / (currencies.find(c => c.code === d.currency)?.rate || 1)).toLocaleString()} (est.)
                                                     </p>
@@ -2982,6 +3007,230 @@ export default function AdminDashboard() {
            )}
 
 
+
+            {activeTab === 'tickets' && (
+                <motion.div key="tickets" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div>
+                            <h2 className="text-3xl font-black uppercase tracking-tight mb-2 text-white flex items-center gap-3">
+                                <MessageCircle className="text-yellow-500" size={32} />
+                                LIVE SUPPORT DESK
+                            </h2>
+                            <p className="text-gray-500 text-sm">Real-time user support chats. Reply directly to users from your admin console.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="px-4 py-2 rounded-2xl bg-[#15161d] border border-white/5 text-xs font-bold text-gray-400">
+                                Total Tickets: <span className="text-yellow-500 font-black">{tickets.length}</span>
+                            </span>
+                            <span className="px-4 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">
+                                Open: <span className="font-black">{tickets.filter(t => t.status === 'open' || t.status === 'Open').length}</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-[680px]">
+                        {/* Ticket List (Left Column) */}
+                        <div className="xl:col-span-5 bg-[#0a0a0f] border border-[#1a1a24] rounded-[32px] p-5 flex flex-col h-[700px] overflow-hidden shadow-2xl">
+                            <div className="mb-4">
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                                    <input 
+                                        type="text"
+                                        placeholder="Search user, email, subject..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full bg-[#15161d] border border-white/5 rounded-2xl pl-11 pr-4 py-3 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-yellow-500/50 transition-all font-medium"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar">
+                                {tickets.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-600">
+                                        <MessageCircle size={48} className="opacity-20 mb-3" />
+                                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">No support tickets</p>
+                                        <p className="text-[11px] text-gray-600 mt-1">When users message support, they will appear here live.</p>
+                                    </div>
+                                ) : (
+                                    tickets
+                                    .filter(t => {
+                                        if (!searchQuery.trim()) return true;
+                                        const q = searchQuery.toLowerCase();
+                                        return (
+                                            (t.subject || '').toLowerCase().includes(q) ||
+                                            (t.userName || '').toLowerCase().includes(q) ||
+                                            (t.userEmail || '').toLowerCase().includes(q) ||
+                                            (t.lastMessage || '').toLowerCase().includes(q)
+                                        );
+                                    })
+                                    .map((t, idx) => {
+                                        const isSelected = adminSelectedTicket?.id === t.id;
+                                        const isOpen = t.status === 'open' || t.status === 'Open';
+                                        const isPending = t.status === 'pending' || t.status === 'Pending';
+                                        const isResolved = t.status === 'resolved' || t.status === 'Resolved';
+                                        return (
+                                            <div 
+                                                key={`ticket-card-${idx}-${t.id}`}
+                                                onClick={() => setAdminSelectedTicket(t)}
+                                                className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
+                                                    isSelected 
+                                                    ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/5' 
+                                                    : 'bg-[#15161d] border-[#1a1a24] hover:border-white/10 hover:bg-[#1a1b24]'
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between gap-2 mb-2">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className="w-8 h-8 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center shrink-0 text-yellow-500 font-bold text-xs">
+                                                            {t.userName?.charAt(0) || 'U'}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <h4 className="font-bold text-xs text-white truncate">{t.userName || t.userEmail || 'Trader'}</h4>
+                                                            <p className="text-[10px] text-gray-500 truncate">{t.userEmail || t.userId}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                                                        isOpen ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                                                        isPending ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                                                        isResolved ? 'bg-gray-800 text-gray-400' :
+                                                        'bg-yellow-500/20 text-yellow-400'
+                                                    }`}>
+                                                        {t.status || 'open'}
+                                                    </span>
+                                                </div>
+
+                                                <p className="text-xs font-semibold text-gray-200 truncate mb-1">{t.subject || 'Support Query'}</p>
+                                                <p className="text-[11px] text-gray-500 line-clamp-1 leading-relaxed">
+                                                    {t.lastMessage || t.message || 'No messages yet'}
+                                                </p>
+
+                                                <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-gray-500">
+                                                    <span className="font-mono">ID: {t.id}</span>
+                                                    <span>{new Date(t.updatedAt || t.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Chat Box (Right Column) */}
+                        <div className="xl:col-span-7 bg-[#0a0a0f] border border-[#1a1a24] rounded-[32px] overflow-hidden flex flex-col h-[700px] shadow-2xl">
+                            {adminSelectedTicket ? (
+                                <>
+                                    {/* Chat Header */}
+                                    <div className="px-6 py-4 bg-[#15161d] border-b border-[#1a1a24] flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-2xl bg-[#FFE24C] text-black font-black flex items-center justify-center shadow-md text-sm">
+                                                {adminSelectedTicket.userName?.charAt(0) || 'U'}
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="font-black text-sm text-white">{adminSelectedTicket.userName || 'Trader'}</h3>
+                                                    <span className="text-[10px] text-gray-400">({adminSelectedTicket.userEmail || adminSelectedTicket.userId})</span>
+                                                </div>
+                                                <p className="text-[11px] text-yellow-500 font-bold">{adminSelectedTicket.subject || 'Support Session'}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <select 
+                                                value={adminSelectedTicket.status || 'open'}
+                                                onChange={(e) => {
+                                                    const newStatus = e.target.value;
+                                                    updateTicketStatus(adminSelectedTicket.id, newStatus);
+                                                    setAdminSelectedTicket((prev: any) => ({ ...prev, status: newStatus }));
+                                                }}
+                                                className="bg-[#0a0a0f] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-yellow-500"
+                                            >
+                                                <option value="open">Status: Open</option>
+                                                <option value="pending">Status: In Progress</option>
+                                                <option value="resolved">Status: Resolved</option>
+                                                <option value="closed">Status: Closed</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Chat Messages */}
+                                    <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#0e0f15] custom-scrollbar">
+                                        {adminTicketMessages.length === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-center text-gray-600">
+                                                <MessageCircle size={36} className="opacity-20 mb-2" />
+                                                <p className="text-xs font-bold text-gray-500">No messages in this ticket yet</p>
+                                                <p className="text-[10px] text-gray-600">Send a reply below to initiate conversation.</p>
+                                            </div>
+                                        ) : (
+                                            adminTicketMessages.map((msg, idx) => {
+                                                const isStaff = msg.senderType === 'support' || msg.senderType === 'agent' || msg.isAdmin || msg.senderId === auth.currentUser?.uid;
+                                                return (
+                                                    <div 
+                                                        key={`admin-msg-${idx}-${msg.id || idx}`}
+                                                        className={`flex ${isStaff ? 'justify-end' : 'justify-start'}`}
+                                                    >
+                                                        <div className={`max-w-[75%] rounded-2xl p-4 shadow-md ${
+                                                            isStaff 
+                                                            ? 'bg-[#FFE24C] text-black font-medium rounded-tr-none' 
+                                                            : 'bg-[#1c1d27] text-white border border-white/10 rounded-tl-none'
+                                                        }`}>
+                                                            <div className="flex items-center justify-between gap-4 mb-1">
+                                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isStaff ? 'text-black/70' : 'text-yellow-500'}`}>
+                                                                    {isStaff ? (msg.senderName || 'Support Admin') : (msg.senderName || adminSelectedTicket.userName || 'User')}
+                                                                </span>
+                                                                <span className={`text-[9px] ${isStaff ? 'text-black/60 font-semibold' : 'text-gray-500'}`}>
+                                                                    {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs leading-relaxed whitespace-pre-wrap">{msg.text || msg.message}</p>
+                                                            {msg.attachments && msg.attachments.length > 0 && (
+                                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                                    {msg.attachments.map((att: string, aIdx: number) => (
+                                                                        <img key={aIdx} src={att} alt="attachment" className="w-20 h-20 object-cover rounded-lg border border-black/20" />
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                        <div ref={adminMessagesEndRef} />
+                                    </div>
+
+                                    {/* Chat Input */}
+                                    <div className="p-4 bg-[#15161d] border-t border-[#1a1a24] flex items-center gap-3">
+                                        <input 
+                                            type="text"
+                                            placeholder={`Reply to ${adminSelectedTicket.userName || 'user'}...`}
+                                            value={adminTicketReply}
+                                            onChange={(e) => setAdminTicketReply(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && sendAdminReply()}
+                                            className="flex-1 bg-[#0a0a0f] border border-white/10 rounded-2xl px-5 py-3.5 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-yellow-500/60 transition-all"
+                                        />
+                                        <button 
+                                            onClick={sendAdminReply}
+                                            disabled={!adminTicketReply.trim()}
+                                            className="px-6 py-3.5 bg-[#FFE24C] hover:bg-[#F0D544] disabled:opacity-40 disabled:grayscale text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95 flex items-center gap-2"
+                                        >
+                                            <Send size={16} />
+                                            Reply
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center p-12 text-center text-gray-500">
+                                    <div className="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 text-gray-600">
+                                        <MessageCircle size={36} />
+                                    </div>
+                                    <h4 className="text-base font-bold text-white mb-1">Select a Conversation</h4>
+                                    <p className="text-xs text-gray-500 max-w-sm">
+                                        Choose any ticket from the list on the left to read user inquiries and send manual live replies.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {activeTab === 'pages' && (
               <motion.div key="pages" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">

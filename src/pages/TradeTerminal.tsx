@@ -85,6 +85,7 @@ import {
   Star,
   Zap,
   HelpCircle,
+  Headphones,
   Info,
   AlertCircle,
   Unlock,
@@ -1547,71 +1548,9 @@ export default function TradeTerminal() {
     return () => unsub();
   }, []);
   
-  const getAIReply = async (ticketId: string, message: string) => {
-    // If ticket is already escalating to agent, don't reply
-    if (selectedTicket?.aiDisabled) return;
-
-    setIsBotTyping(true);
-    try {
-      const res = await fetch('/api/support/reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
-      });
-      
-      let aiReply = "I'm sorry, I am having trouble processing your request. Please wait for a human representative.";
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data.reply) aiReply = data.reply;
-      } else {
-        console.warn("Failed to get AI reply from server:", await res.text());
-        return;
-      }
-      
-      // Force escalation if keyword detected
-      const lowerMsg = message.toLowerCase();
-      const needsEscalation = lowerMsg.includes('agent') || lowerMsg.includes('representative');
-
-      // Add the message to Firestore
-      const messagesPath = `tickets/${ticketId}/messages`;
-      const messageId = doc(collection(db, 'tickets', ticketId, 'messages')).id;
-      const aiMessageData = {
-        senderId: 'ai-bot',
-        senderName: 'Support Bot',
-        senderType: 'support',
-        text: aiReply,
-        createdAt: Date.now()
-      };
-      
-      try {
-        await fetch('/api/tickets/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticketId, messageId, messageData: aiMessageData })
-        });
-      } catch (error) {
-        console.error("Server message creation failed:", error);
-      }
-
-      const ticketPath = `tickets/${ticketId}`;
-      try {
-        await fetch('/api/tickets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticketId, ticketData: {
-            lastMessage: aiReply,
-            updatedAt: Date.now(),
-            ...(needsEscalation ? { aiDisabled: true, status: 'pending' } : {})
-          }})
-        });
-      } catch (error) {
-        console.error("Server ticket update failed:", error);
-      }
-    } catch (e) {
-      console.error("AI reply failed:", e);
-    } finally {
-      setIsBotTyping(false);
-    }
+  const getAIReply = async (_ticketId: string, _message: string) => {
+    // Automated AI reply disabled: User inquiries are handled manually by the admin support team.
+    return;
   };
   
   useEffect(() => {
@@ -4284,10 +4223,6 @@ const PROMOTED_ARTICLES = [
       }
 
       toast.success("Support ticket created!");
-      
-      // Trigger AI reply for the initial message
-      getAIReply(ticketId, message);
-      
       return ticketId;
     } catch (e) {
       console.error("Error creating ticket:", e);
@@ -4352,9 +4287,6 @@ const PROMOTED_ARTICLES = [
       const msg = ticketReply;
       setTicketReply("");
       setTicketAttachedFiles([]);
-      
-      // Trigger AI reply
-      getAIReply(tid, msg);
     } catch (e) {
       console.error("Error sending message:", e);
       toast.error("Failed to send message");

@@ -70,33 +70,6 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                 ))}
             </div>
 
-            {/* PRESSURE SLIDER */}
-            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <Activity size={12} className="text-gray-500" />
-                        <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest pt-0.5">Candle Pressure</p>
-                    </div>
-                    <span className={`text-[11px] font-black font-mono ${data.pressure > 0 ? 'text-green-500' : data.pressure < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                        {data.pressure > 0 ? '+' : ''}{data.pressure || 0}%
-                    </span>
-                </div>
-                <input 
-                    type="range"
-                    min="-100"
-                    max="100"
-                    step="5"
-                    value={data.pressure || 0}
-                    onChange={e => updateMarket(pair, { pressure: Number(e.target.value) })}
-                    className="w-full h-1 rounded-full bg-white/10 appearance-none cursor-pointer accent-yellow-500"
-                />
-                <div className="flex justify-between text-[7px] font-black text-gray-700 uppercase tracking-widest">
-                    <span>Extreme Dump</span>
-                    <span>Neutral</span>
-                    <span>Extreme Pump</span>
-                </div>
-            </div>
-
             {/* LIMITS SECTION */}
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -145,6 +118,32 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden space-y-4 pt-4 border-t border-white/5"
                     >
+                        {/* PRESSURE SLIDER (Moved inside Advanced Configuration to prevent accidental touch during scroll) */}
+                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <Activity size={12} className="text-gray-500" />
+                                    <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest pt-0.5">Candle Pressure</p>
+                                </div>
+                                <span className={`text-[11px] font-black font-mono ${data.pressure > 0 ? 'text-green-500' : data.pressure < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                                    {data.pressure > 0 ? '+' : ''}{data.pressure || 0}%
+                                </span>
+                            </div>
+                            <input 
+                                type="range"
+                                min="-100"
+                                max="100"
+                                step="5"
+                                value={data.pressure || 0}
+                                onChange={e => updateMarket(pair, { pressure: Number(e.target.value) })}
+                                className="w-full h-1 rounded-full bg-white/10 appearance-none cursor-pointer accent-yellow-500"
+                            />
+                            <div className="flex justify-between text-[7px] font-black text-gray-700 uppercase tracking-widest">
+                                <span>Extreme Dump</span>
+                                <span>Neutral</span>
+                                <span>Extreme Pump</span>
+                            </div>
+                        </div>
                         {/* MANUAL PRICE OVERRIDE */}
                         <div className="space-y-2">
                             <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Price Override (Enter to Apply)</label>

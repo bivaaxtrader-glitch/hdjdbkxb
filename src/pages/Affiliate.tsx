@@ -2431,15 +2431,15 @@ export default function AffiliatePage() {
                              <Send size={24} className="text-white" />
                           </div>
                           <div>
-                             <div className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">Official Telegram Username</div>
-                             <div className="text-[18px] font-black text-white tracking-wide">@Bivaax_Official</div>
+                             <div className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">Affiliate Telegram Manager</div>
+                             <div className="text-[18px] font-black text-white tracking-wide">@bivaax_partner</div>
                           </div>
                        </div>
 
                        <button 
                           onClick={() => {
-                             navigator.clipboard.writeText('@Bivaax_Official');
-                             toast.success('Telegram username copied: @Bivaax_Official');
+                             navigator.clipboard.writeText('@bivaax_partner');
+                             toast.success('Telegram username copied: @bivaax_partner');
                           }}
                           className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[12px] font-bold tracking-wider uppercase flex items-center justify-center gap-2 transition cursor-pointer"
                        >
@@ -2449,19 +2449,19 @@ export default function AffiliatePage() {
 
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                        <a 
-                          href="https://t.me/Bivaax_Official" 
+                          href="https://t.me/bivaax_partner" 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="px-8 py-4 bg-[#0088cc] hover:bg-[#0077b5] text-white font-black text-[14px] uppercase tracking-wider rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-[#0088cc]/30 transition-all transform active:scale-95"
                        >
-                          <Send size={18} /> Open Chat on Telegram
+                          <Send size={18} /> Chat with Manager (@bivaax_partner)
                        </a>
 
                        <button 
                           onClick={() => window.open('https://t.me/Bivaax_Official', '_blank')}
                           className="px-6 py-4 bg-white/10 hover:bg-white/15 text-white font-bold text-[14px] rounded-2xl flex items-center justify-center gap-2 border border-white/10 transition cursor-pointer"
                        >
-                          <ExternalLink size={16} /> Join Official Channel
+                          <ExternalLink size={16} /> Official Channel
                        </button>
                     </div>
                  </div>
@@ -2527,11 +2527,11 @@ export default function AffiliatePage() {
                           </div>
                           <div>
                              <div className="text-[13px] font-black text-[#1a2233]">Affiliate Manager</div>
-                             <div className="text-[11px] font-bold text-gray-400 font-mono">@Bivaax_Official</div>
+                             <div className="text-[11px] font-bold text-[#0088cc] font-mono">@bivaax_partner</div>
                           </div>
                        </div>
                        <a 
-                          href="https://t.me/Bivaax_Official" 
+                          href="https://t.me/bivaax_partner" 
                           target="_blank" 
                           rel="noopener noreferrer" 
                           className="px-3 py-1.5 bg-[#0088cc] text-white rounded-lg text-[11px] font-bold uppercase tracking-wider hover:bg-[#0077b5]"

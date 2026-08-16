@@ -58,7 +58,7 @@ export default function NewsPage() {
             "name": "Bivaax",
             "logo": {
               "@type": "ImageObject",
-              "url": "https://i.postimg.cc/yYSDXHm2/IMG-20260421-WA0036(2).jpg"
+              "url": "https://i.postimg.cc/sXX8XQDV/file-000000005f788211bd6a5c656938f636.png"
             }
           },
           "mainEntityOfPage": {
