@@ -70,6 +70,29 @@ export const MarketControlCard = ({ pair, data, updateMarket, appConfig, fetchMa
                 ))}
             </div>
 
+            {/* PAYOUT CONFIGURATION */}
+            <div className="space-y-2 bg-yellow-500/5 border border-yellow-500/10 rounded-2xl p-4">
+                <div className="flex justify-between items-center">
+                    <label className="text-[8px] font-black text-yellow-500 uppercase tracking-widest">Asset Payout Rate</label>
+                    <span className="text-[12px] font-mono font-black text-white bg-yellow-500/15 px-2 py-0.5 rounded border border-yellow-500/20">+{data.payout || 82}%</span>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                    <input 
+                        type="range"
+                        min="10"
+                        max="100"
+                        step="1"
+                        value={data.payout || 82}
+                        onChange={e => updateMarket(pair, { payout: Number(e.target.value) })}
+                        className="w-full h-1 rounded-full bg-white/10 appearance-none cursor-pointer accent-yellow-500"
+                    />
+                </div>
+                <div className="flex justify-between text-[7px] font-black text-gray-500 uppercase tracking-widest">
+                    <span>10% Payout</span>
+                    <span>100% Payout</span>
+                </div>
+            </div>
+
             {/* LIMITS SECTION */}
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">

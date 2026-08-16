@@ -24,9 +24,16 @@ db.pragma('mmap_size = 30000000000'); // Maximize memory mapping for faster read
 db.exec(`
 CREATE TABLE IF NOT EXISTS market_settings (
   pair TEXT PRIMARY KEY,
-  hidden INTEGER DEFAULT 0
+  hidden INTEGER DEFAULT 0,
+  payout INTEGER DEFAULT NULL
 );
 `);
+
+try {
+  db.exec("ALTER TABLE market_settings ADD COLUMN payout INTEGER DEFAULT NULL");
+} catch (e) {
+  // column already exists
+}
 
 // Ensure tables exist
 db.exec(`

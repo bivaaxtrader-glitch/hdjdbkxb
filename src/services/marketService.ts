@@ -13,9 +13,15 @@ export async function loadMarketSettings() {
     for (const row of marketSettings) {
       if (markets_real[row.pair]) {
         markets_real[row.pair].hidden = !!row.hidden;
+        if (row.payout !== undefined && row.payout !== null) {
+          markets_real[row.pair].payout = row.payout;
+        }
       }
       if (markets_demo[row.pair]) {
         markets_demo[row.pair].hidden = !!row.hidden;
+        if (row.payout !== undefined && row.payout !== null) {
+          markets_demo[row.pair].payout = row.payout;
+        }
       }
     }
   }

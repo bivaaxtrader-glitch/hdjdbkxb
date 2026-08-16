@@ -118,9 +118,15 @@ router.post('/admin/market/update', (req, res) => {
   
   if (markets_real[pair]) {
     markets_real[pair] = { ...markets_real[pair], ...updates };
-    // Persist hidden status
-    if ('hidden' in updates) {
-      run('INSERT OR REPLACE INTO market_settings (pair, hidden) VALUES (?, ?)', [pair, updates.hidden ? 1 : 0]);
+    // Persist hidden and payout status
+    if ('hidden' in updates || 'payout' in updates) {
+      const isHidden = markets_real[pair].hidden ? 1 : 0;
+      const currentPayout = markets_real[pair].payout !== undefined && markets_real[pair].payout !== null ? markets_real[pair].payout : null;
+      try {
+        run('INSERT INTO market_settings (pair, hidden, payout) VALUES (?, ?, ?) ON CONFLICT(pair) DO UPDATE SET hidden = excluded.hidden, payout = excluded.payout', [pair, isHidden, currentPayout]);
+      } catch (err: any) {
+        console.error('Failed to save market_settings to SQLite:', err.message);
+      }
     }
   }
   if (markets_demo[pair]) {
