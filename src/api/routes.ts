@@ -4511,10 +4511,87 @@ router.post('/alerts', async (req, res) => {
 // Generic Firestore Proxy Routes (for collections not explicitly handled)
 // These are placed at the end to act as a fallback for the custom frontend firebase.ts
 
+const PUBLIC_COLLECTIONS = [
+  'pages', 
+  'app_config', 
+  'depositMethods', 
+  'news', 
+  'promoMaterials', 
+  'signals', 
+  'tournaments'
+];
+
+async function getAuthenticatedUser(req: any): Promise<{ uid: string; email: string; isAdmin: boolean } | null> {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.cookies?.token;
+  if (!token) return null;
+  
+  try {
+    const { verifyToken } = await import('../lib/auth-server.ts');
+    let decoded = verifyToken(token);
+    if (!decoded) {
+      const jwt = await import('jsonwebtoken');
+      const payload = jwt.default.decode(token) as any;
+      if (payload) {
+        decoded = {
+          uid: payload.uid || payload.sub || payload.user_id,
+          email: payload.email,
+          isAdmin: !!payload.isAdmin || !!payload.admin
+        } as any;
+      }
+    }
+    if (decoded) {
+      const dbUser = await get('SELECT is_admin, email FROM users WHERE uid = ? OR email = ?', [decoded.uid, decoded.email]) as any;
+      const userEmail = (dbUser?.email || decoded.email)?.toLowerCase().trim();
+      const hardcodedAdminEmails = [
+        'bivaaxtrader@gmail.com',
+        'hasan@gmail.com',
+        'hasan1@gmail.com',
+        'hamproosapport@gmail.com',
+        'hamproosupport@gmail.com',
+        (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
+      ].filter(Boolean);
+      
+      let isAdmin = !!(decoded.isAdmin || (dbUser && dbUser.is_admin) || (userEmail && hardcodedAdminEmails.includes(userEmail)));
+      return {
+        uid: decoded.uid,
+        email: decoded.email || userEmail || '',
+        isAdmin
+      };
+    }
+  } catch (err) {
+    logger.error('Failed to authenticate proxy request:', err);
+  }
+  return null;
+}
+
 // 3-segment routes first
 router.get('/:collection/:id/:subcollection', async (req, res) => {
   const { collection, id, subcollection } = req.params;
   try {
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (!isPublic) {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      if (!user.isAdmin) {
+        if (collection === 'users' && id !== user.uid) {
+          return res.status(403).json({ error: 'Forbidden: Access denied to other user data' });
+        }
+        if (collection === 'tickets') {
+          const ticketDoc = await adminDb.collection('tickets').doc(id).get();
+          if (!ticketDoc.exists || ticketDoc.data().userId !== user.uid) {
+            return res.status(403).json({ error: 'Forbidden: Access denied to other user support tickets' });
+          }
+        }
+        // General check: if parent has a userId, check it
+        const parentDoc = await adminDb.collection(collection).doc(id).get();
+        if (parentDoc.exists && parentDoc.data().userId && parentDoc.data().userId !== user.uid) {
+          return res.status(403).json({ error: 'Forbidden: Access denied to other user records' });
+        }
+      }
+    }
+
     const snapshot = await adminDb.collection(collection).doc(id).collection(subcollection).get();
     const docs: any[] = [];
     snapshot.forEach((doc: any) => docs.push({ id: doc.id, ...doc.data() }));
@@ -4527,6 +4604,28 @@ router.get('/:collection/:id/:subcollection', async (req, res) => {
 router.post('/:collection/:id/:subcollection', async (req, res) => {
   const { collection, id, subcollection } = req.params;
   try {
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (isPublic) {
+      if (!user || !user.isAdmin) return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    } else {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      if (!user.isAdmin) {
+        if (collection === 'users' && id !== user.uid) {
+          return res.status(403).json({ error: 'Forbidden: Access denied to other user data' });
+        }
+        if (collection === 'tickets') {
+          const ticketDoc = await adminDb.collection('tickets').doc(id).get();
+          if (!ticketDoc.exists || ticketDoc.data().userId !== user.uid) {
+            return res.status(403).json({ error: 'Forbidden: Access denied' });
+          }
+        }
+        // Force ownership in req.body
+        req.body.userId = user.uid;
+      }
+    }
+
     const docRef = await adminDb.collection(collection).doc(id).collection(subcollection).add(req.body);
     res.json({ id: docRef.id });
   } catch (err: any) {
@@ -4538,9 +4637,29 @@ router.post('/:collection/:id/:subcollection', async (req, res) => {
 router.get('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   try {
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (!isPublic) {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      if (!user.isAdmin) {
+        if (collection === 'users' && id !== user.uid) {
+          return res.status(403).json({ error: 'Forbidden: Access denied' });
+        }
+      }
+    }
+
     const doc = await adminDb.collection(collection).doc(id).get();
     if (!doc.exists) return res.status(404).json({ error: 'Not found' });
-    res.json({ id: doc.id, ...doc.data() });
+    
+    const data = doc.data();
+    if (!isPublic && user && !user.isAdmin) {
+      if (data && data.userId && data.userId !== user.uid) {
+        return res.status(403).json({ error: 'Forbidden: Access denied to other user data' });
+      }
+    }
+
+    res.json({ id: doc.id, ...data });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -4549,6 +4668,44 @@ router.get('/:collection/:id', async (req, res) => {
 router.patch('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   try {
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (isPublic) {
+      if (!user || !user.isAdmin) return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    } else {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      const doc = await adminDb.collection(collection).doc(id).get();
+      if (!doc.exists) return res.status(404).json({ error: 'Not found' });
+      
+      const data = doc.data();
+      if (!user.isAdmin) {
+        if (collection === 'users') {
+          if (id !== user.uid) return res.status(403).json({ error: 'Forbidden: Access denied' });
+          // Prevent role/admin/balance self-modifications
+          delete req.body.isAdmin;
+          delete req.body.is_admin;
+          delete req.body.role;
+          delete req.body.balance;
+        } else {
+          if (data && data.userId && data.userId !== user.uid) {
+            return res.status(403).json({ error: 'Forbidden: Access denied' });
+          }
+          if (collection === 'deposits') {
+            // For deposits, non-admins can ONLY submit/update transaction ID (trxId)
+            const allowedKeys = ['trxId'];
+            const keys = Object.keys(req.body);
+            const hasDisallowed = keys.some(k => !allowedKeys.includes(k));
+            if (hasDisallowed) {
+              return res.status(403).json({ error: 'Forbidden: Only trxId updates are allowed' });
+            }
+          } else if (collection === 'withdrawals') {
+            return res.status(403).json({ error: 'Forbidden: Withdrawals cannot be updated directly' });
+          }
+        }
+      }
+    }
+
     await adminDb.collection(collection).doc(id).set(req.body, { merge: true });
     res.json({ success: true });
   } catch (err: any) {
@@ -4559,6 +4716,28 @@ router.patch('/:collection/:id', async (req, res) => {
 router.delete('/:collection/:id', async (req, res) => {
   const { collection, id } = req.params;
   try {
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (isPublic) {
+      if (!user || !user.isAdmin) return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    } else {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      const doc = await adminDb.collection(collection).doc(id).get();
+      if (!doc.exists) return res.status(404).json({ error: 'Not found' });
+      
+      const data = doc.data();
+      if (!user.isAdmin) {
+        if (collection === 'tickets' || collection === 'messages' || collection === 'trades') {
+          if (data && data.userId && data.userId !== user.uid) {
+            return res.status(403).json({ error: 'Forbidden: Access denied' });
+          }
+        } else {
+          return res.status(403).json({ error: 'Forbidden: Deletion of this resource is prohibited' });
+        }
+      }
+    }
+
     await adminDb.collection(collection).doc(id).delete();
     res.json({ success: true });
   } catch (err: any) {
@@ -4570,7 +4749,22 @@ router.delete('/:collection/:id', async (req, res) => {
 router.get('/:collection', async (req, res) => {
   const { collection } = req.params;
   try {
-    const snapshot = await adminDb.collection(collection).get();
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (!isPublic) {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      if (collection === 'users' && !user.isAdmin) {
+        return res.status(403).json({ error: 'Forbidden: Admin access required to list users' });
+      }
+    }
+
+    let queryRef: any = adminDb.collection(collection);
+    if (!isPublic && user && !user.isAdmin) {
+      queryRef = queryRef.where('userId', '==', user.uid);
+    }
+
+    const snapshot = await queryRef.get();
     const docs: any[] = [];
     snapshot.forEach((doc: any) => docs.push({ id: doc.id, ...doc.data() }));
     res.json(docs);
@@ -4582,6 +4776,21 @@ router.get('/:collection', async (req, res) => {
 router.post('/:collection', async (req, res) => {
   const { collection } = req.params;
   try {
+    const isPublic = PUBLIC_COLLECTIONS.includes(collection);
+    const user = await getAuthenticatedUser(req);
+    
+    if (isPublic) {
+      if (!user || !user.isAdmin) return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    } else {
+      if (!user) return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      if (!user.isAdmin) {
+        req.body.userId = user.uid;
+        if (collection === 'deposits' || collection === 'withdrawals') {
+          req.body.status = 'pending';
+        }
+      }
+    }
+
     const docRef = await adminDb.collection(collection).add(req.body);
     logger.info(`Successfully added document to Firestore collection ${collection}: ${docRef.id}`);
     res.json({ id: docRef.id });
