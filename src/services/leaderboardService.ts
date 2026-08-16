@@ -63,6 +63,18 @@ export const updateLeaderboardStats = async (userId: string, tradeStatus: 'won' 
   }
 };
 
+function seedRandom(seed: string): () => number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
+  }
+  return function() {
+    h = Math.imul(h ^ h >>> 16, 2246822507);
+    h = Math.imul(h ^ h >>> 13, 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+}
+
 export const fetchLeaderboards = async () => {
   let allTime: any[] = [];
   let winRate: any[] = [];
@@ -204,68 +216,162 @@ export const fetchLeaderboards = async () => {
       monthly = [];
     }
 
+    const nowObj = new Date();
+    const dateStr = nowObj.toISOString().split('T')[0];
+    const year = nowObj.getFullYear();
+    const month = nowObj.getMonth();
+    const day = nowObj.getDate();
+    const hour = nowObj.getHours();
+    const minute = nowObj.getMinutes();
+
+    // Current 30-minute step in the day (0 to 47)
+    const currentStep = Math.floor((hour * 60 + minute) / 30);
+
     const fakeUsers = [
-      { user_id: 'fake_1', display_name: 'CryptoKing', total_profit: 224537.45, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'United States', country_code: 'us', balance: 12450.50 },
-      { user_id: 'fake_2', display_name: 'MoonWalker', total_profit: 185429.67, total_trades: 150, won_trades: 130, lost_trades: 20, photo_url: '', country: 'Brazil', country_code: 'br', balance: 8940.20 },
-      { user_id: 'fake_3', display_name: 'TradeMaster', total_profit: 142055.23, total_trades: 200, won_trades: 180, lost_trades: 20, photo_url: '', country: 'India', country_code: 'in', balance: 5670.80 },
-      { user_id: 'fake_4', display_name: 'BullRider', total_profit: 112581.18, total_trades: 110, won_trades: 90, lost_trades: 20, photo_url: '', country: 'Germany', country_code: 'de', balance: 14500.00 },
-      { user_id: 'fake_5', display_name: 'BearSlayer', total_profit: 89417.84, total_trades: 130, won_trades: 110, lost_trades: 20, photo_url: '', country: 'Canada', country_code: 'ca', balance: 3200.50 },
-      { user_id: 'fake_6', display_name: 'ProfitPro', total_profit: 68512.39, total_trades: 90, won_trades: 80, lost_trades: 10, photo_url: '', country: 'Australia', country_code: 'au', balance: 6780.00 },
-      { user_id: 'fake_7', display_name: 'MarketWizard', total_profit: 52436.71, total_trades: 100, won_trades: 85, lost_trades: 15, photo_url: '', country: 'Japan', country_code: 'jp', balance: 1240.00 },
-      { user_id: 'fake_8', display_name: 'ChartGuru', total_profit: 42519.82, total_trades: 120, won_trades: 100, lost_trades: 20, photo_url: '', country: 'France', country_code: 'fr', balance: 4500.00 },
-      { user_id: 'fake_9', display_name: 'TrendHunter', total_profit: 33814.95, total_trades: 110, won_trades: 95, lost_trades: 15, photo_url: '', country: 'United Kingdom', country_code: 'gb', balance: 980.00 },
-      { user_id: 'fake_10', display_name: 'GoldMiner', total_profit: 26581.42, total_trades: 95, won_trades: 80, lost_trades: 15, photo_url: '', country: 'South Africa', country_code: 'za', balance: 2340.00 },
-      { user_id: 'fake_11', display_name: 'SignalSender', total_profit: 21245.33, total_trades: 80, won_trades: 70, lost_trades: 10, photo_url: '', country: 'Italy', country_code: 'it', balance: 5600.00 },
-      { user_id: 'fake_12', display_name: 'FastTrader', total_profit: 18419.67, total_trades: 70, won_trades: 60, lost_trades: 10, photo_url: '', country: 'Spain', country_code: 'es', balance: 3200.00 },
-      { user_id: 'fake_13', display_name: 'ScalpKing', total_profit: 15632.14, total_trades: 60, won_trades: 55, lost_trades: 5, photo_url: '', country: 'Mexico', country_code: 'mx', balance: 1500.00 },
-      { user_id: 'fake_14', display_name: 'OptionOpener', total_profit: 13247.58, total_trades: 50, won_trades: 45, lost_trades: 5, photo_url: '', country: 'Korea', country_code: 'kr', balance: 850.00 },
-      { user_id: 'fake_15', display_name: 'BinaryBoss', total_profit: 11119.33, total_trades: 40, won_trades: 35, lost_trades: 5, photo_url: '', country: 'Indonesia', country_code: 'id', balance: 450.00 },
-      { user_id: 'fake_16', display_name: 'CryptoClimber', total_profit: 9243.85, total_trades: 30, won_trades: 25, lost_trades: 5, photo_url: '', country: 'Vietnam', country_code: 'vn', balance: 1200.00 },
-      { user_id: 'fake_17', display_name: 'ForexFiend', total_profit: 7418.91, total_trades: 25, won_trades: 20, lost_trades: 5, photo_url: '', country: 'Thailand', country_code: 'th', balance: 500.00 },
-      { user_id: 'fake_18', display_name: 'StockStar', total_profit: 5812.44, total_trades: 20, won_trades: 15, lost_trades: 5, photo_url: '', country: 'Singapore', country_code: 'sg', balance: 2500.00 },
-      { user_id: 'fake_19', display_name: 'CoinCollector', total_profit: 4419.62, total_trades: 15, won_trades: 10, lost_trades: 5, photo_url: '', country: 'Malaysia', country_code: 'my', balance: 150.00 },
-      { user_id: 'fake_20', display_name: 'NewbieTrader', total_profit: 3122.87, total_trades: 5, won_trades: 3, lost_trades: 2, photo_url: '', country: 'Turkey', country_code: 'tr', balance: 100.00 }
+      { user_id: 'fake_1', display_name: 'CryptoKing', photo_url: '', country: 'United States', country_code: 'us', base_balance: 12450.50 },
+      { user_id: 'fake_2', display_name: 'MoonWalker', photo_url: '', country: 'Brazil', country_code: 'br', base_balance: 8940.20 },
+      { user_id: 'fake_3', display_name: 'TradeMaster', photo_url: '', country: 'India', country_code: 'in', base_balance: 5670.80 },
+      { user_id: 'fake_4', display_name: 'BullRider', photo_url: '', country: 'Germany', country_code: 'de', base_balance: 14500.00 },
+      { user_id: 'fake_5', display_name: 'BearSlayer', photo_url: '', country: 'Canada', country_code: 'ca', base_balance: 3200.50 },
+      { user_id: 'fake_6', display_name: 'ProfitPro', photo_url: '', country: 'Australia', country_code: 'au', base_balance: 6780.00 },
+      { user_id: 'fake_7', display_name: 'MarketWizard', photo_url: '', country: 'Japan', country_code: 'jp', base_balance: 1240.00 },
+      { user_id: 'fake_8', display_name: 'ChartGuru', photo_url: '', country: 'France', country_code: 'fr', base_balance: 4500.00 },
+      { user_id: 'fake_9', display_name: 'TrendHunter', photo_url: '', country: 'United Kingdom', country_code: 'gb', base_balance: 980.00 },
+      { user_id: 'fake_10', display_name: 'GoldMiner', photo_url: '', country: 'South Africa', country_code: 'za', base_balance: 2340.00 },
+      { user_id: 'fake_11', display_name: 'SignalSender', photo_url: '', country: 'Italy', country_code: 'it', base_balance: 5600.00 },
+      { user_id: 'fake_12', display_name: 'FastTrader', photo_url: '', country: 'Spain', country_code: 'es', base_balance: 3200.00 },
+      { user_id: 'fake_13', display_name: 'ScalpKing', photo_url: '', country: 'Mexico', country_code: 'mx', base_balance: 1500.00 },
+      { user_id: 'fake_14', display_name: 'OptionOpener', photo_url: '', country: 'Korea', country_code: 'kr', base_balance: 850.00 },
+      { user_id: 'fake_15', display_name: 'BinaryBoss', photo_url: '', country: 'Indonesia', country_code: 'id', base_balance: 450.00 },
+      { user_id: 'fake_16', display_name: 'CryptoClimber', photo_url: '', country: 'Vietnam', country_code: 'vn', base_balance: 1200.00 },
+      { user_id: 'fake_17', display_name: 'ForexFiend', photo_url: '', country: 'Thailand', country_code: 'th', base_balance: 500.00 },
+      { user_id: 'fake_18', display_name: 'StockStar', photo_url: '', country: 'Singapore', country_code: 'sg', base_balance: 2500.00 },
+      { user_id: 'fake_19', display_name: 'CoinCollector', photo_url: '', country: 'Malaysia', country_code: 'my', base_balance: 150.00 },
+      { user_id: 'fake_20', display_name: 'NewbieTrader', photo_url: '', country: 'Turkey', country_code: 'tr', base_balance: 100.00 }
     ];
 
+    // 1. Assign each user a daily random rank score so order shuffles EVERY SINGLE DAY
+    const userDailyScores = fakeUsers.map(u => {
+      const dailyRand = seedRandom(`daily_score_${dateStr}_${u.user_id}`);
+      return {
+        user: u,
+        score: dailyRand()
+      };
+    });
+
+    // Sort users by daily random score so rankings change every day
+    userDailyScores.sort((a, b) => b.score - a.score);
+
+    // 2. Generate EOD target and 30-minute step progression for each user
+    const processedFakeUsers = userDailyScores.map((item, rank) => {
+      const u = item.user;
+      const userRand = seedRandom(`target_${dateStr}_${u.user_id}`);
+      
+      // Top rank gets ~$20,000 - $22,000 EOD profit.
+      // Rank 20 gets ~$120 - $250 EOD profit.
+      const maxProfit = 20000 + userRand() * 2200; // ~ $20,000 to $22,200
+      const minProfit = 120 + userRand() * 130;    // ~ $120 to $250
+      
+      // Non-linear power curve for realistic rank spacing
+      const rankRatio = (19 - rank) / 19;
+      const eodTargetProfit = minProfit + Math.pow(rankRatio, 2.3) * (maxProfit - minProfit);
+
+      // Accumulate 30-minute step weights up to currentStep (0..47)
+      let totalWeight = 0;
+      let accumulatedWeight = 0;
+      for (let s = 0; s < 48; s++) {
+        const stepRand = seedRandom(`step_${dateStr}_${u.user_id}_${s}`);
+        const weight = 0.3 + stepRand() * 1.4;
+        totalWeight += weight;
+        if (s <= currentStep) {
+          accumulatedWeight += weight;
+        }
+      }
+
+      const progressRatio = accumulatedWeight / totalWeight;
+      const dailyProfit = parseFloat((eodTargetProfit * progressRatio).toFixed(2));
+
+      // Weekly & Monthly calculations scaling off EOD + historical seed
+      const weekSeed = `${year}-W${Math.ceil((day + 7) / 7)}`;
+      const weeklyRand = seedRandom(`weekly_${weekSeed}_${u.user_id}`);
+      const weeklyProfit = parseFloat((dailyProfit * (3.5 + weeklyRand() * 2.5) + (1500 + weeklyRand() * 25000)).toFixed(2));
+
+      const monthlyRand = seedRandom(`monthly_${year}_${month}_${u.user_id}`);
+      const monthlyProfit = parseFloat((weeklyProfit * (2.8 + monthlyRand() * 2.2) + (5000 + monthlyRand() * 80000)).toFixed(2));
+
+      const allTimeRand = seedRandom(`alltime_${u.user_id}`);
+      const allTimeProfit = parseFloat((monthlyProfit * (3 + allTimeRand() * 4) + (20000 + allTimeRand() * 150000)).toFixed(2));
+
+      const winRate = Math.min(98, Math.max(68, Math.floor(74 + (userRand() * 20))));
+      const totalTrades = Math.max(12, Math.floor((dailyProfit / 150) + userRand() * 40));
+      const wonTrades = Math.floor(totalTrades * (winRate / 100));
+      const lostTrades = totalTrades - wonTrades;
+
+      return {
+        user_id: u.user_id,
+        display_name: u.display_name,
+        photo_url: u.photo_url,
+        country: u.country,
+        country_code: u.country_code,
+        balance: u.base_balance + dailyProfit,
+        total_trades: totalTrades,
+        won_trades: wonTrades,
+        lost_trades: lostTrades,
+        win_rate: winRate,
+        dailyProfit,
+        weeklyProfit,
+        monthlyProfit,
+        allTimeProfit
+      };
+    });
+
     // Merge fake users into allTime
-    const finalAllTime = [...allTime, ...fakeUsers].map(u => ({
-      ...u,
-      total_profit: Number(u.total_profit || 0),
-      win_rate: u.total_trades > 0 ? Math.floor((Number(u.won_trades || 0) / Number(u.total_trades)) * 100) : (80 + Math.floor(Math.random() * 15))
-    })).sort((a, b) => Number(b.total_profit) - Number(a.total_profit)).slice(0, 20);
+    const finalAllTime = [...allTime, ...processedFakeUsers.map(u => ({
+      user_id: u.user_id,
+      display_name: u.display_name,
+      total_profit: u.allTimeProfit,
+      total_trades: u.total_trades * 10,
+      won_trades: u.won_trades * 10,
+      lost_trades: u.lost_trades * 10,
+      photo_url: u.photo_url,
+      country: u.country,
+      country_code: u.country_code,
+      balance: u.balance,
+      win_rate: u.win_rate
+    }))].sort((a, b) => Number(b.total_profit) - Number(a.total_profit)).slice(0, 20);
 
     // Merge fake users into daily/weekly/monthly
-    const dailyWithFake = [...daily, ...fakeUsers.map(u => ({ 
+    const dailyWithFake = [...daily, ...processedFakeUsers.map(u => ({ 
       user_id: u.user_id, 
-      profit: parseFloat((u.total_profit * 0.12).toFixed(2)), 
+      profit: u.dailyProfit, 
       display_name: u.display_name, 
       photo_url: u.photo_url, 
       country: u.country, 
       country_code: u.country_code,
       balance: u.balance,
-      win_rate: 80 + Math.floor(Math.random() * 15)
+      win_rate: u.win_rate
     }))].sort((a, b) => Number(b.profit) - Number(a.profit)).slice(0, 20);
 
-    const weeklyWithFake = [...weekly, ...fakeUsers.map(u => ({ 
+    const weeklyWithFake = [...weekly, ...processedFakeUsers.map(u => ({ 
       user_id: u.user_id, 
-      profit: parseFloat((u.total_profit * 0.45).toFixed(2)), 
+      profit: u.weeklyProfit, 
       display_name: u.display_name, 
       photo_url: u.photo_url, 
       country: u.country, 
       country_code: u.country_code,
       balance: u.balance,
-      win_rate: 80 + Math.floor(Math.random() * 15)
+      win_rate: u.win_rate
     }))].sort((a, b) => Number(b.profit) - Number(a.profit)).slice(0, 20);
 
-    const monthlyWithFake = [...monthly, ...fakeUsers.map(u => ({ 
+    const monthlyWithFake = [...monthly, ...processedFakeUsers.map(u => ({ 
       user_id: u.user_id, 
-      profit: parseFloat((u.total_profit * 0.88).toFixed(2)), 
+      profit: u.monthlyProfit, 
       display_name: u.display_name, 
       photo_url: u.photo_url, 
       country: u.country, 
       country_code: u.country_code,
       balance: u.balance,
-      win_rate: 80 + Math.floor(Math.random() * 15)
+      win_rate: u.win_rate
     }))].sort((a, b) => Number(b.profit) - Number(a.profit)).slice(0, 20);
 
     return { 

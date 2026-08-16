@@ -165,7 +165,10 @@ export const Tournaments: React.FC = () => {
                 <div className="p-4 flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-xs mb-1">Prize fund</p>
-                    <p className="text-yellow-500 font-bold text-xl">{formatWithCurrency(convertToBase(t.prize_pool, 'BDT'), userCurrency)}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-yellow-500 font-bold text-xl">{formatWithCurrency(convertToBase(t.prize_pool, 'BDT'), userCurrency)}</p>
+                      <span className="text-[9px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded border border-yellow-500/20 font-black uppercase tracking-tighter">Live Only</span>
+                    </div>
                   </div>
                   <button className="bg-[#FFDD33] hover:bg-[#F0C800] text-black font-bold py-2 px-5 rounded text-sm transition-colors shadow-sm">
                     Read more

@@ -30,6 +30,7 @@ import { backupDatabase } from './src/db/backup';
 import authRouter from './src/api/auth';
 import apiRouter, { syncDatabaseFromFirestore, seedDefaultPages } from './src/api/routes';
 import tournamentRouter, { seedTournaments } from './src/api/tournament';
+import { startTournamentEngine } from './src/services/tournamentService';
 import logger from './src/lib/logger';
 
 async function startServer() {
@@ -377,6 +378,7 @@ Sitemap: https://bivaax.com/sitemap.xml`);
         await seedMasterTraders();
         await seedTournaments();
         await seedDefaultPages();
+        startTournamentEngine();
       } catch (err) {}
 
       // 3. Start Market Engine (starts price generation ticker)

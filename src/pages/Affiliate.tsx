@@ -471,8 +471,8 @@ export default function AffiliatePage() {
   const [newPostback, setNewPostback] = useState({ name: '', url: '', event: 'registration', method: 'GET' });
 
 
-  const referralCode = affId || (currentUser?.uid ? currentUser.uid.slice(0, 8).toUpperCase() : 'BIVAAX');
-  const referralLink = `${window.location.origin}/register?ref=${referralCode}`;
+  const referralCode = affId || '';
+  const referralLink = referralCode ? `${window.location.origin}/register?ref=${referralCode}` : '';
 
   const addCampaign = async () => {
     if (!currentUser) return;
@@ -513,8 +513,9 @@ export default function AffiliatePage() {
     }
   };
 
-  const getCampaignLink = (subId: string, landingPage: string = '/', linkType: string = 'revshare') => {
-    const base = window.location.origin + (landingPage === '/' ? '' : landingPage);
+  const getCampaignLink = (subId: string, landingPage: string = '/register', linkType: string = 'revshare') => {
+    if (!referralCode) return 'Loading...';
+    const base = window.location.origin + (landingPage === '/' ? '/register' : landingPage);
     const connector = base.includes('?') ? '&' : '?';
     return `${base}${connector}ref=${referralCode}&sub=${subId}&type=${linkType}`;
   };
@@ -890,7 +891,7 @@ export default function AffiliatePage() {
      return (now - commissionDate) < oneWeekInMs;
   });
 
-  const availableBalance = availableCommissions.reduce((acc, c) => acc + (c.amount || 0), 0);
+  const availableBalance = affiliateBalance > 0 ? affiliateBalance : availableCommissions.reduce((acc, c) => acc + (c.amount || 0), 0);
   const heldBalance = heldCommissions.reduce((acc, c) => acc + (c.amount || 0), 0);
 
   const copyLink = () => {
@@ -1615,7 +1616,7 @@ export default function AffiliatePage() {
                           <tbody className="divide-y divide-gray-50">
                              {filteredReferrals.length > 0 ? filteredReferrals.map((ref, idx) => {
                                 const email = ref.email || "";
-                                const maskedEmail = email.includes("@") ? `${email.split("@")[0].substring(0, 2)}***@${email.split("@")[1]}` : "Anov*** Partner";
+                                const maskedEmail = email.includes("@") ? `${email.split("@")[0].substring(0, 3)}***@${email.split("@")[1].substring(0, 1)}***.com` : "Ano***";
                                 return (
                                    <tr key={`stat-row-${ref.id}`} className="group hover:bg-gray-50/50 transition-all">
                                      <td className="py-6 px-4">
@@ -2067,14 +2068,17 @@ export default function AffiliatePage() {
                              </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
-                             {subAffiliates.length > 0 ? subAffiliates.map((sub, i) => (
+                             {subAffiliates.length > 0 ? subAffiliates.map((sub, i) => {
+                                const email = sub.email || "";
+                                const maskedEmail = email.includes("@") ? `${email.split("@")[0].substring(0, 3)}***@${email.split("@")[1].substring(0, 1)}***.com` : "Ano***";
+                                return (
                                  <tr key={`sub-aff-row-${i}`} className="hover:bg-gray-50 transition-colors">
                                    <td className="px-8 py-5">
                                       <div className="flex items-center gap-3">
                                          <div className="w-8 h-8 rounded-full bg-slate-100 border border-indigo-100 flex items-center justify-center font-black text-[10px] text-indigo-600">
-                                            {sub.email?.substring(0, 2).toUpperCase()}
+                                            {maskedEmail.substring(0, 2).toUpperCase()}
                                          </div>
-                                         <span className="font-bold text-[#1c1d22] text-[14px]">{sub.email?.split('@')[0]}***@{sub.email?.split('@')[1]}</span>
+                                         <span className="font-bold text-[#1c1d22] text-[14px]">{maskedEmail}</span>
                                       </div>
                                    </td>
                                    <td className="px-8 py-5 text-gray-500 font-bold text-[13px]">{sub.createdAt ? new Date(sub.createdAt).toLocaleDateString() : 'N/A'}</td>
@@ -2082,7 +2086,8 @@ export default function AffiliatePage() {
                                     <td className="px-8 py-5 text-[#1c1d22] font-black text-[13px]">{sub.referralCount || 0}</td>
                                    <td className="px-8 py-5 text-right font-black text-indigo-600 text-[15px]">$ 0.00 [USDT]</td>
                                 </tr>
-                             )) : (
+                               )
+                             }) : (
                                 <tr>
                                    <td colSpan={4} className="px-8 py-20 text-center opacity-50">
                                       <div className="flex flex-col items-center gap-4">
@@ -2105,10 +2110,16 @@ export default function AffiliatePage() {
                         <p className="text-gray-400 text-[13px] leading-relaxed mb-8">Share this unique invitation with potential affiliates. You'll receive 5% from all revenue generated by their clients.</p>
                         
                         <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex items-center justify-between mb-4">
-                           <span className="text-[12px] font-mono text-gray-500 font-bold truncate pr-3">{window.location.protocol}//{window.location.host}?ref={referralCode}</span>
-                           <button onClick={() => { navigator.clipboard.writeText(`${window.location.protocol}//${window.location.host}?ref=${referralCode}`); toast.success('Invite link copied'); }} className="text-indigo-400">
-                             <Copy size={16} />
-                           </button>
+                           {referralCode ? (
+                               <>
+                                   <span className="text-[12px] font-mono text-gray-500 font-bold truncate pr-3">{window.location.protocol}//{window.location.host}/register?ref={referralCode}</span>
+                                   <button onClick={() => { navigator.clipboard.writeText(`${window.location.protocol}//${window.location.host}/register?ref=${referralCode}`); toast.success('Invite link copied'); }} className="text-indigo-400">
+                                     <Copy size={16} />
+                                   </button>
+                               </>
+                           ) : (
+                               <div className="animate-pulse w-full h-5 bg-white/10 rounded-md"></div>
+                           )}
                         </div>
                         
                         <div className="pt-6 border-t border-white/5">

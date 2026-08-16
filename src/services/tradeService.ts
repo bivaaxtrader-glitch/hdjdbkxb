@@ -235,6 +235,21 @@ export async function settleTrade(tradeId: number, currentMarketPrice?: number) 
                const newBalance = currentBalance.plus(payoutAmount).toFixed(2);
                await run(`UPDATE users SET ${balanceField} = ? WHERE uid = ?`, [newBalance, trade.user_id], conn);
                
+               // Sync to Firestore immediately and notify UI
+               try {
+                 const { syncUserToFirestore } = await import('../lib/firebase-admin.ts');
+                 const { mapUserForFrontend } = await import('../lib/user-utils.ts');
+                 const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [trade.user_id], conn) as any;
+                 const mapped = mapUserForFrontend(updatedUser);
+                 syncUserToFirestore(trade.user_id, mapped).catch(err => logger.error('Sync user balance failed on payout:', err));
+               
+                 // Emit socket event for real-time UI update
+                 const { getIO } = await import('./socketService.ts');
+                 getIO().to(`user_${trade.user_id}`).emit('user_profile_update', mapped);
+               } catch (e) {
+                 logger.error('Failed to sync/emit balance update:', e);
+               }
+               
                if (!trade.is_demo && trade.account_type !== 'demo' && trade.account_type !== 'tournament') {
                  await createAuditLog(trade.user_id, 'trade_payout', 'trade', tradeId.toString(), { payoutAmount: payoutAmount.toNumber(), newBalance });
                }

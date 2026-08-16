@@ -244,10 +244,10 @@ export default function AuthPage() {
     const type = localStorage.getItem('referralType') || localStorage.getItem('referral_type') || urlType;
 
     let finalReferrerUid = ref;
-    if (ref && (ref.length < 15 || !isNaN(Number(ref)))) {
+    if (ref) {
       try {
         const referrerUser = await getUserByAffiliateId(ref);
-        if (referrerUser) {
+        if (referrerUser && referrerUser.uid) {
           finalReferrerUid = referrerUser.uid;
         }
       } catch (err) {

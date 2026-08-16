@@ -1385,6 +1385,9 @@ export default function TradeTerminal() {
   const failedFetchRef = useRef(new Set<string>());
   const lastRequestedRef = useRef<Record<string, number>>({});
   const navigate = useNavigate();
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [cashierTab, setCashierTab] = useState<"deposits" | "withdrawals" | "history">("deposits");
+  const [showCashierMenu, setShowCashierMenu] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const actionParam = searchParams.get('action');
   const accountParam = searchParams.get('account');
@@ -1586,6 +1589,7 @@ export default function TradeTerminal() {
                 email: user.email, 
                 displayName: user.displayName, 
                 photoURL: user.photoURL,
+                emailVerified: user.emailVerified,
                 referralCode: ref,
                 referralSubId: sub,
                 referralType: type
@@ -1624,6 +1628,14 @@ export default function TradeTerminal() {
                     if (userData.isVerified !== undefined && isVerifiedRef.current !== userData.isVerified) {
                         setIsVerified(userData.isVerified);
                         isVerifiedRef.current = userData.isVerified;
+                    }
+
+                    if (userData.kycStatus) {
+                      setKycStatus(userData.kycStatus);
+                    }
+
+                    if (userData.tfaEnabled !== undefined) {
+                      setIs2FAEnabled(userData.tfaEnabled);
                     }
                     
                     if (userData.timeZone) {
@@ -2029,6 +2041,8 @@ export default function TradeTerminal() {
     if (path === '/education') return 'education';
     if (path === '/statuses') return 'statuses';
     if (path === '/help-center') return 'help-center';
+    if (path === '/trade/history') return 'history';
+    if (path === '/trade/assets') return 'assets';
     return 'trade';
   };
 
@@ -2059,10 +2073,46 @@ export default function TradeTerminal() {
 
   useEffect(() => {
     const newTab = getInitialTab();
-    if (newTab !== activeTabRaw && ['top-20', 'promotions', 'calendar', 'support', 'tournaments', 'education', 'statuses', 'help-center', 'trade'].includes(newTab)) {
+    if (newTab !== activeTabRaw && ['top-20', 'promotions', 'calendar', 'support', 'tournaments', 'education', 'statuses', 'help-center', 'trade', 'history', 'assets'].includes(newTab)) {
       setActiveTabRaw(newTab as any);
     }
   }, [location.pathname]);
+
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.startsWith('/cashier/')) {
+      const sub = path.split('/')[2] as any;
+      if (['deposits', 'withdrawals', 'history'].includes(sub)) {
+        if (!showDeposit || cashierTab !== sub) {
+          setShowDeposit(true);
+          setCashierTab(sub);
+        }
+      }
+    } else if (path === '/cashier') {
+      if (!showDeposit) {
+        setShowDeposit(true);
+        setCashierTab('deposits');
+      }
+    } else {
+      // If we are not on a cashier path, ensure cashier is closed
+      if (showDeposit) {
+        setShowDeposit(false);
+      }
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (showDeposit) {
+      const currentPath = `/cashier/${cashierTab}`;
+      if (location.pathname !== currentPath) {
+        navigate(currentPath);
+      }
+    } else {
+      if (location.pathname.startsWith('/cashier')) {
+        navigate('/trade');
+      }
+    }
+  }, [showDeposit, cashierTab]);
 
   const activeTab = activeTabRaw;
   const setActiveTab = React.useCallback((tab: any) => {
@@ -2082,7 +2132,12 @@ export default function TradeTerminal() {
     else if (tab === 'statuses') navigate('/statuses');
     else if (tab === 'help-center') navigate('/help-center');
     else if (tab === 'trade' || tab === 'history' || tab === 'assets') {
-      if (location.pathname !== '/trade') navigate('/trade');
+      if (!location.pathname.startsWith('/cashier')) {
+        const targetPath = tab === 'history' ? '/trade/history' : (tab === 'assets' ? '/trade/assets' : '/trade');
+        if (location.pathname !== targetPath) {
+          navigate(targetPath);
+        }
+      }
     }
   }, [navigate, location.pathname]);
 
@@ -4751,9 +4806,6 @@ const PROMOTED_ARTICLES = [
   const [showAccounts, setShowAccounts] = useState(false);
   const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [showOpenTrades, setShowOpenTrades] = useState(false);
-  const [showDeposit, setShowDeposit] = useState(false);
-  const [showCashierMenu, setShowCashierMenu] = useState(false);
-  const [cashierTab, setCashierTab] = useState<"deposits" | "withdrawals" | "history">("deposits");
   
 
 
@@ -5510,6 +5562,9 @@ const PROMOTED_ARTICLES = [
         if (userData.kycStatus) {
           setKycStatus(userData.kycStatus);
           isVerifiedRef.current = userData.kycStatus === 'verified';
+        }
+        if (userData.is2FAEnabled !== undefined) {
+          setIs2FAEnabled(userData.is2FAEnabled);
         }
         if (userData.nickname) {
             setNickname(userData.nickname);
@@ -7107,18 +7162,18 @@ const PROMOTED_ARTICLES = [
             >
                 {/* Timer Circle - Refined to match screenshot */}
                 <div className="absolute top-[60px] -translate-x-1/2 left-0 flex flex-col items-center z-50">
-                  <div className="w-[32px] h-[32px] rounded-full border border-white/40 bg-transparent text-white/90 flex items-center justify-center text-[11px] font-medium shadow-sm">
+                  <div className="w-[36px] h-[36px] rounded-full border border-white/20 bg-[#1e1f26]/80 text-white/90 flex items-center justify-center text-[11px] font-medium shadow-md">
                     {formatTimeToPurchase(timeToPurchase)}
                   </div>
                 </div>
             
                 {/* Vertical Text - Subdued, non-uppercase style */}
-                <div className="absolute top-[105px] left-[15px] whitespace-nowrap rotate-90 text-[11px] font-medium text-white/40 tracking-tight origin-top-left">
+                <div className="absolute top-[105px] left-[15px] whitespace-nowrap rotate-90 text-[11px] font-medium text-white/50 tracking-tight origin-top-left">
                    Time remaining
                 </div>
 
                 {/* The Vertical Purchase Line */}
-                <div className="absolute top-[92px] bottom-0 w-[1px] bg-[#ff5252]/80"></div>
+                <div className="absolute top-[96px] bottom-0 w-[0.5px] bg-[#ff5252]/40"></div>
             </div>
           )}
 
@@ -7138,7 +7193,7 @@ const PROMOTED_ARTICLES = [
                 </div>
             
                 {/* The Vertical Expiration Line - Refined dashed red line */}
-                <div className="absolute top-[96px] bottom-0 w-0 border-l border-dotted border-[#ff5252]/60"></div>
+                <div className="absolute top-[96px] bottom-0 w-0 border-l border-dotted border-[#ff5252]/20"></div>
             </div>
           )}
 
@@ -7684,23 +7739,23 @@ const PROMOTED_ARTICLES = [
               {activeTab !== "trade" ? (
                 <button 
                   onClick={() => setActiveTab("trade")} 
-                  className="w-[56px] h-full flex items-center justify-center text-gray-400 hover:text-white transition-all z-10"
+                  className="w-[48px] h-full flex items-center justify-center text-gray-400 hover:text-white transition-all z-10"
                 >
                   <Icons.ArrowLeft size={22} />
                 </button>
               ) : (
                 <button 
                   onClick={() => setShowSidebar(!showSidebar)} 
-                  className="w-[56px] h-full flex items-center justify-center text-gray-400 hover:text-white transition-all z-10"
+                  className="w-[48px] h-full flex items-center justify-center text-gray-400 hover:text-white transition-all z-10"
                 >
                   <Icons.Menu size={22} />
                 </button>
               )}
             </div>
 
-    <div className="flex items-center gap-4 ml-2 md:ml-6">
+            <div className="flex items-center gap-2 ml-0 md:ml-6">
               <div className="flex items-center gap-3 group cursor-pointer" onClick={() => window.location.reload()}>
-                {/* Logo removed per user request for Trade page header */}
+                <Logo size={28} />
                 <span className="hidden lg:block font-sans font-black text-[22px] tracking-tight text-white">Bivaax</span>
               </div>
 
@@ -7777,7 +7832,7 @@ const PROMOTED_ARTICLES = [
                </div>
                
                <button 
-                 onClick={() => { setShowDeposit(true); setCashierTab("deposits"); bootApp(); }}
+                 onClick={() => { navigate("/cashier/deposits"); bootApp(); }}
                  className="bg-[#ffe24c] hover:bg-[#fff080] text-[#131417] h-[36px] px-4 rounded-[10px] font-black text-[13px] flex items-center gap-2 transition-all active:scale-95 shadow-lg"
                >
                  <Icons.Wallet size={18} fill="currentColor" className="opacity-80" />
@@ -7785,7 +7840,7 @@ const PROMOTED_ARTICLES = [
                </button>
 
                <button 
-                 onClick={() => { setShowDeposit(true); setCashierTab("withdrawals"); bootApp(); }}
+                 onClick={() => { navigate("/cashier/withdrawals"); bootApp(); }}
                  className="bg-[#2a2c31] hover:bg-[#32343a] text-white h-[36px] px-4 rounded-[10px] font-black text-[13px] flex items-center gap-2 transition-all active:scale-95 border border-white/5"
                >
                  <Icons.CreditCard size={18} className="text-gray-400" />
@@ -7806,7 +7861,7 @@ const PROMOTED_ARTICLES = [
             {/* Mobile Header Icons (Right) */}
             <div className="flex md:hidden items-center gap-2">
               <button 
-                onClick={() => { setShowCashierMenu(true); bootApp(); }}
+                onClick={() => setShowCashierMenu(true)}
                 className="bg-[#FFE24C] w-10 h-10 rounded-[8px] flex items-center justify-center text-black active:scale-90 transition-transform"
               >
                 <Icons.Wallet size={20} strokeWidth={2.5} />
@@ -8061,7 +8116,7 @@ const PROMOTED_ARTICLES = [
             {/* MOBILE TOP BAR (Inside Sidebar) */}
             <div className="flex md:hidden h-[64px] items-center justify-between px-6 border-b border-white/5 bg-[#1a1b1f] shrink-0">
                <div className="flex items-center gap-3">
-                  
+                  <Logo size={28} />
                   <span className="text-[22px] font-black tracking-tighter text-white">Bivaax</span>
                </div>
                <button onClick={() => setShowSidebar(false)} className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full text-gray-400 hover:text-white transition-colors active:scale-95">
@@ -11281,12 +11336,16 @@ const PROMOTED_ARTICLES = [
               <div className="flex flex-col md:items-center">
                 <div className="flex items-center gap-4 w-full mb-6 relative z-10">
                   {/* Avatar */}
-                  <div className="w-[64px] h-[64px] rounded-full bg-[#3b3c42] flex items-center justify-center text-[24px] font-medium text-gray-400 border border-transparent shadow-[0_4px_10px_rgba(0,0,0,0.2)] shrink-0">
-                     H
+                  <div className="w-[64px] h-[64px] rounded-full bg-[#3b3c42] flex items-center justify-center text-[24px] font-medium text-gray-400 border border-transparent shadow-[0_4px_10px_rgba(0,0,0,0.2)] shrink-0 overflow-hidden">
+                     {profilePic ? (
+                       <img src={profilePic} alt="avatar" className="w-full h-full object-cover" />
+                     ) : (
+                       (nickname || currentUser?.displayName || "T").substring(0, 1).toUpperCase()
+                     )}
                   </div>
                   <div className="flex flex-col">
                     <div className="text-[20px] font-bold text-white mb-0.5">
-                      {currentUser?.displayName || "Trader"}
+                      {nickname || currentUser?.displayName || "Trader"}
                     </div>
                     <div className="w-fit flex items-center justify-center px-4 py-1 bg-[#374440] border border-[#485b55] rounded-[16px] text-[13px] font-medium text-white shadow-sm">
                       Free
@@ -11369,7 +11428,11 @@ const PROMOTED_ARTICLES = [
                       <User size={22} className="text-gray-400 group-hover:text-gray-300" strokeWidth={1.5} />
                       <span className="text-[15px] font-medium text-gray-400 group-hover:text-white">Profile</span>
                   </div>
-                  <AlertCircle size={18} className="text-[#ef5350]" />
+                  {(currentUser?.emailVerified && kycStatus === 'verified') ? (
+                    <Icons.CheckCircle size={18} className="text-[#00c980]" />
+                  ) : (
+                    <AlertCircle size={18} className="text-[#ef5350]" />
+                  )}
                 </button>
 
                 <button 
@@ -11390,7 +11453,7 @@ const PROMOTED_ARTICLES = [
                 </button>
 
                 <button 
-                  onClick={() => { setShowDeposit(true); setCashierTab("deposits"); bootApp(); }}
+                  onClick={() => { navigate("/cashier/deposits"); bootApp(); }}
                   className="w-full flex items-center gap-4 px-6 py-3.5 hover:bg-white/5 transition-colors group"
                 >
                   <Wallet size={22} className="text-gray-400 group-hover:text-gray-300" strokeWidth={1.5} />
@@ -11409,7 +11472,11 @@ const PROMOTED_ARTICLES = [
                       <Lock size={18} className="text-white" strokeWidth={2} />
                       <span className="text-[15px] font-bold text-white">Security</span>
                   </div>
-                  <AlertCircle size={18} className="text-[#ef5350]" />
+                  {is2FAEnabled ? (
+                    <Icons.CheckCircle size={18} className="text-[#00c980]" />
+                  ) : (
+                    <AlertCircle size={18} className="text-[#ef5350]" />
+                  )}
                 </div>
 
                 <div className="px-5 space-y-3">
@@ -13101,9 +13168,9 @@ const PROMOTED_ARTICLES = [
                               toast.error('Invalid amount');
                               return;
                            }
-                           const minWithdrawal = 10;
-                           if (amount < minWithdrawal) {
-                              toast.error(`Minimum withdrawal is ${userCurrency}${minWithdrawal}`);
+                           const minWithdrawalInUserCurrency = convertFromBase(10, userCurrency);
+                           if (amount < minWithdrawalInUserCurrency) {
+                              toast.error(`Minimum withdrawal is ${formatWithCurrency(10, userCurrency)}`);
                               return;
                            }
                            const convertedRealBalance = convertFromBase(realBalance, userCurrency);
@@ -13215,10 +13282,10 @@ const PROMOTED_ARTICLES = [
                                </div>
                                <div className="flex flex-col items-end">
                                  <span className="text-white font-bold text-[15px] tracking-tight">
-                                    + {userCurrency}{tx.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                                    {tx.type === 'Deposit' ? '+' : '-'} {formatWithCurrency(tx.amount, userCurrency)}
                                  </span>
                                  {tx.bonusAmount && (
-                                   <span className="text-gray-500 text-[12px]">+ {userCurrency}{tx.bonusAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                                   <span className="text-gray-500 text-[12px]">+ {formatWithCurrency(tx.bonusAmount, userCurrency)}</span>
                                  )}
                                </div>
                             </div>
@@ -13315,11 +13382,11 @@ const PROMOTED_ARTICLES = [
                                   </div>
                                   <div className="flex justify-between items-center text-[15px]">
                                      <span className="text-gray-500 font-medium">{tx.type}</span>
-                                     <span className="text-gray-400 font-medium tracking-tight">{userCurrency}{tx.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                                     <span className="text-gray-400 font-medium tracking-tight">{formatWithCurrency(tx.amount, userCurrency)}</span>
                                   </div>
                                   <div className="flex justify-between items-center font-bold text-[15px]">
                                      <span className="text-white">Total</span>
-                                     <span className="text-white tracking-tight">{userCurrency}{tx.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                                     <span className="text-white tracking-tight">{formatWithCurrency(tx.amount, userCurrency)}</span>
                                   </div>
                                </div>
 
@@ -13406,8 +13473,7 @@ const PROMOTED_ARTICLES = [
                  <button 
                    onClick={() => {
                      setShowCashierMenu(false);
-                     setCashierTab("deposits");
-                     setShowDeposit(true);
+                     navigate("/cashier/deposits");
                    }}
                    className="w-full bg-[#FFE24C] hover:bg-[#ffe770] text-[15px] font-bold py-4 rounded-[12px] flex items-center justify-center gap-2 transition-colors text-black"
                  >
@@ -13417,8 +13483,7 @@ const PROMOTED_ARTICLES = [
                  <button 
                    onClick={() => {
                      setShowCashierMenu(false);
-                     setCashierTab("withdrawals");
-                     setShowDeposit(true);
+                     navigate("/cashier/withdrawals");
                    }}
                    className="w-full bg-[#36373c]/80 hover:bg-[#3b3c42] text-[15px] font-bold py-4 rounded-[12px] flex items-center justify-center gap-2 transition-colors text-white"
                  >
@@ -13428,8 +13493,7 @@ const PROMOTED_ARTICLES = [
                  <button 
                    onClick={() => {
                      setShowCashierMenu(false);
-                     setCashierTab("history");
-                     setShowDeposit(true);
+                     navigate("/cashier/history");
                    }}
                    className="w-full bg-[#36373c]/80 hover:bg-[#3b3c42] text-[15px] font-bold py-4 rounded-[12px] flex items-center justify-center gap-2 transition-colors text-white"
                  >

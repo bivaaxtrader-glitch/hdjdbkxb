@@ -11,12 +11,13 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 24, withBackg
   return (
     <div className={`relative flex items-center justify-center overflow-hidden rounded-xl shrink-0 ${className}`} style={{ width: size, height: size }}>
       <img 
-        src="/logo.png" 
+        src="https://i.postimg.cc/sXX8XQDV/file-000000005f788211bd6a5c656938f636.png" 
         alt="Bivaax Trade Logo" 
-        className="w-full h-full object-cover rounded-xl"
+        className="w-full h-full object-contain rounded-xl"
         referrerPolicy="no-referrer"
         loading="lazy" 
       />
     </div>
   );
 };
+

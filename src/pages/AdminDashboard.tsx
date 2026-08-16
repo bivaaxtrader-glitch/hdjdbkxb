@@ -23,6 +23,7 @@ import {
 } from 'recharts';
 import { AssetLogo } from '../components/AssetLogo';
 import { MarketControlCard } from '../components/MarketControlCard';
+import { Logo } from '../components/Logo';
 
 
 type Role = 'superadmin' | 'admin' | 'moderator' | 'support' | 'user';
@@ -56,6 +57,7 @@ export default function AdminDashboard() {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [promoCodes, setPromoCodes] = useState<any[]>([]);
   const [tournaments, setTournaments] = useState<any[]>([]);
+  const [showAdvancedUserConfig, setShowAdvancedUserConfig] = useState(false);
   const [depositMethods, setDepositMethods] = useState<any[]>([]);
   const [promoMaterials, setPromoMaterials] = useState<any[]>([]);
   const [affPayouts, setAffPayouts] = useState<any[]>([]);
@@ -170,26 +172,60 @@ export default function AdminDashboard() {
 
   const sendAdminReply = async () => {
     if (!adminSelectedTicket || !adminTicketReply.trim() || !auth.currentUser) return;
+    const replyText = adminTicketReply;
+    const ticketId = adminSelectedTicket.id;
+    const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    
     try {
-      await addDoc(collection(db, 'tickets', adminSelectedTicket.id, 'messages'), {
+      // 1. Update Firestore for real-time UI (User & Admin both see this immediately)
+      await addDoc(collection(db, 'tickets', ticketId, 'messages'), {
+        id: messageId,
         senderId: auth.currentUser.uid,
         senderName: "Support Team",
         senderType: 'support',
-        text: adminTicketReply,
-        createdAt: Date.now()
+        text: replyText,
+        createdAt: Date.now(),
+        isAdmin: true
       });
       
-      await updateDoc(doc(db, 'tickets', adminSelectedTicket.id), {
+      await updateDoc(doc(db, 'tickets', ticketId), {
         status: 'pending',
-        lastMessage: adminTicketReply,
+        lastMessage: replyText,
         updatedAt: Date.now()
       });
 
+      // 2. Call Backend API to send Email Notification and sync with SQL
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        await fetch('/api/tickets/messages', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            ticketId,
+            messageId,
+            messageData: {
+              senderId: 'support',
+              senderName: 'Support Team',
+              senderType: 'agent',
+              text: replyText,
+              isAdmin: true,
+              createdAt: Date.now()
+            }
+          })
+        });
+      } catch (apiErr) {
+        console.error("API sync/email error:", apiErr);
+      }
+
       setAdminTicketReply("");
-      logAdminAction('reply_ticket', `Replied to ticket ${adminSelectedTicket.id}`);
+      logAdminAction('reply_ticket', `Replied to ticket ${ticketId}`);
+      toast.success("Reply sent and email notification triggered");
     } catch (e) {
       console.error("Error sending reply:", e);
-      alert("Failed to send reply");
+      toast.error("Failed to send reply");
     }
   };
 
@@ -1072,9 +1108,7 @@ export default function AdminDashboard() {
         <div className="p-8 flex flex-col h-full overflow-y-auto">
            <div className="flex items-center justify-between mb-10">
              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-500 flex items-center justify-center text-black shadow-lg shadow-yellow-500/20">
-                    <ShieldCheck size={22} />
-                </div>
+                <Logo size={40} />
                 <div className="flex flex-col">
                     <div className="text-[15px] font-black uppercase tracking-tight leading-none">COMMAND</div>
                     <span className="text-[8px] text-yellow-500 font-bold uppercase tracking-[0.2em] mt-1">{userRole}</span>
@@ -4560,39 +4594,67 @@ export default function AdminDashboard() {
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-6">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500 border border-orange-500/10">
-                                                    <Target size={20} />
-                                                </div>
-                                                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Strategic Manipulation</h4>
-                                            </div>
-                                            <div className="space-y-4">
-                                                <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
-                                                    Configure market movement behavior specifically for this user. "LOSS MODE" ensures market moves against user positions with ~85% accuracy.
-                                                </p>
-                                                <div className="grid grid-cols-3 gap-2">
-                                                    {[
-                                                        { id: 'neutral', label: 'Neutral', color: 'gray' },
-                                                        { id: 'loss', label: 'Loss Mode', color: 'red' },
-                                                        { id: 'win', label: 'Win Mode', color: 'green' }
-                                                    ].map((mode) => (
-                                                        <button
-                                                            key={`manip-mode-${mode.id}`}
-                                                            onClick={() => handleUpdateUserManipulation(selectedUserDetail.id, mode.id as any)}
-                                                            className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${
-                                                                (selectedUserDetail.manipulationMode || selectedUserDetail.manipulation_mode || 'neutral') === mode.id
-                                                                    ? mode.id === 'loss' ? 'bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20' : 
-                                                                      mode.id === 'win' ? 'bg-green-500 text-black border-green-500 shadow-lg shadow-green-500/20' : 
-                                                                      'bg-white text-black border-white'
-                                                                    : 'bg-white/5 text-gray-500 border-white/5 hover:bg-white/10'
-                                                            }`}
-                                                        >
-                                                            {mode.label}
-                                                        </button>
-                                                    ))}
+                                        <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-6 flex flex-col">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center text-orange-500 border border-orange-500/10">
+                                                        <Target size={20} />
+                                                    </div>
+                                                    <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-500">Execution Protocol</h4>
                                                 </div>
                                             </div>
+
+                                            <div className="mt-2">
+                                                <button 
+                                                    onClick={() => setShowAdvancedUserConfig(!showAdvancedUserConfig)}
+                                                    className="w-full py-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                                >
+                                                    {showAdvancedUserConfig ? <RefreshCcw size={14} className="rotate-90" /> : <Settings2 size={14} />}
+                                                    {showAdvancedUserConfig ? 'Collapse Strategy' : 'Advanced Configuration'}
+                                                </button>
+                                            </div>
+
+                                            <AnimatePresence>
+                                                {showAdvancedUserConfig && (
+                                                    <motion.div 
+                                                        initial={{ height: 0, opacity: 0 }}
+                                                        animate={{ height: 'auto', opacity: 1 }}
+                                                        exit={{ height: 0, opacity: 0 }}
+                                                        className="overflow-hidden space-y-4 pt-6 border-t border-white/5"
+                                                    >
+                                                        <div className="space-y-4">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Strategic Manipulation</p>
+                                                                <span className="text-[8px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded font-black uppercase tracking-widest border border-orange-500/10">Active Strategy</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
+                                                                Configure market movement behavior specifically for this user identifier.
+                                                            </p>
+                                                            <div className="grid grid-cols-3 gap-2">
+                                                                {[
+                                                                    { id: 'neutral', label: 'Neutral', color: 'gray' },
+                                                                    { id: 'loss', label: 'Loss Mode', color: 'red' },
+                                                                    { id: 'win', label: 'Win Mode', color: 'green' }
+                                                                ].map((mode) => (
+                                                                    <button
+                                                                        key={`manip-mode-${mode.id}`}
+                                                                        onClick={() => handleUpdateUserManipulation(selectedUserDetail.id, mode.id as any)}
+                                                                        className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${
+                                                                            (selectedUserDetail.manipulationMode || selectedUserDetail.manipulation_mode || 'neutral') === mode.id
+                                                                                ? mode.id === 'loss' ? 'bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/20' : 
+                                                                                  mode.id === 'win' ? 'bg-green-500 text-black border-green-500 shadow-lg shadow-green-500/20' : 
+                                                                                  'bg-white text-black border-white'
+                                                                                : 'bg-white/5 text-gray-500 border-white/5 hover:bg-white/10'
+                                                                        }`}
+                                                                    >
+                                                                        {mode.label}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
                                         </div>
 
                                         <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-6">

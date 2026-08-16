@@ -482,9 +482,37 @@ router.post('/auth/login', async (req, res) => {
 
     // Sync to Firestore on login to ensure latest data is available real-time
     try {
+      // Check for balance restoration from Firestore if SQLite is behind
+      if (adminDb) {
+        const firestoreUser = await adminDb.collection('users').doc(user.uid).get();
+        if (firestoreUser.exists) {
+          const fireData = firestoreUser.data();
+          if (fireData) {
+            let needsUpdate = false;
+            let updatedReal = user.real_balance || 0;
+            let updatedDemo = user.demo_balance || 0;
+
+            if (fireData.balance > updatedReal) {
+              updatedReal = fireData.balance;
+              needsUpdate = true;
+            }
+            if (fireData.demoBalance > updatedDemo) {
+              updatedDemo = fireData.demoBalance;
+              needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+              logger.info(`Restoring balance for ${user.email} from Firestore: Real=${updatedReal}, Demo=${updatedDemo}`);
+              await run('UPDATE users SET real_balance = ?, demo_balance = ? WHERE uid = ?', [updatedReal, updatedDemo, user.uid]);
+              user.real_balance = updatedReal;
+              user.demo_balance = updatedDemo;
+            }
+          }
+        }
+      }
       syncUserToFirestore(user.uid, mapUserForFrontend(user));
     } catch (syncErr) {
-      logger.error('Failed to sync user to Firestore on login:', syncErr);
+      logger.error('Failed to sync/restore user data from Firestore on login:', syncErr);
     }
 
     res.json({ success: true, user });
@@ -695,6 +723,139 @@ async function syncUserTransactions(userId: string) {
   } catch (err) {
     logger.error(`[syncUserTransactions] Error for user ${userId}: ${err}`);
   }
+}
+
+export async function getUserTransactionsFromFirestore(userId: string): Promise<any[]> {
+  if (!adminDb) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const [depositsSnap, withdrawalsSnap, transactionsSnap] = await Promise.all([
+    adminDb.collection('deposits').where('userId', '==', userId).get(),
+    adminDb.collection('withdrawals').where('userId', '==', userId).get(),
+    adminDb.collection('transactions').where('userId', '==', userId).get()
+  ]);
+
+  const list: any[] = [];
+
+  depositsSnap.forEach((doc) => {
+    const data = doc.data();
+    const ts = data.timestamp || data.createdAt || Date.now();
+    list.push({
+      id: doc.id,
+      userId: userId,
+      user_id: userId,
+      type: 'Deposit',
+      amount: Number(data.amount || 0),
+      currency: data.currency || 'BDT',
+      status: (data.status === 'success' || data.status === 'approved' || data.status === 'completed') ? 'success' : (data.status || 'pending'),
+      method: data.method || 'direct',
+      trxId: data.trxId || data.txHash || '',
+      tx_hash: data.trxId || data.txHash || '',
+      timestamp: ts,
+      created_at: ts,
+      details: { walletNumber: data.walletNumber || '', orderId: data.orderId || '' }
+    });
+  });
+
+  withdrawalsSnap.forEach((doc) => {
+    const data = doc.data();
+    const ts = data.timestamp || data.createdAt || data.created_at || Date.now();
+    list.push({
+      id: doc.id,
+      userId: userId,
+      user_id: userId,
+      type: 'Withdrawal',
+      amount: Number(data.amount || 0),
+      currency: data.currency || 'BDT',
+      status: (data.status === 'success' || data.status === 'approved' || data.status === 'completed') ? 'success' : (data.status || 'pending'),
+      method: data.method || 'direct',
+      trxId: data.trxId || '',
+      tx_hash: data.trxId || '',
+      timestamp: ts,
+      created_at: ts,
+      details: data.details || {}
+    });
+  });
+
+  transactionsSnap.forEach((doc) => {
+    const rootData = doc.data();
+    const data = rootData.transactionData || rootData;
+    
+    if (!data.type) return;
+
+    const ts = data.timestamp || data.createdAt || rootData.timestamp || rootData.createdAt || Date.now();
+    const orderId = data.orderId || '';
+    const txHash = data.trxId || data.txHash || data.tx_hash || '';
+    
+    if (orderId && list.some(item => item.details?.orderId === orderId)) {
+      return;
+    }
+    if (txHash && list.some(item => item.trxId === txHash || item.tx_hash === txHash)) {
+      return;
+    }
+
+    list.push({
+      id: doc.id,
+      userId: userId,
+      user_id: userId,
+      type: (data.type || 'Deposit').toLowerCase() === 'deposit' ? 'Deposit' : 'Withdrawal',
+      amount: Number(data.amount || 0),
+      currency: data.currency || 'BDT',
+      status: (data.status === 'success' || data.status === 'approved' || data.status === 'completed') ? 'success' : (data.status || 'pending'),
+      method: data.method || 'direct',
+      trxId: txHash,
+      tx_hash: txHash,
+      timestamp: ts,
+      created_at: ts,
+      details: data.details || { orderId, walletNumber: data.walletNumber || '' }
+    });
+  });
+
+  list.sort((a, b) => b.timestamp - a.timestamp);
+  return list;
+}
+
+export async function getUserTransactions(userId: string): Promise<any[]> {
+  if (adminDb) {
+    try {
+      return await getUserTransactionsFromFirestore(userId);
+    } catch (fsErr: any) {
+      logger.error(`[getUserTransactions] Firestore failed: ${fsErr.message}. Falling back to SQLite.`);
+    }
+  }
+
+  const rows = await query(
+    `SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`,
+    [userId]
+  ) as any[];
+
+  return rows.map((r) => {
+    const typeLower = (r.type || 'deposit').toLowerCase();
+    const isDeposit = typeLower === 'deposit';
+    let detailsParsed = {};
+    try {
+      detailsParsed = typeof r.details === 'string' ? JSON.parse(r.details) : r.details || {};
+    } catch (e) {}
+
+    const ts = r.created_at || Date.now();
+
+    return {
+      id: r.id?.toString() || '',
+      userId: r.user_id,
+      user_id: r.user_id,
+      type: isDeposit ? 'Deposit' : 'Withdrawal',
+      amount: Number(r.amount || 0),
+      currency: r.currency || 'BDT',
+      status: (r.status === 'success' || r.status === 'approved' || r.status === 'completed') ? 'success' : (r.status || 'pending'),
+      method: r.method || 'direct',
+      trxId: r.tx_hash || '',
+      tx_hash: r.tx_hash || '',
+      timestamp: ts,
+      created_at: ts,
+      details: detailsParsed
+    };
+  });
 }
 
 export async function syncGlobalTransactionsFromFirestore() {
@@ -1225,10 +1386,10 @@ export async function syncAllUsersFromFirestore() {
 
 // 1. User Sync (called on app load / terminal boot)
 router.post('/user/sync', async (req, res) => {
-  const { 
+    const { 
     uid, email, displayName, photoURL, nickname, country, countryCode, 
     referralCode, referralSubId, referralType,
-    firstName, lastName, gender, dob
+    firstName, lastName, gender, dob, emailVerified
   } = req.body;
   if (!uid) {
     logger.error('Sync failed: uid is missing');
@@ -1263,7 +1424,17 @@ router.post('/user/sync', async (req, res) => {
     if (!user) {
       logger.info(`User ${uid} not found in SQLite, creating...`);
       const { countryName, countryCode: detectedCode } = (country && countryCode) ? { countryName: country, countryCode: countryCode } : await getCountryFromIp(ip);
-      const affiliateId = String(firestoreData?.referralCode || firestoreData?.affiliateId || Math.random().toString(36).substring(2, 8).toUpperCase());
+      let nextId = 100000;
+      try {
+          const row = await get('SELECT MAX(CAST(referral_code AS INTEGER)) as maxId FROM users') || {};
+          if (row && row.maxId && parseInt(row.maxId) >= 100000) {
+              nextId = parseInt(row.maxId) + 1;
+          }
+      } catch (err) {
+          nextId = 100000 + Math.floor(Math.random() * 899999);
+      }
+      const newAffiliateId = nextId.toString();
+      const affiliateId = String(firestoreData?.referralCode || firestoreData?.affiliateId || newAffiliateId);
       
       let referredBy = null;
       if (referralCode) {
@@ -1290,7 +1461,7 @@ router.post('/user/sync', async (req, res) => {
         }
       }
 
-      const isVerified = (firestoreData?.is_verified || firestoreData?.isVerified || firestoreData?.emailVerified) ? 1 : 0;
+      const isVerified = (firestoreData?.is_verified || firestoreData?.isVerified || firestoreData?.emailVerified || emailVerified) ? 1 : 0;
       const kycStatus = firestoreData?.kyc_status || firestoreData?.kycStatus || 'unverified';
       const realBalance = firestoreData?.balance || firestoreData?.real_balance || firestoreData?.realBalance || '0.00';
       const demoBalance = firestoreData?.demoBalance || firestoreData?.demo_balance || '10000.00';
@@ -1390,15 +1561,15 @@ router.post('/user/sync', async (req, res) => {
       }
 
       // Restore verification status from Firestore if missing in SQL
-      if (firestoreData) {
-        const isVerifiedVal = (firestoreData.is_verified || firestoreData.isVerified || firestoreData.emailVerified) ? 1 : 0;
+      if (firestoreData || emailVerified !== undefined) {
+        const isVerifiedVal = (firestoreData?.is_verified || firestoreData?.isVerified || firestoreData?.emailVerified || emailVerified) ? 1 : 0;
         if (isVerifiedVal !== user.is_verified) {
           updates.push('is_verified = ?');
           params.push(isVerifiedVal);
           needsUpdate = true;
         }
 
-        const fsKyc = firestoreData.kyc_status || firestoreData.kycStatus;
+        const fsKyc = firestoreData?.kyc_status || firestoreData?.kycStatus;
         if (fsKyc && fsKyc !== user.kyc_status) {
           updates.push('kyc_status = ?');
           params.push(fsKyc);
@@ -2012,29 +2183,64 @@ router.post('/tickets/messages', async (req, res) => {
     // Send Email Notification if Agent Replied
     if (senderType === 'agent') {
       try {
-        const ticket = await get('SELECT * FROM tickets WHERE id = ?', [ticketId]) as any;
-        if (ticket && ticket.user_email) {
+        let ticket = await get('SELECT * FROM tickets WHERE id = ?', [ticketId]) as any;
+        let userEmail = ticket?.user_email;
+        let ticketSubject = ticket?.subject || 'Support Ticket Update';
+
+        // Fallback to Firestore if not in SQL
+        if (!ticket && adminDb) {
+          const tDoc = await adminDb.collection('tickets').doc(ticketId).get();
+          if (tDoc.exists) {
+            const tData = tDoc.data();
+            ticket = tData;
+            ticketSubject = tData?.subject || ticketSubject;
+            userEmail = tData?.userEmail || tData?.email;
+          }
+        }
+
+        // If still no email, try to get from users table using user_id
+        if (!userEmail && (ticket?.user_id || ticket?.userId)) {
+          const uid = ticket.user_id || ticket.userId;
+          const user = await get('SELECT email FROM users WHERE uid = ?', [uid]) as any;
+          userEmail = user?.email;
+        }
+
+        if (userEmail) {
           await sendEmail(
-            ticket.user_email,
-            `New Reply: ${ticket.subject}`,
-            `<div style="font-family: sans-serif; max-w: 600px; margin: 0 auto; background-color: #f9f9f9; padding: 20px;">
-              <div style="background-color: #1a1b23; padding: 30px; border-radius: 10px; color: white; text-align: center;">
-                <h2 style="margin: 0; color: #FFE24C;">Support Ticket Update</h2>
+            userEmail,
+            `[Support] ${ticketSubject}`,
+            `<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
+              <div style="background-color: #1a1b23; padding: 30px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
+                <h2 style="color: #FFE24C; margin: 0; font-size: 24px;">Support Ticket Update</h2>
+                <p style="margin: 5px 0 0; opacity: 0.8; font-size: 14px;">Ticket ID: ${ticketId}</p>
               </div>
-              <div style="padding: 30px; background-color: white; border-radius: 0 0 10px 10px; border: 1px solid #eee;">
-                <p>Hello,</p>
-                <p>A support agent has replied to your ticket: <strong>"${ticket.subject}"</strong></p>
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; font-style: italic; color: #333; border-left: 4px solid #FFE24C;">
-                  "${text}"
+              <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                <p style="font-size: 16px; color: #333;">Hello,</p>
+                <p style="font-size: 16px; color: #333; line-height: 1.6;">Our support team has just replied to your ticket: <strong>"${ticketSubject}"</strong></p>
+                
+                <div style="background: #f8fafc; padding: 25px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #FFE24C; color: #1e293b; line-height: 1.6;">
+                  <div style="font-size: 12px; color: #64748b; margin-bottom: 10px; text-transform: uppercase; font-weight: bold;">Official Reply:</div>
+                  ${text.replace(/\n/g, '<br/>')}
                 </div>
-                <p>Please log in to the Bivaax Trade terminal to continue the conversation.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: #999; text-align: center;">Bivaax Trade Support Team</p>
+                
+                <div style="text-align: center; margin: 35px 0;">
+                  <a href="https://bivaax.com/support" style="background-color: #FFE24C; color: #1a1b23; padding: 14px 35px; text-decoration: none; border-radius: 10px; font-weight: 800; font-size: 14px; text-transform: uppercase; display: inline-block;">View in Support Center</a>
+                </div>
+                
+                <p style="font-size: 14px; color: #64748b; line-height: 1.6; text-align: center;">You can also reply directly from the trading terminal support chat.</p>
+                
+                <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
+                <div style="text-align: center; font-size: 12px; color: #94a3b8;">
+                  <p>&copy; 2026 Bivaax Trade. All rights reserved.</p>
+                  <p>Professional | Secure | Global</p>
+                </div>
               </div>
             </div>`
           );
         }
-      } catch (e) {}
+      } catch (e) {
+        logger.error(`Error sending ticket reply email: ${e}`);
+      }
     }
 
     try {
@@ -2322,6 +2528,12 @@ router.post('/trade', async (req, res) => {
         syncTournamentScoreToFirestore(tournamentId as string, userId, parseFloat(newBalanceStr)).catch(e => logger.error('Sync tournament balance failed:', e));
       } else {
         await run(`UPDATE users SET ${balanceField} = ? WHERE uid = ?`, [newBalanceStr, userId], conn);
+        const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [userId], conn);
+        if (updatedUser) {
+          const mapped = mapUserForFrontend(updatedUser);
+          getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
+          syncUserToFirestore(userId, mapped);
+        }
       }
 
       // 3. Insert trade
@@ -2872,12 +3084,13 @@ router.post('/wallet/withdraw',
 });
 
 router.get('/wallet/transactions', requireAuth, async (req: AuthRequest, res) => {
-  await syncUserTransactions(req.user!.uid);
-  const history = await query(
-    `SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-    [req.user!.uid]
-  );
-  res.json(history);
+  try {
+    const history = await getUserTransactions(req.user!.uid);
+    res.json(history.slice(0, 50));
+  } catch (err: any) {
+    logger.error(`Failed to fetch transactions for user ${req.user!.uid}: ${err.message}`);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
 });
 
 // GoPay Payment Routes
@@ -3461,6 +3674,11 @@ router.post('/admin/transactions/approve', requireAuth, async (req: AuthRequest,
 
       // Notify user of balance update
       const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [tx.user_id], conn) as any;
+      if (updatedUser) {
+        const mappedUser = mapUserForFrontend(updatedUser);
+        getIO().to(`user_${tx.user_id}`).emit('user_profile_update', mappedUser);
+        syncUserToFirestore(tx.user_id, mappedUser);
+      }
 
       // Send Email Notification
       try {
@@ -3606,8 +3824,13 @@ router.get('/trades', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {
-  const txs = await query('SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC', [req.user!.uid]);
-  res.json(txs);
+  try {
+    const txs = await getUserTransactions(req.user!.uid);
+    res.json(txs);
+  } catch (err: any) {
+    logger.error(`Failed to fetch transactions for user ${req.user!.uid}: ${err.message}`);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
 });
 
 // --- Settings & Config ---
@@ -4224,11 +4447,13 @@ router.post('/withdraw', async (req, res) => {
 });
 
 router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {
-  const history = await query(
-    `SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-    [req.user!.uid]
-  );
-  res.json(history);
+  try {
+    const history = await getUserTransactions(req.user!.uid);
+    res.json(history.slice(0, 50));
+  } catch (err: any) {
+    logger.error(`Failed to fetch transactions for user ${req.user!.uid}: ${err.message}`);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
 });
 
 router.post('/trade/prune-demo', async (req, res) => {

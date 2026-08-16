@@ -714,6 +714,9 @@ export default function App() {
               <Route path="/register" element={user ? <Navigate to={isAffiliateSubdomain ? "/affiliate" : "/trade"} replace /> : <AuthPage />} />
               <Route path="/signup" element={user ? <Navigate to={isAffiliateSubdomain ? "/affiliate" : "/trade"} replace /> : <AuthPage />} />
               <Route path="/trade" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/trade/:subpath" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/cashier" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
+              <Route path="/cashier/:subpath" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/leaderboard" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/promotions" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />
               <Route path="/calendar" element={<RequireAuth user={user} loading={loading}>{<TradeTerminal />}</RequireAuth>} />

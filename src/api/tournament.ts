@@ -113,21 +113,10 @@ router.post('/tournaments/:id/join', requireAuth, async (req: AuthRequest, res) 
       const fee = new Big(tournament.entry_fee || 0);
       if (fee.gt(0)) {
         const user = await get('SELECT real_balance FROM users WHERE uid = ?', [uid], conn) as any;
-        let balance = new Big(user.real_balance || 0);
+        const balance = new Big(user.real_balance || 0);
+        
         if (balance.lt(fee)) {
-          // Sandbox Auto-Topup: Ensure user has enough balance to join tournaments in development/testing
-          const topupAmount = fee.minus(balance).plus(100.00);
-          const newBalanceAfterTopup = balance.plus(topupAmount);
-          await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalanceAfterTopup.toFixed(2), uid], conn);
-          
-          // Record deposit transaction
-          await run(
-            "INSERT INTO transactions (user_id, type, amount, status, method, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [uid, 'deposit', topupAmount.toFixed(2), 'completed', 'system', 'Sandbox Auto-Topup for Tournament Join', Date.now()],
-            conn
-          );
-          
-          balance = newBalanceAfterTopup;
+          throw new Error('Insufficient Live Balance to join this tournament. Please deposit funds first.');
         }
 
         // Deduct fee
@@ -267,22 +256,12 @@ router.post('/tournaments/:id/rebuy', requireAuth, async (req: AuthRequest, res)
             
             const fee = 200; // Fixed rebuy fee
             const user = await get('SELECT real_balance FROM users WHERE uid = ?', [uid], conn) as any;
-            let currentBalance = new Big(user.real_balance || 0);
+            const currentBalance = new Big(user.real_balance || 0);
+            
             if (currentBalance.lt(fee)) {
-                // Sandbox Auto-Topup: Ensure user has enough balance to rebuy in development/testing
-                const topupAmount = new Big(fee).minus(currentBalance).plus(100.00);
-                const newBalanceAfterTopup = currentBalance.plus(topupAmount);
-                await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalanceAfterTopup.toFixed(2), uid], conn);
-                
-                // Record deposit transaction
-                await run(
-                    "INSERT INTO transactions (user_id, type, amount, status, method, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [uid, 'deposit', topupAmount.toFixed(2), 'completed', 'system', 'Sandbox Auto-Topup for Tournament Rebuy', Date.now()],
-                    conn
-                );
-                
-                currentBalance = newBalanceAfterTopup;
+                throw new Error('Insufficient Live Balance for rebuy.');
             }
+            
             const newBalance = currentBalance.minus(fee).toFixed(2);
             await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, uid], conn);
             

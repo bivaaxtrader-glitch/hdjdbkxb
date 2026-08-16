@@ -150,7 +150,9 @@ router.post('/login',
   
   try {
     let user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
-    if (!user && adminDb) {
+    
+    // Always attempt to sync from Firestore during login to prevent verification loss
+    if (adminDb) {
       try {
         const snapshot = await adminDb.collection('users').where('email', '==', email).limit(1).get();
         if (!snapshot.empty) {
@@ -162,7 +164,7 @@ router.post('/login',
           const demoBalance = fbData.demoBalance || fbData.demo_balance || '10000.00';
           const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified) ? 1 : 0;
           const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
-          const passwordHash = fbData.password || null;
+          const passwordHash = fbData.password_hash || fbData.passwordHash || fbData.password || null;
           const displayName = fbData.displayName || fbData.display_name || '';
           const nickname = fbData.nickname || '';
           const photoURL = fbData.photoURL || fbData.photo_url || '';
@@ -174,21 +176,32 @@ router.post('/login',
           const referredByUid = fbData.referredBy || fbData.referred_by_uid || null;
           const totalLiveVolume = fbData.totalLiveVolume || fbData.total_live_volume || '0.00';
 
-          await run(
-            `INSERT INTO users (uid, email, password, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              uid, email, passwordHash, displayName, nickname, photoURL, 
-              realBalance.toString(), demoBalance.toString(), currency, isVerified, is_admin, kycStatus, 
-              referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode
-            ]
-          );
+          if (!user) {
+            await run(
+              `INSERT INTO users (uid, email, password, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                uid, email, passwordHash, displayName, nickname, photoURL, 
+                realBalance.toString(), demoBalance.toString(), currency, isVerified, is_admin, kycStatus, 
+                referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode
+              ]
+            );
+            logger.info(`Restored user ${email} from Firestore during login.`);
+          } else {
+            // Update existing user if Firestore has newer/different verification status
+            if (user.kyc_status !== kycStatus || user.is_verified !== isVerified || user.uid !== uid) {
+              await run(
+                'UPDATE users SET uid = ?, is_verified = ?, kyc_status = ?, is_admin = ?, display_name = ?, nickname = ? WHERE email = ?',
+                [uid, isVerified, kycStatus, is_admin, displayName || user.display_name, nickname || user.nickname, email]
+              );
+              logger.info(`Updated verification status for ${email} from Firestore Ground Truth.`);
+            }
+          }
           
           user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
-          logger.info(`Restored user ${email} from Firestore during login.`);
         }
       } catch (err: any) {
-        logger.error(`Error restoring user ${email} during login: ${err.message}`);
+        logger.error(`Error syncing user ${email} from Firestore during login: ${err.message}`);
       }
     }
 
@@ -278,17 +291,42 @@ router.post('/sync', async (req, res) => {
       }
     }
 
-    // 3. If still not found in SQLite, try to restore from Firestore
+    // 3. If found in SQLite, ensure statuses are synced from Firestore Ground Truth
+    if (user && adminDb) {
+      try {
+        const doc = await adminDb.collection('users').doc(firebaseUid).get();
+        if (doc.exists) {
+          const fbData = doc.data();
+          const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
+          const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified || email_verified) ? 1 : 0;
+          
+          if (user.kyc_status !== kycStatus || user.is_verified !== isVerified) {
+            await run(
+              'UPDATE users SET is_verified = ?, kyc_status = ? WHERE uid = ?',
+              [isVerified, kycStatus, firebaseUid]
+            );
+            user.is_verified = isVerified;
+            user.kyc_status = kycStatus;
+            logger.info(`Synced verification status for ${email} from Firestore during social login.`);
+          }
+        }
+      } catch (e: any) {
+        logger.error(`Firestore sync error during social login: ${e.message}`);
+      }
+    }
+
+    // 4. If still not found in SQLite, try to restore from Firestore
     if (!user && adminDb) {
       try {
         const doc = await adminDb.collection('users').doc(firebaseUid).get();
         if (doc.exists) {
           const fbData = doc.data();
+          const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
           logger.info(`Restoring user ${email} from Firestore by UID...`);
           
           await run(
-            `INSERT INTO users (uid, email, display_name, photo_url, real_balance, demo_balance, is_verified, is_admin, country, country_code, referral_code)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO users (uid, email, display_name, photo_url, real_balance, demo_balance, is_verified, is_admin, kyc_status, country, country_code, referral_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               firebaseUid, email, fbData.displayName || fbData.display_name || name || '',
               fbData.photoURL || fbData.photo_url || picture || '',
@@ -296,6 +334,7 @@ router.post('/sync', async (req, res) => {
               (fbData.demoBalance || fbData.demo_balance || 10000).toString(),
               (fbData.isVerified || fbData.is_verified || email_verified) ? 1 : 0,
               (fbData.isAdmin || fbData.is_admin) ? 1 : 0,
+              kycStatus,
               fbData.country || '', fbData.countryCode || fbData.country_code || '',
               fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase()
             ]
@@ -307,7 +346,7 @@ router.post('/sync', async (req, res) => {
       }
     }
 
-    // 4. Create new user if still not found
+    // 5. Create new user if still not found
     if (!user) {
       const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
       let referredBy = null;
@@ -411,7 +450,16 @@ router.get('/google/callback', async (req, res) => {
 
     if (!user) {
       const uid = generateUid();
-      const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      let nextId = 100000;
+      try {
+          const row = await get('SELECT MAX(CAST(referral_code AS INTEGER)) as maxId FROM users') || {};
+          if (row && row.maxId && parseInt(row.maxId) >= 100000) {
+              nextId = parseInt(row.maxId) + 1;
+          }
+      } catch (err) {
+          nextId = 100000 + Math.floor(Math.random() * 899999);
+      }
+      const affiliateId = nextId.toString();
       
       // Parse state for referral info
       let referredBy = null;

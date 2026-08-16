@@ -6,18 +6,23 @@ import { doc, runTransaction, collection, query, where, getDocs, limit, updateDo
  */
 export async function getNextAffiliateId(): Promise<number> {
   try {
-    const res = await fetch('/api/affiliate/next-id', {
-      method: 'POST'
+    const counterRef = doc(db, 'counters', 'affiliate');
+    
+    const newId = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      if (!counterDoc.exists()) {
+        transaction.set(counterRef, { currentId: 100000 });
+        return 100000;
+      }
+      const nextId = (counterDoc.data().currentId || 100000) + 1;
+      transaction.update(counterRef, { currentId: nextId });
+      return nextId;
     });
-    if (!res.ok) {
-        throw new Error("Failed to get next ID from backend");
-    }
-    const data = await res.json();
-    return data.nextId;
+    
+    return newId;
   } catch (err) {
-    console.error("Failed to get next affiliate ID, using fallback numeric suffix", err);
-    // Fallback: use a number derived from characters to keep it professional-ish if transaction fails
-    return 10000 + Math.floor(Math.random() * 90000);
+    console.error("Transaction failed, using fallback random numeric ID", err);
+    return 100000 + Math.floor(Math.random() * 899999);
   }
 }
 

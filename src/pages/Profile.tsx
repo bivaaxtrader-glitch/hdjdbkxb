@@ -1250,7 +1250,13 @@ export default function ProfilePage() {
                           try { localStorage.setItem('user_display_currency', newCurr); } catch (e) {}
                           if (user) {
                             await updateDoc(doc(db, 'users', user.uid), { currency: newCurr });
-                            toast.success(`Currency switched to ${newCurr}. All balances converted.`);
+                            // Update backend via API
+                            await fetch(`/api/users/${user.uid}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ currency: newCurr })
+                            });
+                            toast.success(`Currency switched to ${newCurr}. All displays converted.`);
                           }
                         }}
                         className="w-full bg-transparent text-gray-900 font-extrabold focus:outline-none text-sm sm:text-base appearance-none cursor-pointer"
@@ -1611,7 +1617,7 @@ export default function ProfilePage() {
                            <p className={`font-black text-base ${
                              tx.type === 'Deposit' ? 'text-emerald-600' : 'text-rose-600'
                            }`}>
-                             {tx.type === 'Deposit' ? '+' : '-'}{formatCurrencyOnly(tx.amount, tx.currency || 'BDT')}
+                             {tx.type === 'Deposit' ? '+' : '-'}{formatWithCurrency(tx.amount, tx.currency || userCurrency || 'BDT')}
                            </p>
                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded leading-none ${
                               tx.status === 'success' || tx.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :

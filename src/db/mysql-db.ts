@@ -413,18 +413,14 @@ export async function run(sql: string, params: any[] = [], conn?: any) {
 }
 
 export async function transaction<T>(fn: (connection: any) => Promise<T>): Promise<T> {
-  // better-sqlite3 transactions are synchronous. 
-  // For async compatibility, we use deferred execution if needed, 
-  // but most of our logic is already using await.
-  // We'll wrap the logic in a manual BEGIN/COMMIT block to support async.
-  
-  db.prepare('BEGIN').run();
+  const isNested = db.inTransaction;
+  if (!isNested) db.prepare('BEGIN').run();
   try {
     const result = await fn(db);
-    db.prepare('COMMIT').run();
+    if (!isNested) db.prepare('COMMIT').run();
     return result;
   } catch (err) {
-    db.prepare('ROLLBACK').run();
+    if (!isNested) db.prepare('ROLLBACK').run();
     throw err;
   }
 }

@@ -66,7 +66,15 @@ export async function processCopyTrading(masterId: string, tradeData: {
 
           // Notify follower
           const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [userId], conn) as any;
-          getIO().to(`user_${userId}`).emit('user_profile_update', mapUserForFrontend(updatedUser));
+          const mapped = mapUserForFrontend(updatedUser);
+          getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
+          
+          // Sync to Firestore
+          try {
+            const { syncUserToFirestore } = await import('../lib/firebase-admin.ts');
+            syncUserToFirestore(userId, mapped).catch(e => logger.error(`Sync follower balance failed for ${userId}:`, e));
+          } catch (e) {}
+
           getIO().to(`user_${userId}`).emit('trade_placed', { success: true, message: `Copied trade from ${follower.master_name}` });
         });
       } catch (err) {

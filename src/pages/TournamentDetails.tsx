@@ -217,7 +217,10 @@ export const TournamentDetails: React.FC = () => {
 
              <div className="space-y-4 mb-6">
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
-                  <span className="text-gray-400">Entry fee</span>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">Entry fee</span>
+                    <span className="text-[10px] text-yellow-500/70 font-bold uppercase tracking-tight">Live Balance Required</span>
+                  </div>
                   <span className="font-bold">{tournament.entry_fee > 0 ? formatWithCurrency(convertToBase(tournament.entry_fee, 'BDT'), userCurrency) : 'Free'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
