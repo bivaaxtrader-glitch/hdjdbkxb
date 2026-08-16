@@ -1578,27 +1578,50 @@ export default function TradeTerminal() {
 
         // Initial Profile Fetch
         const syncUser = async () => {
-          try {
-            const ref = localStorage.getItem('referral_code');
-            const sub = localStorage.getItem('referral_sub_id');
-            const type = localStorage.getItem('referral_type');
+          const controller = new AbortController();
+          unsubs.push(() => controller.abort());
 
-            await fetch('/api/user/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                uid: user.uid, 
-                email: user.email, 
-                displayName: user.displayName, 
-                photoURL: user.photoURL,
-                emailVerified: user.emailVerified,
-                referralCode: ref,
-                referralSubId: sub,
-                referralType: type
-              })
-            });
-          } catch (e) {
-            console.error("Proactive sync failed:", e);
+          const ref = localStorage.getItem('referral_code');
+          const sub = localStorage.getItem('referral_sub_id');
+          const type = localStorage.getItem('referral_type');
+
+          const payload = { 
+            uid: user.uid, 
+            email: user.email, 
+            displayName: user.displayName, 
+            photoURL: user.photoURL,
+            emailVerified: user.emailVerified,
+            referralCode: ref,
+            referralSubId: sub,
+            referralType: type
+          };
+
+          const maxRetries = 3;
+          let delay = 500;
+
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              const response = await fetch('/api/user/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+              });
+              if (response.ok) {
+                break; // Succeeded! Exit the loop.
+              }
+              throw new Error(`HTTP ${response.status}`);
+            } catch (e: any) {
+              if (e.name === 'AbortError') {
+                return; // Silently exit if aborted cleanly
+              }
+              if (attempt === maxRetries) {
+                console.warn(`[UserSync] Sync failed after ${maxRetries} attempts:`, e.message || e);
+              } else {
+                await new Promise(r => setTimeout(r, delay));
+                delay *= 2; // Exponential backoff
+              }
+            }
           }
         };
         syncUser();
@@ -11997,10 +12020,16 @@ const PROMOTED_ARTICLES = [
                       <User size={22} className="text-gray-400 group-hover:text-gray-300" strokeWidth={1.5} />
                       <span className="text-[15px] font-medium text-gray-400 group-hover:text-white">Profile</span>
                   </div>
-                  {(currentUser?.emailVerified && kycStatus === 'verified') ? (
-                    <Icons.CheckCircle size={18} className="text-[#00c980]" />
+                  {(kycStatus === 'verified' || isVerified || nickname) ? (
+                    <div className="flex items-center gap-1 bg-[#00c980]/15 text-[#00c980] px-2 py-0.5 rounded text-[11px] font-bold">
+                      <Icons.CheckCircle size={12} className="text-[#00c980]" />
+                      <span>Verified</span>
+                    </div>
                   ) : (
-                    <AlertCircle size={18} className="text-[#ef5350]" />
+                    <div className="flex items-center gap-1 bg-red-500/10 text-[#ef5350] px-2 py-0.5 rounded text-[11px] font-bold">
+                      <AlertCircle size={12} className="text-[#ef5350]" />
+                      <span>Setup</span>
+                    </div>
                   )}
                 </button>
 
@@ -12041,10 +12070,16 @@ const PROMOTED_ARTICLES = [
                       <Lock size={18} className="text-white" strokeWidth={2} />
                       <span className="text-[15px] font-bold text-white">Security</span>
                   </div>
-                  {is2FAEnabled && isPhoneVerified ? (
-                    <Icons.CheckCircle size={18} className="text-[#00c980]" />
+                  {is2FAEnabled || isPhoneVerified ? (
+                    <div className="flex items-center gap-1 bg-[#00c980]/15 text-[#00c980] px-2 py-0.5 rounded text-[11px] font-bold">
+                      <Icons.CheckCircle size={12} className="text-[#00c980]" />
+                      <span>Active</span>
+                    </div>
                   ) : (
-                    <AlertCircle size={18} className="text-[#ef5350]" />
+                    <div className="flex items-center gap-1 bg-red-500/10 text-[#ef5350] px-2 py-0.5 rounded text-[11px] font-bold">
+                      <AlertCircle size={12} className="text-[#ef5350]" />
+                      <span>Low</span>
+                    </div>
                   )}
                 </div>
 
