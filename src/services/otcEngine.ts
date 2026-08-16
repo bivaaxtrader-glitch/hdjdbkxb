@@ -60,15 +60,15 @@ export function updatePair(pair: string, type: 'real' | 'demo', now: number) {
   }
 
   // Determine market-specific volatility multipliers (Forex is stable, Cryptos/OTC are erratic/high payout)
-  let volMult = 1.0;
+  let volMult = 1.3;
   if (pair.includes('(OTC)')) {
-    volMult = 1.35; // Rich OTC movements
+    volMult = 1.85; // Rich OTC movements
   } else if (pair.includes('Crypto IDX') || pair.includes('IDX')) {
-    volMult = 1.6;  // Highly volatile index
+    volMult = 2.1;  // Highly volatile index
   } else if (pair.includes('/USD') && !pair.includes('EUR/') && !pair.includes('GBP/') && !pair.includes('AUD/')) {
-    volMult = 1.2;  // Volatile cryptos
+    volMult = 1.65; // Volatile cryptos
   } else {
-    volMult = 0.75; // Standard, smooth Forex ranges
+    volMult = 1.15; // Standard, smooth Forex ranges
   }
 
   // Base random price change - perfectly balanced centered around 0.5 (noise)
