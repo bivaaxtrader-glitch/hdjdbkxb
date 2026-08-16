@@ -36,6 +36,8 @@ export function mapUserForFrontend(user: any) {
     totalLiveVolume: parseFloat(user.total_live_volume || user.totalLiveVolume || 0),
     status: user.status || 'Standard',
     phone: user.phone,
+    isPhoneVerified: !!user.is_phone_verified || !!user.isPhoneVerified || !!user.phoneVerified,
+    phoneVerified: !!user.is_phone_verified || !!user.isPhoneVerified || !!user.phoneVerified,
     country: user.country,
     countryCode: user.country_code || user.countryCode,
     referredBy: user.referred_by_uid || user.referredBy || user.referredByUid,

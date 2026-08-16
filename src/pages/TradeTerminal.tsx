@@ -88,6 +88,7 @@ import {
   Headphones,
   Info,
   AlertCircle,
+  AlertTriangle,
   Unlock,
   EyeOff,
   ArrowRight,
@@ -148,6 +149,7 @@ import {
 } from "lucide-react";
 
 import * as Icons from "lucide-react";
+import { COUNTRY_DIAL_CODES, findCountryByDialCode, findCountryByName, CountryDialCode } from "../data/countryDialCodes";
 
 
 const COUNTRIES = [
@@ -1636,6 +1638,13 @@ export default function TradeTerminal() {
 
                     if (userData.tfaEnabled !== undefined) {
                       setIs2FAEnabled(userData.tfaEnabled);
+                    }
+
+                    if (userData.phone || userData.phoneNumber) {
+                      setPhone(userData.phone || userData.phoneNumber);
+                    }
+                    if (userData.isPhoneVerified !== undefined || userData.phoneVerified !== undefined) {
+                      setIsPhoneVerified(!!userData.isPhoneVerified || !!userData.phoneVerified);
                     }
                     
                     if (userData.timeZone) {
@@ -5165,24 +5174,204 @@ const PROMOTED_ARTICLES = [
   >(null);
   const [alertInput, setAlertInput] = useState("");
   const [phone, setPhone] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const handleSavePhone = async () => {
-    setIsSaving(true);
-    try {
-      const { doc, updateDoc } = await import('../firebase');
-      if (auth.currentUser) {
-        await updateDoc(doc(db, 'users', auth.currentUser.uid), { phone });                
-        toast.success("Phone number saved successfully");
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [showPhoneConfirmModal, setShowPhoneConfirmModal] = useState(false);
+  const [phoneConfirmStep, setPhoneConfirmStep] = useState<"input" | "otp" | "success">("input");
+  const [phoneConfirmInput, setPhoneConfirmInput] = useState("");
+  const [phoneConfirmOtp, setPhoneConfirmOtp] = useState("");
+  const [phoneInputError, setPhoneInputError] = useState("");
+  const [isPhoneOtpSending, setIsPhoneOtpSending] = useState(false);
+  const [isPhoneOtpVerifying, setIsPhoneOtpVerifying] = useState(false);
+  const [phoneOtpTimer, setPhoneOtpTimer] = useState(0);
+  const [selectedPhoneCountry, setSelectedPhoneCountry] = useState<CountryDialCode>(() => {
+    return COUNTRY_DIAL_CODES.find(c => c.code === 'BD') || COUNTRY_DIAL_CODES[0];
+  });
+  const [showPhoneCountryPicker, setShowPhoneCountryPicker] = useState(false);
+  const [phoneCountrySearch, setPhoneCountrySearch] = useState("");
+
+  const handleOpenPhoneConfirm = (initialPhone?: string) => {
+    const raw = (initialPhone !== undefined ? initialPhone : phone) || "";
+    let matched: CountryDialCode | undefined = undefined;
+
+    if (raw.startsWith("+")) {
+      matched = findCountryByDialCode(raw);
+    }
+    if (!matched && selectedCountry) {
+      matched = findCountryByName(selectedCountry);
+    }
+    if (!matched) {
+      matched = COUNTRY_DIAL_CODES.find(c => c.code === 'BD') || COUNTRY_DIAL_CODES.find(c => c.code === 'US') || COUNTRY_DIAL_CODES[0];
+    }
+
+    if (matched) {
+      setSelectedPhoneCountry(matched);
+      if (raw.startsWith(matched.dialCode)) {
+        const local = raw.slice(matched.dialCode.length).trim();
+        setPhoneConfirmInput(local);
+      } else {
+        setPhoneConfirmInput(raw);
       }
-    } catch(e) {
-      toast.error("Failed to save phone number");
-    } finally {
-      setIsSaving(false);
+    } else {
+      setPhoneConfirmInput(raw);
+    }
+
+    setPhoneInputError("");
+    setPhoneConfirmOtp("");
+    setPhoneConfirmStep("input");
+    setShowPhoneCountryPicker(false);
+    setPhoneCountrySearch("");
+    setShowPhoneConfirmModal(true);
+  };
+
+  const getComputedFullPhone = () => {
+    const trimmed = phoneConfirmInput.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("+")) {
+      return trimmed;
+    }
+    const cleanLocal = trimmed.replace(/^0+/, '');
+    return `${selectedPhoneCountry.dialCode} ${cleanLocal}`.trim();
+  };
+
+  const handlePhoneInputChange = (val: string) => {
+    setPhoneConfirmInput(val);
+    if (phoneInputError) {
+      setPhoneInputError("");
+    }
+    if (val.startsWith("+")) {
+      const matched = findCountryByDialCode(val);
+      if (matched && matched.code !== selectedPhoneCountry.code) {
+        setSelectedPhoneCountry(matched);
+      }
     }
   };
 
   useEffect(() => {
-    const isAnyModalOpen = showIndicatorsModal || showTimeframeModal || showChartTypeModal || showSignalsModal || showPromotionsModal || showTournamentsModal || showDeposit || showAccounts || showCashierMenu || showLanguageModal || showCountryModal || show2FAModal || showAchievementsModal || showAlertDialog;
+    let interval: any;
+    if (phoneOtpTimer > 0) {
+      interval = setInterval(() => {
+        setPhoneOtpTimer((prev) => Math.max(0, prev - 1));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [phoneOtpTimer]);
+
+  const handleSendPhoneOtp = async (isResend = false) => {
+    const fullPhone = getComputedFullPhone();
+    if (!phoneConfirmInput.trim() || !fullPhone || fullPhone.replace(/[^0-9]/g, '').length < 6) {
+      setPhoneInputError("Please specify the required information");
+      return;
+    }
+    setPhoneInputError("");
+
+    setIsPhoneOtpSending(true);
+    try {
+      let token = "";
+      if (auth?.currentUser) {
+        token = await auth.currentUser.getIdToken().catch(() => "");
+      }
+      if (!token) {
+        token = localStorage.getItem("token") || localStorage.getItem("bivaax_auth_token") || "";
+      }
+
+      const res = await fetch("/api/auth/send-phone-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          phone: fullPhone
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send verification code to email");
+      }
+
+      setPhoneOtpTimer(60);
+      setPhoneConfirmStep("otp");
+      toast.success(isResend ? "New verification code sent to your email!" : "Verification code sent to your email!");
+    } catch (err: any) {
+      console.error("Error sending phone OTP:", err);
+      toast.error(err.message || "Failed to send verification code. Please try again.");
+    } finally {
+      setIsPhoneOtpSending(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    const code = phoneConfirmOtp?.trim();
+    if (!code || code.length < 4) {
+      toast.error("Please enter the 6-digit confirmation code sent to your email");
+      return;
+    }
+
+    setIsPhoneOtpVerifying(true);
+    try {
+      let token = "";
+      if (auth?.currentUser) {
+        token = await auth.currentUser.getIdToken().catch(() => "");
+      }
+      if (!token) {
+        token = localStorage.getItem("token") || localStorage.getItem("bivaax_auth_token") || "";
+      }
+
+      const fullPhone = getComputedFullPhone();
+      const res = await fetch("/api/auth/verify-phone-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          code: code,
+          phone: fullPhone
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Invalid or expired verification code");
+      }
+
+      const verifiedNumber = data.phone || fullPhone;
+      setPhone(verifiedNumber);
+      setIsPhoneVerified(true);
+
+      if (auth?.currentUser) {
+        try {
+          const { doc, updateDoc } = await import("../firebase");
+          await updateDoc(doc(db, "users", auth.currentUser.uid), {
+            phone: verifiedNumber,
+            phoneNumber: verifiedNumber,
+            isPhoneVerified: true,
+            phoneVerified: true,
+            phoneConfirmedAt: Date.now()
+          });
+        } catch (dbErr) {
+          console.warn("Direct Firestore update fallback:", dbErr);
+        }
+      }
+
+      setPhoneConfirmStep("success");
+      toast.success("Phone number confirmed and permanently saved!");
+    } catch (err: any) {
+      console.error("Error verifying phone OTP:", err);
+      toast.error(err.message || "Failed to verify code. Please try again.");
+    } finally {
+      setIsPhoneOtpVerifying(false);
+    }
+  };
+
+  const [isSaving, setIsSaving] = useState(false);
+  const handleSavePhone = async () => {
+    handleOpenPhoneConfirm(phone);
+  };
+
+  useEffect(() => {
+    const isAnyModalOpen = showIndicatorsModal || showTimeframeModal || showChartTypeModal || showSignalsModal || showPromotionsModal || showTournamentsModal || showDeposit || showAccounts || showCashierMenu || showLanguageModal || showCountryModal || show2FAModal || showPhoneConfirmModal || showAchievementsModal || showAlertDialog;
 
     if (isAnyModalOpen) {
       // Push a dummy state to history so the back button can be intercepted
@@ -5202,6 +5391,7 @@ const PROMOTED_ARTICLES = [
         setShowLanguageModal(false);
         setShowCountryModal(false);
         setShow2FAModal(false);
+        setShowPhoneConfirmModal(false);
         setShowAchievementsModal(false);
         setShowAlertDialog(false);
       };
@@ -5209,7 +5399,7 @@ const PROMOTED_ARTICLES = [
       window.addEventListener("popstate", handlePopState);
       return () => window.removeEventListener("popstate", handlePopState);
     }
-  }, [showIndicatorsModal, showTimeframeModal, showChartTypeModal, showSignalsModal, showPromotionsModal, showTournamentsModal, showDeposit, showAccounts, showCashierMenu, showLanguageModal, showCountryModal, show2FAModal, showAchievementsModal, showAlertDialog]);
+  }, [showIndicatorsModal, showTimeframeModal, showChartTypeModal, showSignalsModal, showPromotionsModal, showTournamentsModal, showDeposit, showAccounts, showCashierMenu, showLanguageModal, showCountryModal, show2FAModal, showPhoneConfirmModal, showAchievementsModal, showAlertDialog]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isIslamic, setIsIslamic] = useState(false);
   const [isProfileFullScreen, setIsProfileFullScreen] = useState(false);
@@ -5571,7 +5761,10 @@ const PROMOTED_ARTICLES = [
             setSavedNickname(userData.nickname);
         }
         if (userData.profilePic) setProfilePic(userData.profilePic);
-        if (userData.phone) setPhone(userData.phone);
+        if (userData.phone || userData.phoneNumber) setPhone(userData.phone || userData.phoneNumber);
+        if (userData.isPhoneVerified !== undefined || userData.phoneVerified !== undefined) {
+          setIsPhoneVerified(!!userData.isPhoneVerified || !!userData.phoneVerified);
+        }
         if (userData.notifications) setNotifications(userData.notifications);
         if (userData.firstName || userData.lastName || userData.country) {
             setPersonalData({
@@ -10135,10 +10328,31 @@ const PROMOTED_ARTICLES = [
 
                      <div className="space-y-4 mb-7">
                        <div className="flex items-center gap-3">
-                         <div className="w-[22px] h-[22px] rounded-full bg-[#00C980]/20 flex items-center justify-center shrink-0">
-                           <Check size={14} className="text-[#00C980]" strokeWidth={3} />
-                         </div>
-                         <span className="text-[15px] text-gray-300">Phone number confirmed</span>
+                         {isPhoneVerified && phone ? (
+                           <div className="w-[22px] h-[22px] rounded-full bg-[#00C980]/20 flex items-center justify-center shrink-0">
+                             <Check size={14} className="text-[#00C980]" strokeWidth={3} />
+                           </div>
+                         ) : (
+                           <div className="w-[22px] h-[22px] rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                             <X size={14} className="text-red-500" strokeWidth={3} />
+                           </div>
+                         )}
+                         <span className="text-[15px] text-gray-300">
+                           {isPhoneVerified && phone ? `Phone number confirmed (${phone})` : "Phone number not confirmed"}
+                         </span>
+                         {(!isPhoneVerified || !phone) && (
+                           <button 
+                             onClick={() => {
+                               setPhoneConfirmInput(phone || '');
+                               setPhoneConfirmOtp('');
+                               setPhoneConfirmStep('input');
+                               setShowPhoneConfirmModal(true);
+                             }}
+                             className="text-[12px] font-bold text-white bg-[#1e88e5] hover:bg-[#1976d2] px-3 py-1.5 rounded-lg transition-colors ml-auto shadow-sm"
+                           >
+                             Confirm
+                           </button>
+                         )}
                        </div>
                        <div className="flex items-center gap-3">
                          <div className="w-[22px] h-[22px] rounded-full bg-[#00C980]/20 flex items-center justify-center shrink-0">
@@ -10254,22 +10468,39 @@ const PROMOTED_ARTICLES = [
                   <div className="mb-10">
                      <h3 className="text-xl font-bold mb-4 tracking-tight">Contacts</h3>
                      
-                     <div className="bg-[#222226] rounded-[16px] flex flex-col border border-[#3b3b3f]/50 p-1.5 mb-4 shadow-sm">
-                       <div className="px-5 py-3">
+                     <div 
+                       onClick={() => handleOpenPhoneConfirm(phone)}
+                       className="bg-[#222226] rounded-[16px] flex items-center justify-between border border-[#3b3b3f]/50 px-5 py-4 mb-4 shadow-sm cursor-pointer hover:border-[#4A4B50] transition-colors"
+                     >
+                       <div className="flex-1 pr-3">
                          <label className="text-sm text-gray-500 block mb-1">Phone number</label>
-                         <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter phone number" className="w-full bg-transparent text-[16px] text-white focus:outline-none" />
+                         <div className="text-[16px] text-white font-mono font-medium">{phone || "Not configured"}</div>
                        </div>
-                       <button 
-                         onClick={handleSavePhone}
-                         disabled={isSaving || !phone}
-                         className={`w-full py-3.5 mt-1 rounded-[12px] font-semibold transition-all ${
-                           (isSaving || !phone) 
-                             ? 'bg-[#2A2B31] text-gray-500 cursor-not-allowed' 
-                             : 'bg-[#FFE24C] text-black hover:bg-[#E5CB44]'
-                         }`}
-                       >
-                         {isSaving ? "Saving..." : "Save"}
-                       </button>
+                       {isPhoneVerified && phone ? (
+                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                           <span className="text-xs bg-[#00C980]/15 text-[#00C980] font-bold px-2.5 py-1 rounded-full border border-[#00C980]/30 flex items-center gap-1">
+                             <Check size={13} strokeWidth={3} /> Verified
+                           </span>
+                           <button
+                             onClick={() => handleOpenPhoneConfirm(phone)}
+                             className="text-xs text-[#C59B18] hover:underline font-semibold ml-1"
+                           >
+                             Change
+                           </button>
+                         </div>
+                       ) : (
+                         <button
+                           type="button"
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             handleOpenPhoneConfirm(phone);
+                           }}
+                           className="px-4 py-2.5 bg-[#C59B18] hover:bg-[#D4A820] text-[#141519] text-xs font-bold rounded-xl transition-all shadow-md shadow-yellow-500/10 flex items-center gap-1.5"
+                         >
+                           <Smartphone size={14} />
+                           <span>{phone ? "Verify Phone" : "Verify Phone"}</span>
+                         </button>
+                       )}
                      </div>
 
                      <div className="bg-[#222226] rounded-[16px] flex items-center justify-between border border-[#3b3b3f]/50 px-5 py-4 shadow-sm">
@@ -11250,6 +11481,344 @@ const PROMOTED_ARTICLES = [
         </div>
       )}
 
+      {/* OVERLAY CONFIRM PHONE MODAL (MATCHING EXACT SCREENSHOT DESIGN) */}
+      {showPhoneConfirmModal && (
+        <div className="fixed inset-0 z-[700] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div 
+            className="w-full max-w-[420px] bg-[#1E2026] border border-[#2D3039] rounded-[28px] shadow-2xl overflow-hidden text-white relative flex flex-col max-h-[92vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Close Button */}
+            <div className="absolute top-4 right-4 z-20">
+              <button 
+                onClick={() => {
+                  setShowPhoneConfirmModal(false);
+                  setShowPhoneCountryPicker(false);
+                  setPhoneConfirmStep('input');
+                  setPhoneInputError('');
+                }} 
+                className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 pt-7 overflow-y-auto">
+              {phoneConfirmStep === 'input' && (
+                <div className="flex flex-col items-center text-center">
+                  {/* 3D Gold Avatar + Emerald Green Shield Graphic */}
+                  <div className="relative w-28 h-28 my-1 flex items-center justify-center">
+                    <svg viewBox="0 0 100 100" className="w-28 h-28 drop-shadow-2xl" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        {/* 3D Gold Avatar Gradients */}
+                        <linearGradient id="goldHead3D" x1="15%" y1="10%" x2="85%" y2="90%">
+                          <stop offset="0%" stopColor="#FFF9C4" />
+                          <stop offset="30%" stopColor="#FFD54F" />
+                          <stop offset="65%" stopColor="#FFA000" />
+                          <stop offset="100%" stopColor="#6D4C41" />
+                        </linearGradient>
+                        <linearGradient id="goldBody3D" x1="10%" y1="20%" x2="90%" y2="80%">
+                          <stop offset="0%" stopColor="#FFE082" />
+                          <stop offset="45%" stopColor="#FFB300" />
+                          <stop offset="85%" stopColor="#8D6E63" />
+                          <stop offset="100%" stopColor="#3E2723" />
+                        </linearGradient>
+                        {/* 3D Emerald Green Shield Gradients */}
+                        <linearGradient id="emeraldShield3D" x1="20%" y1="0%" x2="80%" y2="100%">
+                          <stop offset="0%" stopColor="#00E676" />
+                          <stop offset="35%" stopColor="#00C853" />
+                          <stop offset="75%" stopColor="#00897B" />
+                          <stop offset="100%" stopColor="#004D40" />
+                        </linearGradient>
+                        <linearGradient id="shieldRimHighlight" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#B9F6CA" stopOpacity="0.9" />
+                          <stop offset="100%" stopColor="#004D40" stopOpacity="0.4" />
+                        </linearGradient>
+                        <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
+                          <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#000000" floodOpacity="0.6" />
+                        </filter>
+                      </defs>
+
+                      {/* Head */}
+                      <circle cx="48" cy="28" r="16" fill="url(#goldHead3D)" filter="url(#goldGlow)" />
+                      <circle cx="45" cy="23" r="5" fill="#FFFFFF" fillOpacity="0.4" />
+
+                      {/* Torso */}
+                      <path 
+                        d="M24 64 C24 46, 34 42, 48 42 C62 42, 72 46, 72 64 C72 66, 68 68, 48 68 C28 68, 24 66, 24 64 Z" 
+                        fill="url(#goldBody3D)" 
+                        filter="url(#goldGlow)"
+                      />
+
+                      {/* 3D Emerald Green Security Shield in front */}
+                      <g transform="translate(13, 10)" filter="url(#goldGlow)">
+                        <path 
+                          d="M44 22 L64 28 C64 46, 54 58, 44 66 C34 58, 24 46, 24 28 Z" 
+                          fill="url(#emeraldShield3D)"
+                          stroke="url(#shieldRimHighlight)"
+                          strokeWidth="1.5"
+                        />
+                        {/* Specular gloss on shield */}
+                        <path 
+                          d="M44 24 L61 29 C61 40, 55 50, 44 56 Z" 
+                          fill="#FFFFFF" 
+                          fillOpacity="0.18"
+                        />
+                        {/* Phone handset icon embossed in shield */}
+                        <path 
+                          d="M38.5 38.5 C38.5 37, 40 35.5, 41.5 35.5 C42.5 35.5, 43.5 36.5, 44 37.5 L45.5 40.5 C46 41.5, 45.5 42.5, 44.5 43 L43.5 43.5 C44.3 45.5, 45.5 46.7, 47.5 47.5 L48 46.5 C48.5 45.5, 49.5 45, 50.5 45.5 L53.5 47 C54.5 47.5, 55.5 48.5, 55.5 49.5 C55.5 51, 54 52.5, 52.5 52.5 C45.5 52.5, 38.5 45.5, 38.5 38.5 Z" 
+                          fill="#052E1B"
+                        />
+                      </g>
+                    </svg>
+                  </div>
+
+                  {/* Headline & Subtext */}
+                  <h2 className="text-xl sm:text-[22px] font-extrabold text-white mt-3 tracking-tight">
+                    Increase your account security
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-400 mt-2 max-w-xs leading-relaxed">
+                    Add your phone number to secure access to your profile
+                  </p>
+
+                  {/* Input Form Area */}
+                  <div className="w-full mt-6 text-left">
+                    {/* Input Container Box */}
+                    <div 
+                      className={`relative bg-[#252830] rounded-2xl p-3 border transition-all ${
+                        phoneInputError 
+                          ? 'border-[#FF5B5B] ring-1 ring-[#FF5B5B]/50' 
+                          : 'border-[#333742] focus-within:border-[#D4A017]'
+                      }`}
+                    >
+                      {/* Floating Label */}
+                      <label className="text-[11px] text-gray-400 font-medium block mb-1">
+                        Phone number
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        {/* Country Dial Flag / Selector Button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowPhoneCountryPicker(!showPhoneCountryPicker)}
+                          className="flex items-center gap-1.5 text-white text-sm font-semibold bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/5 transition-colors shrink-0"
+                        >
+                          <span className="text-base leading-none">{selectedPhoneCountry.flag}</span>
+                          <span className="font-mono text-xs text-gray-300 font-bold">{selectedPhoneCountry.dialCode}</span>
+                          <Icons.ChevronDown size={14} className={`text-gray-400 transition-transform ${showPhoneCountryPicker ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Phone Text Input */}
+                        <input
+                          type="tel"
+                          value={phoneConfirmInput}
+                          onChange={(e) => handlePhoneInputChange(e.target.value)}
+                          placeholder={selectedPhoneCountry.placeholder || "123 456 789"}
+                          className="w-full bg-transparent text-white font-mono text-sm sm:text-base focus:outline-none placeholder:text-gray-600"
+                          autoFocus
+                        />
+
+                        {/* Error Alert Triangle Icon on the right */}
+                        {phoneInputError && (
+                          <div className="shrink-0 text-[#FF5B5B] animate-in fade-in">
+                            <AlertTriangle size={18} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Dropdown / Country Picker List */}
+                      {showPhoneCountryPicker && (
+                        <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-[#1e1f25] border border-[#3b3b44] rounded-2xl shadow-2xl p-3 max-h-64 flex flex-col animate-in fade-in zoom-in-95 duration-150 text-left">
+                          {/* Search Input */}
+                          <div className="relative mb-2 shrink-0">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="text"
+                              value={phoneCountrySearch}
+                              onChange={(e) => setPhoneCountrySearch(e.target.value)}
+                              placeholder="Search country or dial code..."
+                              className="w-full bg-[#141518] border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4A017]"
+                              autoFocus
+                            />
+                          </div>
+
+                          {/* Country List */}
+                          <div className="overflow-y-auto flex-1 space-y-1 pr-1">
+                            {COUNTRY_DIAL_CODES
+                              .filter((c) => {
+                                const q = phoneCountrySearch.toLowerCase().trim();
+                                if (!q) return true;
+                                return (
+                                  c.name.toLowerCase().includes(q) ||
+                                  c.dialCode.includes(q) ||
+                                  c.code.toLowerCase().includes(q)
+                                );
+                              })
+                              .map((c) => (
+                                <button
+                                  key={c.code + c.dialCode}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedPhoneCountry(c);
+                                    setShowPhoneCountryPicker(false);
+                                    setPhoneCountrySearch("");
+                                  }}
+                                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs hover:bg-[#2a2b33] transition-colors ${
+                                    selectedPhoneCountry.code === c.code ? 'bg-[#D4A017]/20 text-[#D4A017] font-bold' : 'text-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="text-lg">{c.flag}</span>
+                                    <span className="text-left font-medium">{c.name}</span>
+                                  </div>
+                                  <span className="font-mono text-gray-400 shrink-0 font-semibold">{c.dialCode}</span>
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Red Error Text below input */}
+                    {phoneInputError && (
+                      <p className="text-xs text-[#FF5B5B] mt-1.5 px-1 font-medium flex items-center gap-1 animate-in fade-in">
+                        {phoneInputError}
+                      </p>
+                    )}
+
+                    {/* Full Preview when typing */}
+                    {phoneConfirmInput && !phoneInputError && (
+                      <div className="mt-2 text-xs text-gray-400 flex items-center gap-1.5 bg-black/20 px-3 py-1 rounded-lg border border-white/5">
+                        <span className="text-gray-500">Format:</span>
+                        <span className="text-white font-mono font-bold">{getComputedFullPhone()}</span>
+                      </div>
+                    )}
+
+                    {/* Email note */}
+                    <p className="text-[11px] text-gray-500 mt-3 text-center leading-relaxed">
+                      A 6-digit confirmation OTP will be sent to your registered email: <span className="text-gray-300 font-medium">{currentUser?.email}</span>
+                    </p>
+
+                    {/* Golden Yellow / Mustard "Save" Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleSendPhoneOtp(false)}
+                      disabled={isPhoneOtpSending}
+                      className="w-full py-3.5 bg-[#C59B18] hover:bg-[#D4A820] active:scale-[0.99] text-[#141519] font-bold text-base rounded-2xl transition-all shadow-lg shadow-yellow-500/10 flex items-center justify-center gap-2 mt-5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isPhoneOtpSending ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          <span>Sending code...</span>
+                        </>
+                      ) : (
+                        <span>Save</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {phoneConfirmStep === 'otp' && (
+                <div className="space-y-5">
+                  <div className="text-center space-y-1.5 pt-2">
+                    <div className="w-12 h-12 rounded-2xl bg-[#C59B18]/15 border border-[#C59B18]/30 flex items-center justify-center mx-auto text-[#C59B18] mb-3">
+                      <Mail size={24} />
+                    </div>
+                    <h3 className="text-lg font-bold text-white">Enter Email Verification Code</h3>
+                    <p className="text-xs text-gray-400 max-w-xs mx-auto leading-relaxed">
+                      We've sent a 6-digit code to <span className="text-white font-medium">{currentUser?.email}</span> to confirm phone number <span className="text-[#C59B18] font-mono font-bold">{getComputedFullPhone() || phoneConfirmInput}</span>.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2 text-center">
+                      6-Digit Code
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={phoneConfirmOtp}
+                      onChange={(e) => setPhoneConfirmOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="------"
+                      className="w-full bg-[#252830] border border-[#333742] focus:border-[#C59B18] text-white font-mono text-center tracking-[10px] text-2xl font-bold py-3.5 rounded-2xl focus:outline-none transition-all placeholder:text-gray-600"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs px-1">
+                    <button
+                      onClick={() => {
+                        setPhoneConfirmStep('input');
+                        setPhoneInputError('');
+                      }}
+                      className="text-gray-400 hover:text-white transition-colors"
+                    >
+                      ← Change number
+                    </button>
+                    {phoneOtpTimer > 0 ? (
+                      <span className="text-gray-500 font-mono">Resend in {phoneOtpTimer}s</span>
+                    ) : (
+                      <button
+                        onClick={() => handleSendPhoneOtp(true)}
+                        disabled={isPhoneOtpSending}
+                        className="text-[#C59B18] hover:underline font-semibold"
+                      >
+                        Resend code
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleVerifyPhoneOtp}
+                    disabled={isPhoneOtpVerifying || phoneConfirmOtp.length < 4}
+                    className="w-full py-3.5 bg-[#C59B18] hover:bg-[#D4A820] disabled:opacity-50 disabled:cursor-not-allowed text-[#141519] font-bold text-base rounded-2xl transition-all shadow-lg shadow-yellow-500/10 flex items-center justify-center gap-2"
+                  >
+                    {isPhoneOtpVerifying ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span>Verifying & Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={18} />
+                        <span>Verify & Confirm Phone</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {phoneConfirmStep === 'success' && (
+                <div className="text-center py-4 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-[#00C980]/15 border border-[#00C980]/30 flex items-center justify-center mx-auto text-[#00C980]">
+                    <Check size={32} strokeWidth={3} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white mb-1">Phone Number Confirmed!</h3>
+                    <p className="text-xs text-gray-400 max-w-xs mx-auto">
+                      Your phone number <span className="text-white font-mono font-semibold">{phone || getComputedFullPhone() || phoneConfirmInput}</span> has been permanently verified and saved in Firebase.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowPhoneConfirmModal(false);
+                      setShowPhoneCountryPicker(false);
+                      setPhoneConfirmStep('input');
+                      setPhoneInputError('');
+                    }}
+                    className="w-full py-3.5 bg-[#00C980] hover:bg-[#00b271] text-black font-bold text-base rounded-2xl transition-all shadow-lg shadow-emerald-500/20"
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SAVE TOAST */}
       {showSaveToast && (
         <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[300] bg-[#00C980] text-white px-6 py-3 rounded-full font-semibold shadow-lg animate-in fade-in slide-in-from-top-4 duration-300 flex items-center gap-2">
@@ -11472,7 +12041,7 @@ const PROMOTED_ARTICLES = [
                       <Lock size={18} className="text-white" strokeWidth={2} />
                       <span className="text-[15px] font-bold text-white">Security</span>
                   </div>
-                  {is2FAEnabled ? (
+                  {is2FAEnabled && isPhoneVerified ? (
                     <Icons.CheckCircle size={18} className="text-[#00c980]" />
                   ) : (
                     <AlertCircle size={18} className="text-[#ef5350]" />
@@ -11480,9 +12049,35 @@ const PROMOTED_ARTICLES = [
                 </div>
 
                 <div className="px-5 space-y-3">
-                  <button className="w-full bg-[#1e88e5] hover:bg-[#1976d2] text-white font-bold py-3.5 rounded-[12px] transition-colors text-[16px]">
-                    Confirm phone
-                  </button>
+                  {isPhoneVerified && phone ? (
+                    <div className="w-full bg-[#1e88e5]/10 border border-[#1e88e5]/30 p-3.5 rounded-[12px] flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-[#00C980]/20 flex items-center justify-center">
+                          <Check size={16} className="text-[#00C980]" strokeWidth={3} />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-[14px] font-bold text-white font-mono">{phone}</div>
+                          <div className="text-[11px] text-[#00c980] font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#00c980]"></span> Verified
+                          </div>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleOpenPhoneConfirm(phone)}
+                        className="text-xs text-[#1e88e5] hover:text-blue-300 font-semibold px-2 py-1 bg-[#1e88e5]/15 rounded-lg transition-colors"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => handleOpenPhoneConfirm(phone)}
+                      className="w-full bg-[#1e88e5] hover:bg-[#1976d2] text-white font-bold py-3.5 rounded-[12px] transition-colors text-[16px] flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                    >
+                      <Smartphone size={18} />
+                      <span>{phone ? 'Verify phone' : 'Confirm phone'}</span>
+                    </button>
+                  )}
                   <button 
                     onClick={() => setIs2FAEnabled(!is2FAEnabled)}
                     className="w-full bg-[#1e88e5] hover:bg-[#1976d2] text-white font-bold py-3.5 rounded-[12px] transition-colors text-[16px]"
@@ -13189,10 +13784,20 @@ const PROMOTED_ARTICLES = [
                                    if (auth?.currentUser) {
                                        try {
                                            const baseWithdrawAmount = convertToBase(amount, userCurrency);
+                                           const numAmount = Number(baseWithdrawAmount);
                                            await addDoc(collection(db, 'withdrawals'), {
-                                               amount: Number(baseWithdrawAmount),
-                                               method: selectedMethod?.name,
+                                               userId: auth.currentUser.uid,
+                                               userEmail: auth.currentUser.email || '',
+                                               amount: numAmount,
+                                               method: selectedMethod?.name || 'Local Bank',
+                                               walletNumber: withdrawAccountNumber,
+                                               accountHolder: withdrawAccountHolder,
+                                               currency: userCurrency || 'USD',
+                                               status: 'pending',
+                                               timestamp: Date.now(),
+                                               createdAt: Date.now(),
                                                details: {
+                                                   userId: auth.currentUser.uid,
                                                    accountHolder: withdrawAccountHolder,
                                                    walletNumber: withdrawAccountNumber,
                                                    userCurrency

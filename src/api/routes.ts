@@ -3292,25 +3292,22 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
         const mapped = mapUserForFrontend(updatedUser);
         if (mapped) {
           getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
-          syncUserToFirestore(userId, mapped);
+          await syncUserToFirestore(userId, mapped);
         }
       }
       
-      // Update Firebase balance directly
+      // Update Firebase totalDeposits metadata without duplicating balance addition (syncUserToFirestore authoritatively sets the balance)
       try {
         const fbUserDoc = await adminDb.collection('users').doc(userId).get();
         if (fbUserDoc && fbUserDoc.exists) {
           const fbData = fbUserDoc.data() || {};
-          const currentFbBalance = Number(fbData?.balance || 0);
           const currentFbDeposits = Number(fbData?.totalDeposits || 0);
-          const creditedAmountNum = parseFloat(depositAmountWithBonus.toFixed(2));
           await adminDb.collection('users').doc(userId).update({
-            balance: currentFbBalance + creditedAmountNum,
             totalDeposits: currentFbDeposits + rawDepositAmount
           });
         }
       } catch (e: any) {
-        logger.warn(`Could not update Firebase user balance: ${e.message}`);
+        logger.warn(`Could not update Firebase user totalDeposits: ${e.message}`);
       }
     }
 
@@ -3397,87 +3394,130 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
 
 router.post('/admin/withdrawals/update', requireAuth, async (req: AuthRequest, res) => {
   if (!req.user?.isAdmin) return res.status(403).json({ error: 'Admin only' });
-  const { id, status, userId, amount } = req.body;
+  const { id, status, userId: rawUserId, amount: rawAmount, orderId } = req.body;
 
   try {
-    if (!adminDb) {
-      return res.status(500).json({ error: 'Firestore is not initialized.' });
-    }
+    let withdrawalData: any = null;
+    let withdrawalRef: any = null;
 
-    // Check if the withdrawal transaction has already been processed
-    const withdrawalDoc = await adminDb.collection('withdrawals').doc(id).get();
-    if (!withdrawalDoc.exists) {
-      return res.status(404).json({ error: 'Withdrawal request not found.' });
-    }
-    const withdrawalData = withdrawalDoc.data();
-    if (withdrawalData?.status === 'success' || withdrawalData?.status === 'approved' || withdrawalData?.status === 'rejected' || withdrawalData?.status === 'completed') {
-      return res.status(400).json({ error: 'This withdrawal has already been processed.' });
-    }
-
-    // SQLite double-spend / duplicate withdrawal processing safety check
-    let isAlreadyProcessedInSql = false;
-    let sqlTx = await get('SELECT * FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, `%${id}%`]) as any;
-    if (sqlTx && (sqlTx.status === 'completed' || sqlTx.status === 'success' || sqlTx.status === 'approved' || sqlTx.status === 'rejected')) {
-      isAlreadyProcessedInSql = true;
-    }
-
-    if (isAlreadyProcessedInSql) {
-      logger.warn(`[Withdrawal Security] Withdrawal ID ${id} was already processed in SQL transaction ID ${sqlTx.id}. Preventing duplicate actions.`);
-      // Ensure Firestore withdrawal status is updated
-      await adminDb.collection('withdrawals').doc(id).update({ status });
-      return res.json({ success: true, message: 'Withdrawal was already processed.' });
-    }
-
-    const tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = \'withdrawal\' AND status = \'pending\' ORDER BY created_at DESC LIMIT 1', [userId, amount]) as any;
-    if (tx) {
-      const newStatus = status === 'success' ? 'completed' : status === 'rejected' ? 'rejected' : status;
-      await run('UPDATE transactions SET status = ?, updated_at = datetime(\'now\') WHERE id = ?', [newStatus, tx.id]);
-    }
-    
-    if (status === 'rejected') {
-        let user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
-        if (!user) {
-            const fbUser = await adminDb.collection('users').doc(userId).get();
-            if (fbUser.exists) {
-                const fbData = fbUser.data();
-                await run(
-                    `INSERT INTO users (uid, email, display_name, real_balance, demo_balance, country) 
-                     VALUES (?, ?, ?, ?, ?, ?)`,
-                    [userId, fbData.email || '', fbData.displayName || fbData.name || '', fbData.balance || 0, fbData.demoBalance || 10000, fbData.country || '']
-                );
-                user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
-            }
+    if (adminDb) {
+      try {
+        withdrawalRef = adminDb.collection('withdrawals').doc(id);
+        const withdrawalDoc = await withdrawalRef.get();
+        if (withdrawalDoc.exists) {
+          withdrawalData = withdrawalDoc.data();
         }
-
-        if (user) {
-            const currentBalance = new Big(user.real_balance || 0);
-            const refundAmount = new Big(amount);
-            const newBalance = currentBalance.plus(refundAmount).toFixed(2);
-            await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, userId]);
-            
-            const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [userId]);
-            const mapped = mapUserForFrontend(updatedUser);
-            if (mapped) {
-              getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
-              syncUserToFirestore(userId, mapped);
-            }
-
-            // Also update Firebase balance
-            const fbUserDoc = await adminDb.collection('users').doc(userId).get();
-            if (fbUserDoc.exists) {
-                const fbData = fbUserDoc.data();
-                const currentFbBalance = fbData?.balance || 0;
-                await adminDb.collection('users').doc(userId).update({
-                    balance: currentFbBalance + amount
-                });
-            }
-        }
+      } catch (e) {
+        logger.error('Error fetching withdrawal doc from Firestore:', e);
+      }
     }
-    
-    // Also update the Firestore withdrawal request status
-    await adminDb.collection('withdrawals').doc(id).update({ status });
-    
-    res.json({ success: true });
+
+    const userId = rawUserId || withdrawalData?.userId || withdrawalData?.uid || withdrawalData?.user_id;
+    const amount = Number(rawAmount !== undefined ? rawAmount : (withdrawalData?.amount || 0));
+
+    // If status is already the requested status, acknowledge safely
+    if (withdrawalData && withdrawalData.status === status) {
+      return res.json({ success: true, message: `Withdrawal is already ${status}` });
+    }
+
+    const prevStatus = withdrawalData?.status || 'pending';
+
+    // Update SQL transactions if existing
+    try {
+      let tx: any = null;
+      if (orderId) {
+        tx = await get('SELECT * FROM transactions WHERE details LIKE ? LIMIT 1', [`%${orderId}%`]);
+      }
+      if (!tx && userId && amount) {
+        tx = await get('SELECT * FROM transactions WHERE user_id = ? AND amount = ? AND type = "withdrawal" ORDER BY created_at DESC LIMIT 1', [userId, amount.toString()]);
+      }
+      if (tx) {
+        const newSqlStatus = status === 'success' ? 'completed' : status === 'rejected' ? 'rejected' : status === 'approved' ? 'approved' : status;
+        await run('UPDATE transactions SET status = ?, updated_at = datetime("now") WHERE id = ?', [newSqlStatus, tx.id]);
+      }
+    } catch (sqlTxErr) {
+      logger.error('Error updating SQL transaction for withdrawal:', sqlTxErr);
+    }
+
+    // If rejecting a pending or approved withdrawal, REFUND the amount to the user's real balance
+    if (status === 'rejected' && prevStatus !== 'rejected' && userId && amount > 0) {
+      let user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
+      if (!user && adminDb) {
+        const fbUser = await adminDb.collection('users').doc(userId).get();
+        if (fbUser.exists) {
+          const fbData = fbUser.data();
+          await run(
+            `INSERT INTO users (uid, email, display_name, real_balance, demo_balance, country) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [userId, fbData.email || '', fbData.displayName || fbData.name || '', fbData.balance || 0, fbData.demoBalance || 10000, fbData.country || '']
+          );
+          user = await get('SELECT * FROM users WHERE uid = ?', [userId]) as any;
+        }
+      }
+
+      if (user) {
+        const currentBalance = new Big(user.real_balance || 0);
+        const refundAmount = new Big(amount);
+        const newBalance = currentBalance.plus(refundAmount).toFixed(2);
+        await run('UPDATE users SET real_balance = ? WHERE uid = ?', [newBalance, userId]);
+        
+        const updatedUser = await get('SELECT * FROM users WHERE uid = ?', [userId]);
+        const mapped = mapUserForFrontend(updatedUser);
+        if (mapped) {
+          getIO().to(`user_${userId}`).emit('user_profile_update', mapped);
+          await syncUserToFirestore(userId, mapped);
+        }
+      }
+    }
+
+    // Update Firestore withdrawal doc
+    if (withdrawalRef) {
+      await withdrawalRef.update({
+        status: status,
+        processedAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+
+    // Send email notification to the user
+    if (userId) {
+      try {
+        const user = await get('SELECT email, display_name FROM users WHERE uid = ?', [userId]) as any;
+        const targetEmail = user?.email || withdrawalData?.userEmail;
+        if (targetEmail) {
+          const isSuccess = status === 'success' || status === 'approved';
+          const subject = isSuccess ? 'Withdrawal Processed Successfully - Bivaax Trade' : 'Withdrawal Request Rejected - Bivaax Trade';
+          const body = `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
+              <div style="background-color: ${isSuccess ? '#10b981' : '#ef4444'}; padding: 40px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
+                <h1 style="margin: 0; font-size: 24px;">Withdrawal ${isSuccess ? 'Completed' : 'Rejected'}</h1>
+                <p style="opacity: 0.9; margin-top: 10px;">Transaction Status Update</p>
+              </div>
+              <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed;">
+                <p style="font-size: 16px; color: #333;">Hello ${user?.display_name || withdrawalData?.details?.accountHolder || 'Trader'},</p>
+                <p style="font-size: 16px; color: #333; line-height: 1.6;">Your withdrawal request for $${amount.toFixed(2)} has been processed by our financial department.</p>
+                
+                <div style="background-color: ${isSuccess ? '#ecfdf5' : '#fef2f2'}; border-left: 4px solid ${isSuccess ? '#10b981' : '#ef4444'}; padding: 20px; border-radius: 8px; margin: 25px 0;">
+                  <p style="margin: 0; font-size: 14px; color: ${isSuccess ? '#065f46' : '#991b1b'};"><strong>Status:</strong> ${status.toUpperCase()}</p>
+                  <p style="margin: 5px 0 0; font-size: 14px; color: ${isSuccess ? '#047857' : '#b91c1c'};">${isSuccess ? 'The funds have been transferred to your requested account/wallet.' : 'The withdrawal request was declined and the funds have been refunded to your live balance.'}</p>
+                </div>
+
+                <p style="font-size: 14px; color: #64748b; line-height: 1.6;">If you have any questions regarding this transaction, please contact our 24/7 support team.</p>
+                
+                <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
+                <div style="text-align: center; font-size: 12px; color: #94a3b8;">
+                  <p>&copy; 2026 Bivaax Trade Financial Services</p>
+                </div>
+              </div>
+            </div>`;
+          await sendEmail(targetEmail, subject, body);
+        }
+      } catch (emailErr) {
+        logger.error('Error sending withdrawal notification email:', emailErr);
+      }
+    }
+
+    res.json({ success: true, status });
   } catch (err: any) {
     logger.error(`Error in /admin/withdrawals/update: ${err.message}`);
     res.status(500).json({ error: err.message });

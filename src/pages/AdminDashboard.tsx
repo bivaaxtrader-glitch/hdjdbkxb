@@ -809,32 +809,86 @@ export default function AdminDashboard() {
     }
   };
 
+  const [processingWithdrawals, setProcessingWithdrawals] = useState<Set<string>>(new Set());
+
   const handleWithdrawalStatus = async (id: string, status: 'approved' | 'rejected' | 'success', userId?: string, amount?: number, orderId?: string) => {
       if (!canManageWithdrawals) return toast.error("ACCESS DENIED: Insufficient clearance for withdrawal management.");
+      if (processingWithdrawals.has(id)) return;
+
+      setProcessingWithdrawals(prev => new Set(prev).add(id));
+      const loadingToast = toast.loading(`Processing withdrawal as ${status.toUpperCase()}...`);
+
       try {
-          const idToken = await auth.currentUser?.getIdToken?.();
-          await fetch('/api/admin/withdrawals/update', {
+          const idToken = (await auth.currentUser?.getIdToken?.()) || localStorage.getItem('bivax_token');
+          const response = await fetch('/api/admin/withdrawals/update', {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
                 ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
               },
-              body: JSON.stringify({ id, status, userId, amount })
+              body: JSON.stringify({ id, status, userId, amount, orderId })
           });
           
+          const resData = await response.json().catch(() => ({}));
+          if (!response.ok && !resData.success) {
+              throw new Error(resData.error || `Failed with status ${response.status}`);
+          }
+          
+          // Direct Firestore document status update
+          try {
+              await updateDoc(doc(db, 'withdrawals', id), {
+                  status: status,
+                  processedAt: Date.now(),
+                  updatedAt: Date.now()
+              });
+          } catch (fsErr) {
+              console.warn("Direct Firestore update fallback error:", fsErr);
+          }
+
+          // If rejected, also refund the user balance directly in Firestore as instant UI sync
+          if (status === 'rejected' && userId && amount && amount > 0) {
+              try {
+                  const userDocRef = doc(db, 'users', userId);
+                  const userSnap = await getDoc(userDocRef);
+                  if (userSnap.exists()) {
+                      const curBal = Number(userSnap.data().balance || 0);
+                      await updateDoc(userDocRef, {
+                          balance: Number((curBal + amount).toFixed(2))
+                      });
+                  }
+              } catch (balErr) {
+                  console.warn("Direct Firestore user refund sync error:", balErr);
+              }
+          }
+
           if (userId) {
-              const txQuery = orderId 
-                  ? query(collection(db, `users/${userId}/transactions`), where('orderId', '==', orderId))
-                  : query(collection(db, `users/${userId}/transactions`), where('amount', '==', amount), where('type', '==', 'Withdrawal'), limit(1));
-              const txSnap = await getDocs(txQuery);
-              if (!txSnap.empty) {
-                  const txStatus = status === 'success' ? 'Completed' : status === 'rejected' ? 'Rejected' : status;
-                  await updateDoc(doc(db, `users/${userId}/transactions`, txSnap.docs[0].id), { status: txStatus });
+              try {
+                  const txQuery = orderId 
+                      ? query(collection(db, `users/${userId}/transactions`), where('orderId', '==', orderId))
+                      : query(collection(db, `users/${userId}/transactions`), where('amount', '==', amount), where('type', '==', 'Withdrawal'), limit(1));
+                  const txSnap = await getDocs(txQuery);
+                  if (!txSnap.empty) {
+                      const txStatus = status === 'success' ? 'Completed' : status === 'rejected' ? 'Rejected' : status === 'approved' ? 'Approved' : status;
+                      await updateDoc(doc(db, `users/${userId}/transactions`, txSnap.docs[0].id), { status: txStatus, updatedAt: Date.now() });
+                  }
+              } catch (txErr) {
+                  console.warn("Failed updating user transaction record:", txErr);
               }
           }
           
           await logAdminAction('Processed Withdrawal', `Marked withdrawal ${id} as ${status}`);
-      } catch(e: any) { alert(e.message); }
+          toast.dismiss(loadingToast);
+          toast.success(`Withdrawal successfully marked as ${status.toUpperCase()}`);
+      } catch(e: any) { 
+          toast.dismiss(loadingToast);
+          toast.error(e.message || "Failed to process withdrawal"); 
+      } finally {
+          setProcessingWithdrawals(prev => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+          });
+      }
   };
 
   const [processingDeposits, setProcessingDeposits] = useState<Set<string>>(new Set());
@@ -1488,13 +1542,34 @@ export default function AdminDashboard() {
                                                     </p>
                                                 )}
                                             </div>
-                                            {d.status === 'pending' || d.status === 'approved' ? (
+                                            {d.status === 'pending' ? (
                                                 <div className="flex gap-2 text-center items-center justify-center">
-                                                    {d.status === 'pending' && <button disabled={processingDeposits.has(d.id)} onClick={() => handleDepositStatus(d.id, 'approved', d.userId, d.amount, d.currency, d.orderId)} className={`px-3 py-2 ${processingDeposits.has(d.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-blue-500/10 text-blue-500 font-bold uppercase text-xs rounded-xl hover:bg-blue-500 hover:text-white transition-all`}>Approve</button>}
-                                                    <button disabled={processingDeposits.has(d.id)} onClick={() => handleDepositStatus(d.id, 'success', d.userId, d.amount, d.currency, d.orderId)} className={`px-3 py-2 ${processingDeposits.has(d.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-green-500/10 text-green-500 font-bold uppercase text-xs rounded-xl hover:bg-green-500 hover:text-white transition-all`}>Success</button>
-                                                    <button disabled={processingDeposits.has(d.id)} onClick={() => handleDepositStatus(d.id, 'rejected', d.userId, d.amount, d.currency, d.orderId)} className={`px-3 py-2 ${processingDeposits.has(d.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-red-500/10 text-red-500 font-bold uppercase text-xs rounded-xl hover:bg-red-500 hover:text-white transition-all`}>Reject</button>
+                                                    <button 
+                                                        disabled={processingDeposits.has(d.id)} 
+                                                        onClick={() => handleDepositStatus(d.id, 'approved', d.userId, d.amount, d.currency, d.orderId)} 
+                                                        className={`px-4 py-2 ${processingDeposits.has(d.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black font-bold uppercase text-xs rounded-xl transition-all shadow-md`}
+                                                    >
+                                                        Approve & Credit
+                                                    </button>
+                                                    <button 
+                                                        disabled={processingDeposits.has(d.id)} 
+                                                        onClick={() => handleDepositStatus(d.id, 'rejected', d.userId, d.amount, d.currency, d.orderId)} 
+                                                        className={`px-4 py-2 ${processingDeposits.has(d.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white font-bold uppercase text-xs rounded-xl transition-all shadow-md`}
+                                                    >
+                                                        Reject
+                                                    </button>
                                                 </div>
-                                            ) : null}
+                                            ) : (
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={`px-3 py-1.5 rounded-xl font-bold uppercase text-xs ${
+                                                        d.status === 'success' || d.status === 'approved' 
+                                                            ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                                                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                                    }`}>
+                                                        {d.status === 'success' || d.status === 'approved' ? '✓ Credited' : '✕ Rejected'}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )) : (<div className="text-gray-500 text-sm">No deposit requests found.</div>)}
@@ -1526,11 +1601,15 @@ export default function AdminDashboard() {
                                             </div>
                                             {w.status === 'pending' || w.status === 'approved' ? (
                                                 <div className="flex gap-2 text-center items-center justify-center">
-                                                    {w.status === 'pending' && <button onClick={() => handleWithdrawalStatus(w.id, 'approved', w.userId, w.amount, w.orderId)} className="px-3 py-2 bg-blue-500/10 text-blue-500 font-bold uppercase text-xs rounded-xl hover:bg-blue-500 hover:text-white transition-all">Approve</button>}
-                                                    <button onClick={() => handleWithdrawalStatus(w.id, 'success', w.userId, w.amount, w.orderId)} className="px-3 py-2 bg-green-500/10 text-green-500 font-bold uppercase text-xs rounded-xl hover:bg-green-500 hover:text-black transition-all">Success</button>
-                                                    <button onClick={() => handleWithdrawalStatus(w.id, 'rejected', w.userId, w.amount, w.orderId)} className="px-3 py-2 bg-red-500/10 text-red-500 font-bold uppercase text-xs rounded-xl hover:bg-red-500 hover:text-white transition-all">Reject</button>
+                                                    {w.status === 'pending' && <button disabled={processingWithdrawals.has(w.id)} onClick={() => handleWithdrawalStatus(w.id, 'approved', w.userId, w.amount, w.orderId)} className={`px-3 py-2 ${processingWithdrawals.has(w.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-blue-500/10 text-blue-500 font-bold uppercase text-xs rounded-xl hover:bg-blue-500 hover:text-white transition-all`}>Approve</button>}
+                                                    <button disabled={processingWithdrawals.has(w.id)} onClick={() => handleWithdrawalStatus(w.id, 'success', w.userId, w.amount, w.orderId)} className={`px-3 py-2 ${processingWithdrawals.has(w.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-green-500/10 text-green-500 font-bold uppercase text-xs rounded-xl hover:bg-green-500 hover:text-black transition-all`}>Success</button>
+                                                    <button disabled={processingWithdrawals.has(w.id)} onClick={() => handleWithdrawalStatus(w.id, 'rejected', w.userId, w.amount, w.orderId)} className={`px-3 py-2 ${processingWithdrawals.has(w.id) ? 'opacity-50 cursor-not-allowed' : ''} bg-red-500/10 text-red-500 font-bold uppercase text-xs rounded-xl hover:bg-red-500 hover:text-white transition-all`}>Reject</button>
                                                 </div>
-                                            ) : null}
+                                            ) : (
+                                                <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase ${w.status === 'success' || w.status === 'completed' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                                    {w.status === 'success' || w.status === 'completed' ? 'Completed' : 'Rejected'}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 )) : (<div className="text-gray-500 text-sm">No withdrawal requests found.</div>)}
