@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { auth, db, onAuthStateChanged, signOut, getDoc, doc, getDocs, query, collection, where, setDoc, updateDoc } from './firebase';
+import { auth, db, onAuthStateChanged, signOut, getDoc, doc, getDocs, query, collection, where, setDoc, updateDoc, limit } from './firebase';
 import { User } from './lib/auth-client.ts';
 import { Lock, LogOut } from 'lucide-react';
 import * as OTPAuth from 'otpauth';
@@ -195,6 +195,45 @@ export default function App() {
           await setDoc(doc(methodsCol), binancePayData);
           console.log("Seeded Binance Pay in depositMethods collection");
         } 
+
+        // 4. Ensure stories collection is initialized with default activities
+        const storiesCol = collection(db, 'stories');
+        const storiesSnap = await getDocs(query(storiesCol, limit(1)));
+        if (storiesSnap.empty) {
+          const defaultStories = [
+            {
+              title: "Market Overview",
+              description: "Live market trends and analysis",
+              imageUrl: "https://images.unsplash.com/photo-1611974714131-419b67484411?w=800&auto=format&fit=crop&q=80",
+              link: "/news/market-overview",
+              order: 1,
+              isActive: true,
+              createdAt: Date.now()
+            },
+            {
+              title: "History Navigation",
+              description: "New way to navigate your trade history",
+              imageUrl: "https://images.unsplash.com/photo-1642543492481-44e81e391452?w=800&auto=format&fit=crop&q=80",
+              link: "/news/history-nav",
+              order: 2,
+              isActive: true,
+              createdAt: Date.now()
+            },
+            {
+              title: "New Mechanics",
+              description: "Explore the latest trading tools",
+              imageUrl: "https://images.unsplash.com/photo-1611974714851-48206138d73e?w=800&auto=format&fit=crop&q=80",
+              link: "/news/new-mechanics",
+              order: 3,
+              isActive: true,
+              createdAt: Date.now()
+            }
+          ];
+          for (const s of defaultStories) {
+            await setDoc(doc(storiesCol), s);
+          }
+          console.log("Seeded default stories in Firestore");
+        }
 
         // 3. Ensure depositMethods collection contains "USDT (TRC-20)" with correct details
         const usdtQ = query(methodsCol, where('name', '==', 'USDT (TRC-20)'));

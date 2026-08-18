@@ -17,6 +17,10 @@ export const OnyxTradingChart: React.FC = () => {
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
+    
+    // Load persisted zoom level
+    const persistedBarSpacing = localStorage.getItem('onyx_chart_bar_spacing');
+    const initialBarSpacing = persistedBarSpacing ? parseFloat(persistedBarSpacing) : 22;
 
     // 1. Initialize Chart with Professional Scaling and Interaction
     const chart = createChart(chartContainerRef.current, {
@@ -43,7 +47,7 @@ export const OnyxTradingChart: React.FC = () => {
         borderColor: ONYX_THEME.borderColor,
         timeVisible: true,
         secondsVisible: true,
-        barSpacing: 22,
+        barSpacing: initialBarSpacing,
         fixLeftEdge: true,
         rightOffset: 10,
       },
@@ -58,6 +62,18 @@ export const OnyxTradingChart: React.FC = () => {
         mouseWheel: false,
         pinch: false,
       },
+      kineticScroll: {
+        touch: false,
+        mouse: false,
+      },
+    });
+
+    // Persist zoom level on change
+    chart.timeScale().subscribeVisibleTimeRangeChange(() => {
+        const currentSpacing = chart.timeScale().options().barSpacing;
+        if (currentSpacing) {
+            localStorage.setItem('onyx_chart_bar_spacing', currentSpacing.toString());
+        }
     });
 
     // 2. Pillar 4: Visual Polish (Emerald & Rose)

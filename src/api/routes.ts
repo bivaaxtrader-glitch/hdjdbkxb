@@ -10,6 +10,12 @@ import Big from 'big.js';
 import { mapUserForFrontend } from '../lib/user-utils.ts';
 import { GoogleGenAI, Type } from '@google/genai';
 import { adminDb, syncUserToFirestore } from '../lib/firebase-admin.ts';
+import { 
+  authoritativeSync,
+  syncUserTransactionsFromFirestore,
+  syncUserTradesFromFirestore,
+  syncUserKycFromFirestore
+} from '../lib/sync-service.ts';
 import { sendEmail } from '../lib/email.ts';
 import { generateChatResponse } from '../lib/gemini.ts';
 
@@ -664,73 +670,6 @@ router.get('/user/details', async (req, res) => {
   }
 });
 
-// --- Firestore Sync Helper Functions ---
-async function syncUserTransactions(userId: string) {
-  if (!adminDb || !userId) return;
-  try {
-    const txsRef = adminDb.collection('users').doc(userId).collection('transactions');
-    const snapshot = await txsRef.get();
-    if (snapshot.empty) return;
-
-    for (const doc of snapshot.docs) {
-      const data = doc.data();
-      const firestoreId = doc.id;
-      
-      const txHash = data.txHash || data.trxId || data.tx_hash || '';
-      const amount = (data.amount || 0).toString();
-      const type = (data.type || 'deposit').toLowerCase();
-      const status = (data.status || 'pending').toLowerCase();
-      const method = data.method || 'direct';
-      const currency = data.currency || 'USD';
-      const createdTime = data.timestamp || data.createdAt || Date.now();
-      
-      let existingTx = null;
-      if (txHash) {
-        existingTx = await get('SELECT id FROM transactions WHERE user_id = ? AND tx_hash = ?', [userId, txHash]);
-      }
-      
-      if (!existingTx) {
-        const pattern = `%${firestoreId}%`;
-        existingTx = await get('SELECT id FROM transactions WHERE user_id = ? AND details LIKE ?', [userId, pattern]);
-      }
-
-      if (!existingTx) {
-        existingTx = await get(
-          'SELECT id FROM transactions WHERE user_id = ? AND type = ? AND amount = ? AND (created_at = ? OR created_at = ?)', 
-          [userId, type, amount, createdTime, new Date(createdTime).toISOString()]
-        );
-      }
-
-      const detailsObj = typeof data.details === 'object' ? { ...data.details, firestoreId } : { firestoreId, info: data.details || '' };
-
-      if (!existingTx) {
-        await run(
-          `INSERT INTO transactions (user_id, type, amount, status, method, tx_hash, currency, details, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            userId,
-            type,
-            amount,
-            status,
-            method,
-            txHash,
-            currency,
-            JSON.stringify(detailsObj),
-            createdTime
-          ]
-        );
-      } else {
-        await run(
-          `UPDATE transactions SET status = ?, updated_at = datetime('now') WHERE id = ? AND status != ?`,
-          [status, existingTx.id, status]
-        );
-      }
-    }
-  } catch (err) {
-    logger.error(`[syncUserTransactions] Error for user ${userId}: ${err}`);
-  }
-}
-
 export async function getUserTransactionsFromFirestore(userId: string): Promise<any[]> {
   if (!adminDb) {
     throw new Error('Firestore is not initialized');
@@ -883,8 +822,7 @@ export async function syncGlobalTransactionsFromFirestore() {
     let i = 0;
     const batchSize = 50;
     while (i < depositsSnap.docs.length) {
-      db.prepare('BEGIN').run();
-      try {
+      await transaction(async () => {
         const batch = depositsSnap.docs.slice(i, i + batchSize);
         for (const doc of batch) {
           const data = doc.data();
@@ -918,10 +856,9 @@ export async function syncGlobalTransactionsFromFirestore() {
             updateStmt.run(status, (existingTx as any).id, status);
           }
         }
-        db.prepare('COMMIT').run();
-      } catch (txErr) {
-        db.prepare('ROLLBACK').run();
-      }
+      }).catch(txErr => {
+        logger.error(`[syncGlobalTransactionsFromFirestore] Deposit batch failed: ${txErr.message}`);
+      });
       i += batchSize;
       await new Promise(resolve => setImmediate(resolve));
     }
@@ -930,8 +867,7 @@ export async function syncGlobalTransactionsFromFirestore() {
     const withdrawalsSnap = await adminDb.collection('withdrawals').limit(500).get();
     i = 0;
     while (i < withdrawalsSnap.docs.length) {
-      db.prepare('BEGIN').run();
-      try {
+      await transaction(async () => {
         const batch = withdrawalsSnap.docs.slice(i, i + batchSize);
         for (const doc of batch) {
           const data = doc.data();
@@ -965,10 +901,9 @@ export async function syncGlobalTransactionsFromFirestore() {
             updateStmt.run(status, (existingTx as any).id, status);
           }
         }
-        db.prepare('COMMIT').run();
-      } catch (txErr) {
-        db.prepare('ROLLBACK').run();
-      }
+      }).catch(txErr => {
+        logger.error(`[syncGlobalTransactionsFromFirestore] Withdrawal batch failed: ${txErr.message}`);
+      });
       i += batchSize;
       await new Promise(resolve => setImmediate(resolve));
     }
@@ -992,8 +927,7 @@ export async function syncKYCRequestsFromFirestore() {
     let i = 0;
     const batchSize = 50;
     while (i < snapshot.docs.length) {
-      db.prepare('BEGIN').run();
-      try {
+      await transaction(async () => {
         const batch = snapshot.docs.slice(i, i + batchSize);
         for (const doc of batch) {
           const data = doc.data();
@@ -1016,10 +950,9 @@ export async function syncKYCRequestsFromFirestore() {
             insertStmt.run(userId, status, fullName, documentType, documentNumber, frontImage, backImage, selfieImage, rejectionReason, submittedAt, updatedAt);
           }
         }
-        db.prepare('COMMIT').run();
-      } catch (txErr) {
-        db.prepare('ROLLBACK').run();
-      }
+      }).catch(txErr => {
+        logger.error(`[syncKYCRequestsFromFirestore] KYC batch failed: ${txErr.message}`);
+      });
       i += batchSize;
       await new Promise(resolve => setImmediate(resolve));
     }
@@ -1043,8 +976,7 @@ export async function syncTradesFromFirestore() {
       UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE firebase_id = ? AND status != ?
     `);
 
-    db.prepare('BEGIN').run();
-    try {
+    await transaction(async () => {
       for (const doc of snapshot.docs) {
         const data = doc.data();
         const firebaseId = doc.id;
@@ -1070,11 +1002,9 @@ export async function syncTradesFromFirestore() {
           updateStmt.run(status, exitPrice, payoutAmount, settledAt, firebaseId, status);
         }
       }
-      db.prepare('COMMIT').run();
-    } catch (txErr) {
-      db.prepare('ROLLBACK').run();
-      logger.error(`[syncTradesFromFirestore] Batch transaction failed: ${txErr}`);
-    }
+    }).catch(txErr => {
+      logger.error(`[syncTradesFromFirestore] Batch transaction failed: ${txErr.message}`);
+    });
   } catch (err: any) {
     logger.error(`[syncTradesFromFirestore] Error: ${err.message}`);
   }
@@ -1285,8 +1215,7 @@ export async function syncAllUsersFromFirestore() {
     let i = 0;
     const batchSize = 50;
     while (i < snapshot.docs.length) {
-      db.prepare('BEGIN').run();
-      try {
+      await transaction(async () => {
         const batch = snapshot.docs.slice(i, i + batchSize);
         for (const doc of batch) {
           const fbData = doc.data();
@@ -1378,10 +1307,9 @@ export async function syncAllUsersFromFirestore() {
             }
           }
         }
-        db.prepare('COMMIT').run();
-      } catch (txErr) {
-        db.prepare('ROLLBACK').run();
-      }
+      }).catch(txErr => {
+        logger.error(`[syncAllUsersFromFirestore] Batch user transaction failed: ${txErr.message}`);
+      });
       i += batchSize;
       await new Promise(resolve => setImmediate(resolve));
     }
@@ -1392,256 +1320,32 @@ export async function syncAllUsersFromFirestore() {
 
 // 1. User Sync (called on app load / terminal boot)
 router.post('/user/sync', async (req, res) => {
-    const { 
-    uid, email, displayName, photoURL, nickname, country, countryCode, 
-    referralCode, referralSubId, referralType,
-    firstName, lastName, gender, dob, emailVerified
-  } = req.body;
+  const { uid } = req.body;
   if (!uid) {
     logger.error('Sync failed: uid is missing');
     return res.status(400).json({ error: 'uid is required' });
   }
 
   try {
-    logger.info(`Syncing user: ${uid} (${email || 'no email'})`);
-    let ip = req.ip || '';
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded) {
-      const parts = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
-      ip = parts[0].trim();
-    }
-
-    let user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
+    logger.info(`Fast-syncing user: ${uid}`);
     
-    // Restoration Logic: Check Firestore for existing verification status
-    let firestoreData: any = null;
-    if (adminDb) {
-      try {
-        const doc = await adminDb.collection('users').doc(uid).get();
-        if (doc.exists) {
-          firestoreData = doc.data();
-          logger.info(`Found Firestore data for user ${uid}`);
-        }
-      } catch (e: any) {
-        logger.error(`Firestore lookup failed for ${uid}: ${e.message}`);
-      }
+    // 1. Try to get user from local SQLite first (Instant response)
+    const localUser = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
+    
+    if (localUser) {
+      // Send the local data immediately so the app is super fast
+      res.json({ success: true, data: mapUserForFrontend(localUser) });
+      
+      // Trigger Firestore sync in the background
+      authoritativeSync(uid).catch(err => logger.error(`Bg sync error for ${uid}: ${err}`));
+      return;
     }
 
+    // 2. If not found in local, perform authoritative sync (Wait for Firestore)
+    const user = await authoritativeSync(uid);
     if (!user) {
-      logger.info(`User ${uid} not found in SQLite, creating...`);
-      const { countryName, countryCode: detectedCode } = (country && countryCode) ? { countryName: country, countryCode: countryCode } : await getCountryFromIp(ip);
-      let nextId = 100000;
-      try {
-          const row = await get('SELECT MAX(CAST(referral_code AS INTEGER)) as maxId FROM users') || {};
-          if (row && row.maxId && parseInt(row.maxId) >= 100000) {
-              nextId = parseInt(row.maxId) + 1;
-          }
-      } catch (err) {
-          nextId = 100000 + Math.floor(Math.random() * 899999);
-      }
-      const newAffiliateId = nextId.toString();
-      const affiliateId = String(firestoreData?.referralCode || firestoreData?.affiliateId || newAffiliateId);
-      
-      let referredBy = null;
-      if (referralCode) {
-        // First check in SQLite
-        const referrer = await get('SELECT uid FROM users WHERE referral_code = ? OR uid = ?', [referralCode, referralCode]);
-        if (referrer) {
-          referredBy = (referrer as any).uid;
-        } else if (adminDb) {
-          // Fallback to Firestore to find the referrer
-          try {
-            let referrerSnap = await adminDb.collection('users').where('affiliateId', '==', isNaN(Number(referralCode)) ? referralCode : Number(referralCode)).get();
-            if (referrerSnap.empty) {
-              referrerSnap = await adminDb.collection('users').where('referralCode', '==', referralCode).get();
-            }
-            if (referrerSnap.empty) {
-              referrerSnap = await adminDb.collection('users').where('uid', '==', referralCode).get();
-            }
-            if (!referrerSnap.empty) {
-              referredBy = referrerSnap.docs[0].id;
-            }
-          } catch (e: any) {
-            logger.warn(`Failed to lookup referrer ${referralCode} in Firestore: ${e.message}`);
-          }
-        }
-      }
-
-      const isVerified = (firestoreData?.is_verified || firestoreData?.isVerified || firestoreData?.emailVerified || emailVerified) ? 1 : 0;
-      const kycStatus = firestoreData?.kyc_status || firestoreData?.kycStatus || 'unverified';
-      const realBalance = firestoreData?.balance || firestoreData?.real_balance || firestoreData?.realBalance || '0.00';
-      const demoBalance = firestoreData?.demoBalance || firestoreData?.demo_balance || '10000.00';
-      const passwordValue = firestoreData?.password_hash || firestoreData?.passwordHash || firestoreData?.password || null;
-      const affiliateBalance = firestoreData?.affiliateBalance || firestoreData?.affiliate_balance || '0.00';
-      const totalAffiliateEarnings = firestoreData?.totalAffiliateEarnings || firestoreData?.total_affiliate_earnings || '0.00';
-      const referralCount = firestoreData?.referralCount || firestoreData?.referral_count || 0;
-      const createdAt = Date.now();
-
-      await run(
-        `INSERT OR IGNORE INTO users (uid, email, password_hash, display_name, nickname, photo_url, referral_code, real_balance, demo_balance, country, country_code, referred_by_uid, referral_sub_id, referral_type, first_name, last_name, gender, dob, is_verified, kyc_status, affiliate_balance, total_affiliate_earnings, referral_count, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          uid, email || '', passwordValue, displayName || '', nickname || '', photoURL || '', affiliateId, realBalance, demoBalance, 
-          countryName, countryCode || detectedCode, referredBy, referralSubId || null, referralType || null,
-          firstName || null, lastName || null, gender || null, dob ? (typeof dob === 'object' ? JSON.stringify(dob) : dob) : null,
-          isVerified, kycStatus, affiliateBalance, totalAffiliateEarnings, referralCount, createdAt
-        ]
-      );
-      logger.info(`Successfully ensured user ${uid} in SQLite`);
-      
-      if (referredBy) {
-        await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);
-        // Sync referrer to Firestore immediately to persist count
-        const updatedReferrer = await get('SELECT * FROM users WHERE uid = ?', [referredBy]);
-        if (updatedReferrer) {
-          syncUserToFirestore(referredBy, mapUserForFrontend(updatedReferrer));
-        }
-      }
-      
-      user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
-    } else {
-      let needsUpdate = false;
-      const updates: string[] = [];
-      const params: any[] = [];
-
-      const ownReferralCode = firestoreData?.referralCode || firestoreData?.affiliateId;
-      if (ownReferralCode && user.referral_code !== String(ownReferralCode)) {
-        updates.push('referral_code = ?');
-        params.push(String(ownReferralCode));
-        needsUpdate = true;
-      }
-
-      const refBy = firestoreData?.referredBy || firestoreData?.referredByUid || firestoreData?.referred_by_uid;
-      if (refBy && user.referred_by_uid !== refBy) {
-        updates.push('referred_by_uid = ?');
-        params.push(refBy);
-        needsUpdate = true;
-      }
-      
-      if (!user.display_name && displayName) {
-        updates.push('display_name = ?');
-        params.push(displayName);
-        needsUpdate = true;
-      }
-      if (nickname && user.nickname !== nickname) {
-        updates.push('nickname = ?');
-        params.push(nickname);
-        needsUpdate = true;
-      }
-      if (!user.photo_url && photoURL) {
-        updates.push('photo_url = ?');
-        params.push(photoURL);
-        needsUpdate = true;
-      }
-      if (!user.country || (country && user.country !== country)) {
-        const countryName = country || (await getCountryFromIp(ip)).countryName;
-        updates.push('country = ?');
-        params.push(countryName);
-        needsUpdate = true;
-      }
-      if (!user.country_code || (countryCode && user.country_code !== countryCode)) {
-        const cCode = countryCode || (await getCountryFromIp(ip)).countryCode;
-        updates.push('country_code = ?');
-        params.push(cCode);
-        needsUpdate = true;
-      }
-      if (firstName && user.first_name !== firstName) {
-        updates.push('first_name = ?');
-        params.push(firstName);
-        needsUpdate = true;
-      }
-      if (lastName && user.last_name !== lastName) {
-        updates.push('last_name = ?');
-        params.push(lastName);
-        needsUpdate = true;
-      }
-      if (gender && user.gender !== gender) {
-        updates.push('gender = ?');
-        params.push(gender);
-        needsUpdate = true;
-      }
-      if (dob && user.dob !== (typeof dob === 'object' ? JSON.stringify(dob) : dob)) {
-        updates.push('dob = ?');
-        params.push(typeof dob === 'object' ? JSON.stringify(dob) : dob);
-        needsUpdate = true;
-      }
-
-      // Restore verification status from Firestore if missing in SQL
-      if (firestoreData || emailVerified !== undefined) {
-        const isVerifiedVal = (firestoreData?.is_verified || firestoreData?.isVerified || firestoreData?.emailVerified || emailVerified) ? 1 : 0;
-        if (isVerifiedVal !== user.is_verified) {
-          updates.push('is_verified = ?');
-          params.push(isVerifiedVal);
-          needsUpdate = true;
-        }
-
-        const fsKyc = firestoreData?.kyc_status || firestoreData?.kycStatus;
-        if (fsKyc && fsKyc !== user.kyc_status) {
-          updates.push('kyc_status = ?');
-          params.push(fsKyc);
-          needsUpdate = true;
-        }
-
-        const fsRealBalance = firestoreData.balance !== undefined ? firestoreData.balance : (firestoreData.real_balance !== undefined ? firestoreData.real_balance : firestoreData.realBalance);
-        if (fsRealBalance !== undefined && fsRealBalance !== null && parseFloat(fsRealBalance) !== parseFloat(user.real_balance || 0)) {
-          updates.push('real_balance = ?');
-          params.push(fsRealBalance.toString());
-          needsUpdate = true;
-        }
-
-        const fsAffiliateBalance = firestoreData.affiliateBalance !== undefined ? firestoreData.affiliateBalance : firestoreData.affiliate_balance;
-        if (fsAffiliateBalance !== undefined && fsAffiliateBalance !== null && parseFloat(fsAffiliateBalance) !== parseFloat(user.affiliate_balance || 0)) {
-          updates.push('affiliate_balance = ?');
-          params.push(fsAffiliateBalance.toString());
-          needsUpdate = true;
-        }
-
-        const fsTotalAffiliateEarnings = firestoreData.totalAffiliateEarnings !== undefined ? firestoreData.totalAffiliateEarnings : firestoreData.total_affiliate_earnings;
-        if (fsTotalAffiliateEarnings !== undefined && fsTotalAffiliateEarnings !== null && parseFloat(fsTotalAffiliateEarnings) !== parseFloat(user.total_affiliate_earnings || 0)) {
-          updates.push('total_affiliate_earnings = ?');
-          params.push(fsTotalAffiliateEarnings.toString());
-          needsUpdate = true;
-        }
-
-        const fsReferralCount = firestoreData.referralCount !== undefined ? firestoreData.referralCount : firestoreData.referral_count;
-        if (fsReferralCount !== undefined && fsReferralCount !== null && parseInt(fsReferralCount) !== parseInt(user.referral_count || 0)) {
-          updates.push('referral_count = ?');
-          params.push(parseInt(fsReferralCount));
-          needsUpdate = true;
-        }
-
-        const fsPasswordHash = firestoreData.password_hash || firestoreData.passwordHash || firestoreData.password;
-        if (fsPasswordHash && user.password_hash !== fsPasswordHash) {
-          updates.push('password_hash = ?');
-          params.push(fsPasswordHash);
-          needsUpdate = true;
-        }
-
-        const fsDemoBalance = firestoreData.demoBalance !== undefined ? firestoreData.demoBalance : (firestoreData.demo_balance !== undefined ? firestoreData.demo_balance : firestoreData.demoBalance);
-        if (fsDemoBalance !== undefined && fsDemoBalance !== null && parseFloat(fsDemoBalance) !== parseFloat(user.demo_balance || 10000)) {
-          updates.push('demo_balance = ?');
-          params.push(fsDemoBalance);
-          needsUpdate = true;
-        }
-
-        if (firestoreData.password && firestoreData.password !== user.password) {
-          updates.push('password = ?');
-          params.push(firestoreData.password);
-          needsUpdate = true;
-        }
-      }
-      
-      if (needsUpdate) {
-        params.push(uid);
-        await run(`UPDATE users SET ${updates.join(', ')} WHERE uid = ?`, params);
-        user = await get('SELECT * FROM users WHERE uid = ?', [uid]) as any;
-      }
+      return res.status(404).json({ error: 'User not found in Firestore' });
     }
-
-    // Sync user transactions from Firestore to SQLite to guarantee persistence across app updates
-    await syncUserTransactions(uid);
-    // Sync user specific trades from Firestore
-    await syncUserSpecificTradesFromFirestore(uid);
 
     const mappedData = mapUserForFrontend(user);
     if (mappedData) {
@@ -1653,52 +1357,6 @@ router.post('/user/sync', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-export async function syncUserSpecificTradesFromFirestore(uid: string) {
-  if (!adminDb || !uid) return;
-  try {
-    const snapshot = await adminDb.collection('trades').where('userId', '==', uid).get();
-    if (snapshot.empty) return;
-
-    const checkStmt = db.prepare('SELECT id FROM trades WHERE firebase_id = ?');
-    const insertStmt = db.prepare(`
-      INSERT INTO trades (firebase_id, user_id, market_id, amount, direction, entry_price, exit_price, duration, expiry_time, is_demo, status, payout_amount, settled_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const updateStmt = db.prepare(`
-      UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE firebase_id = ? AND status != ?
-    `);
-
-    await transaction(async () => {
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        const firebaseId = doc.id;
-
-        const marketId = data.marketId;
-        const amount = data.amount;
-        const direction = data.direction;
-        const entryPrice = data.entryPrice;
-        const exitPrice = data.exitPrice || null;
-        const duration = data.duration;
-        const expiryTime = data.expiryTime;
-        const isDemo = data.isDemo ? 1 : 0;
-        const status = data.status || 'open';
-        const payoutAmount = data.payoutAmount || 0;
-        const settledAt = data.settledAt || null;
-        const createdAt = data.createdAt || Date.now();
-
-        const existing = checkStmt.get(firebaseId);
-        if (!existing) {
-          insertStmt.run(firebaseId, uid, marketId, amount, direction, entryPrice, exitPrice, duration, expiryTime, isDemo, status, payoutAmount, settledAt, createdAt);
-        } else {
-          updateStmt.run(status, exitPrice, payoutAmount, settledAt, firebaseId, status);
-        }
-      }
-    });
-  } catch (err: any) {
-    logger.error(`[syncUserSpecificTrades] Error: ${err.message}`);
-  }
-}
 
 // 2. Check 2FA Configuration
 router.get('/user/check-2fa', async (req, res) => {
@@ -2944,41 +2602,6 @@ router.post('/wallet/deposit',
     await createAuditLog(uid, 'deposit_request', 'transaction', null, { amount, method, txHash: finalTxHash }, req.ip);
     logger.info(`Deposit request from ${uid}: ${amount}`);
 
-    // Send Deposit Requested Email
-    try {
-      const user = await get('SELECT email, display_name FROM users WHERE uid = ?', [uid]) as any;
-      if (user && user.email) {
-        const subject = 'Deposit Request Received - Bivaax Trade';
-        const html = `
-          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">
-            <div style="background-color: #1a1b23; padding: 30px; border-radius: 12px 12px 0 0; color: white; text-align: center;">
-              <h2 style="color: #FFE24C; margin: 0;">Deposit Request Received</h2>
-            </div>
-            <div style="padding: 40px; background-color: white; border-radius: 0 0 12px 12px; border: 1px solid #e1e8ed;">
-              <p>Hello ${user.display_name || 'Trader'},</p>
-              <p>Your deposit request has been successfully submitted and is currently pending review.</p>
-              
-              <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin: 25px 0;">
-                <table style="width: 100%; font-size: 14px;">
-                  <tr><td style="color: #64748b; padding: 5px 0;">Amount:</td><td style="color: #1e293b; font-weight: bold; text-align: right;">${amount} ${finalCurrency}</td></tr>
-                  <tr><td style="color: #64748b; padding: 5px 0;">Method:</td><td style="color: #1e293b; font-weight: bold; text-align: right;">${method}</td></tr>
-                  <tr><td style="color: #64748b; padding: 5px 0;">Status:</td><td style="color: #f59e0b; font-weight: bold; text-align: right;">Pending</td></tr>
-                </table>
-              </div>
-
-              <p style="font-size: 14px; color: #64748b; line-height: 1.6;">Our team will process your deposit once the transaction is confirmed on the network. This typically takes 5-30 minutes.</p>
-              
-              <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 30px 0;">
-              <p style="font-size: 12px; color: #94a3b8; text-align: center;">Bivaax Trade Financial Services</p>
-            </div>
-          </div>
-        `;
-        await sendEmail(user.email, subject, html);
-      }
-    } catch (e: any) {
-      logger.error(`Failed to send deposit request email: ${e.message}`);
-    }
-
     res.json({ success: true, message: 'Deposit request submitted' });
   }
 );
@@ -3354,7 +2977,10 @@ router.post('/admin/deposits/update', requireAuth, async (req: AuthRequest, res)
         const isApproved = status === 'success' || status === 'approved';
         const isRejected = status === 'rejected';
 
-        if (isApproved || isRejected) {
+        // Prevent sending duplicate emails if it was already approved/rejected
+        const wasAlreadyProcessed = depositData?.status === 'success' || depositData?.status === 'approved' || depositData?.status === 'rejected';
+
+        if ((isApproved || isRejected) && !wasAlreadyProcessed) {
           const subject = isApproved ? 'Deposit Successful - Bivaax Trade' : 'Deposit Rejected - Bivaax Trade';
           const body = `
             <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-w: 600px; margin: 0 auto; background-color: #f4f7f9; padding: 20px;">

@@ -9,7 +9,7 @@ import {
   Bell, CreditCard, Lock, Unlock, Filter, MoreVertical, Trash2, Ban, 
   Target, Zap, Trophy, Snowflake, LayoutDashboard, Database, Wallet, 
   ChevronRight, Globe, HardDrive, Cpu, AlertTriangle, UserCheck, Shield, MessageCircle,
-  Megaphone, GraduationCap, Plus, X, Check, Eye, Edit2, Gift, FileText, Clock, Menu, LogOut, ArrowUpRight, Star, ExternalLink,
+  Megaphone, GraduationCap, Plus, X, Check, Eye, Edit2, Gift, FileText, Clock, Menu, LogOut, ArrowUpRight, Star, ExternalLink, Image,
   Youtube, Instagram, Send, Facebook, Music2, Share, Award, Copy, ShieldOff, UserX, Smartphone
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -28,7 +28,7 @@ import { Logo } from '../components/Logo';
 
 type Role = 'superadmin' | 'admin' | 'moderator' | 'support' | 'user';
 type PermissionKey = 'canManageUsers' | 'canManageStaff' | 'canManageFinance' | 'canManageContent' | 'canManageMarkets' | 'canManageSystem' | 'canManageDeposits' | 'canManageWithdrawals' | 'canManageKYC' | 'canManageSupport';
-type AdminTab = 'stats' | 'market' | 'banners' | 'users' | 'finance' | 'deposits' | 'news' | 'education' | 'settings' | 'staff' | 'promotions' | 'promos' | 'tournaments' | 'logs' | 'tickets' | 'pages' | 'client_agreement' | 'aml_policy' | 'affiliate' | 'signals' | 'copytrading' | 'kyc';
+type AdminTab = 'stats' | 'market' | 'banners' | 'users' | 'finance' | 'deposits' | 'news' | 'education' | 'settings' | 'staff' | 'promotions' | 'promos' | 'tournaments' | 'logs' | 'tickets' | 'pages' | 'client_agreement' | 'aml_policy' | 'affiliate' | 'signals' | 'copytrading' | 'kyc' | 'stories';
 
 const INITIAL_PERMISSIONS: Record<PermissionKey, boolean> = {
   canManageUsers: false,
@@ -56,6 +56,7 @@ export default function AdminDashboard() {
   const [education, setEducation] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [promoCodes, setPromoCodes] = useState<any[]>([]);
+  const [stories, setStories] = useState<any[]>([]);
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [showAdvancedUserConfig, setShowAdvancedUserConfig] = useState(false);
   const [depositMethods, setDepositMethods] = useState<any[]>([]);
@@ -140,7 +141,7 @@ export default function AdminDashboard() {
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState<'news' | 'education' | 'promotions' | 'promos' | 'tournaments' | 'banner' | 'user' | 'deposit' | 'signals' | 'promoMaterials' | 'masterTraders' | null>(null);
+  const [modalType, setModalType] = useState<'news' | 'education' | 'promotions' | 'promos' | 'tournaments' | 'banner' | 'user' | 'deposit' | 'signals' | 'promoMaterials' | 'masterTraders' | 'story' | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -303,7 +304,36 @@ export default function AdminDashboard() {
                const data = snap.docs.map((d: any) => ({id: d.id, ...d.data()}));
                setter(data);
            } else if (snap && snap.exists && snap.exists()) {
-               setter(snap.data());
+               const rawData = snap.data() || {};
+               if (name === 'about_us') {
+                   setter({
+                       title: rawData.title || "",
+                       paragraphs: Array.isArray(rawData.paragraphs) ? rawData.paragraphs : [],
+                       advantages: Array.isArray(rawData.advantages) ? rawData.advantages : [],
+                       contacts: {
+                           companyName: rawData.contacts?.companyName || "",
+                           address: rawData.contacts?.address || "",
+                           email: rawData.contacts?.email || "",
+                           ...(rawData.contacts || {})
+                       }
+                   });
+               } else if (name === 'regulations') {
+                   setter({
+                       title: rawData.title || "The Financial Commission",
+                       introParas: Array.isArray(rawData.introParas) ? rawData.introParas : [],
+                       certificateUrl: rawData.certificateUrl || "#",
+                       compensationFundText: rawData.compensationFundText || "",
+                       appealSteps: Array.isArray(rawData.appealSteps) ? rawData.appealSteps : [],
+                       appealNote: rawData.appealNote || "",
+                       traderFeatures: Array.isArray(rawData.traderFeatures) ? rawData.traderFeatures : [],
+                       vmtSection: {
+                           title: rawData.vmtSection?.title || "",
+                           paras: Array.isArray(rawData.vmtSection?.paras) ? rawData.vmtSection?.paras : []
+                       }
+                   });
+               } else {
+                   setter(rawData);
+               }
            }
         } catch (e) {
            console.warn(`Admin static fetch failed for ${name}: `, e);
@@ -315,6 +345,7 @@ export default function AdminDashboard() {
          fetchCollectionInfo(getDocs(query(collection(db, 'news'), orderBy('date', 'desc'), limit(50))), setNews, 'news'),
          fetchCollectionInfo(getDocs(query(collection(db, 'education'), limit(50))), setEducation, 'education'),
          fetchCollectionInfo(getDocs(query(collection(db, 'promotions'), limit(50))), setPromotions, 'promotions'),
+         fetchCollectionInfo(getDocs(query(collection(db, 'stories'), orderBy('createdAt', 'desc'), limit(50))), setStories, 'stories'),
          fetchCollectionInfo(getDocs(query(collection(db, 'tournaments'), limit(50))), setTournaments, 'tournaments'),
          fetchCollectionInfo(getDocs(query(collection(db, 'depositMethods'), limit(50))), setDepositMethods, 'depositMethods'),
          fetchCollectionInfo(getDocs(query(collection(db, 'promoMaterials'), limit(50))), setPromoMaterials, 'promoMaterials'),
@@ -1007,6 +1038,7 @@ export default function AdminDashboard() {
                       modalType === 'tournaments' ? 'tournaments' : 
                       modalType === 'deposit' ? 'depositMethods' : 
                       modalType === 'signals' ? 'signals' :
+                      modalType === 'story' ? 'stories' :
                       modalType === 'promoMaterials' ? 'promoMaterials' :
                       modalType === 'masterTraders' ? 'masterTraders' : null;
           if (!col) return;
@@ -1229,6 +1261,7 @@ export default function AdminDashboard() {
                   { id: 'deposits', label: 'Deposit Methods', icon: CreditCard, show: isAdminPerm },
                   { id: 'banners', label: 'Asset Sources', icon: Database, show: canManageContent },
                   { id: 'news', label: 'News Engine', icon: Megaphone, show: canManageContent },
+                  { id: 'stories', label: 'Activities & Stories', icon: Image, show: canManageContent },
                   { id: 'education', label: 'Trade Academy', icon: GraduationCap, show: canManageContent },
                   { id: 'promotions', label: 'Dynamic Bonuses', icon: Zap, show: isAdminPerm },
                   { id: 'promos', label: 'Promo Codes', icon: Gift, show: isAdminPerm },
@@ -1844,6 +1877,67 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
                         ))}
+                   </div>
+               </motion.div>
+           )}
+
+           {activeTab === 'stories' && (
+               <motion.div key="stories" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                   <div className="flex justify-between items-center">
+                       <h2 className="text-2xl font-black uppercase">ACTIVITIES & STORIES ({stories.length})</h2>
+                       <button 
+                         onClick={() => {
+                             setEditingItem({ title: '', description: '', imageUrl: '', link: '', order: 0, isActive: true, createdAt: Date.now() });
+                             setModalType('story');
+                             setShowModal(true);
+                         }}
+                         className="bg-yellow-500 text-black px-6 py-3 rounded-2xl font-bold flex items-center gap-2"
+                        >
+                           <Plus size={20} /> Add Story
+                       </button>
+                   </div>
+                   <div className="grid lg:grid-cols-2 gap-4">
+                       {stories.length === 0 && (
+                           <div className="col-span-full py-20 text-center bg-[#0a0a0f] border border-dashed border-white/10 rounded-[40px] space-y-4">
+                               <Image className="mx-auto text-gray-700" size={48} />
+                               <div>
+                                   <h3 className="text-xl font-bold text-white">No Stories found</h3>
+                                   <p className="text-gray-500 text-sm max-w-xs mx-auto mt-2">Add stories to engage your users with new updates and mechanics.</p>
+                               </div>
+                           </div>
+                       )}
+                       {stories.map((story: any, i: number) => (
+                           <div key={`${story.id}-${i}`} className="bg-[#0a0a0f] border border-[#1a1a24] p-6 rounded-3xl flex items-center justify-between group">
+                               <div className="flex items-center gap-4">
+                                   <div className="w-20 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10">
+                                       {story.imageUrl ? <img src={story.imageUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center text-gray-600"><Image size={20}/></div>}
+                                   </div>
+                                   <div>
+                                       <h4 className="font-bold text-lg group-hover:text-yellow-500 transition-colors uppercase tracking-tight">{story.title}</h4>
+                                       <p className="text-gray-500 text-sm line-clamp-1">{story.description}</p>
+                                       <div className="flex gap-3 mt-2">
+                                           <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${story.isActive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                               {story.isActive ? 'Active' : 'Hidden'}
+                                           </span>
+                                           {story.order !== undefined && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-black uppercase">Order: {story.order}</span>}
+                                       </div>
+                                   </div>
+                               </div>
+                               <div className="flex gap-2">
+                                   <button 
+                                     onClick={() => {
+                                         setEditingItem(story);
+                                         setModalType('story');
+                                         setShowModal(true);
+                                     }}
+                                     className="p-3 bg-white/5 text-gray-400 hover:text-white rounded-xl"
+                                   >
+                                       <Settings2 size={18} />
+                                   </button>
+                                   <button onClick={() => handleDeleteItem('stories', story.id)} className="p-3 bg-red-500/10 text-red-500 hover:bg-red-500 rounded-xl hover:text-white transition-all"><Trash2 size={18}/></button>
+                                </div>
+                           </div>
+                       ))}
                    </div>
                </motion.div>
            )}
@@ -3427,7 +3521,7 @@ export default function AdminDashboard() {
                       <label className="block text-gray-400 text-xs font-bold uppercase mb-2">Main Title</label>
                       <input 
                         className="w-full bg-[#15161d] border border-[#1a1a24] rounded-xl px-4 py-3 text-white focus:border-yellow-500 transition-colors"
-                        value={aboutUsData.title}
+                        value={aboutUsData?.title || ''}
                         onChange={(e) => setAboutUsData({...aboutUsData, title: e.target.value})}
                       />
                     </div>
@@ -3435,22 +3529,22 @@ export default function AdminDashboard() {
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="block text-gray-400 text-xs font-bold uppercase">Paragraphs</label>
-                        <button onClick={() => setAboutUsData({...aboutUsData, paragraphs: [...aboutUsData.paragraphs, ""]})} className="text-yellow-500 text-xs font-bold hover:text-yellow-400">+ Add Paragraph</button>
+                        <button onClick={() => setAboutUsData({...aboutUsData, paragraphs: [...(aboutUsData?.paragraphs || []), ""]})} className="text-yellow-500 text-xs font-bold hover:text-yellow-400">+ Add Paragraph</button>
                       </div>
                       <div className="space-y-3">
-                        {aboutUsData.paragraphs.map((p: string, i: number) => (
-                          <div key={`about-para-${i}-${p.substring(0, 10)}`} className="flex gap-2">
+                        {(aboutUsData?.paragraphs || []).map((p: string, i: number) => (
+                          <div key={`about-para-${i}-${(p || '').substring(0, 10)}`} className="flex gap-2">
                             <textarea 
                               className="w-full bg-[#15161d] border border-[#1a1a24] rounded-xl px-4 py-3 text-white focus:border-yellow-500 transition-colors min-h-[100px]"
                               value={p}
                               onChange={(e) => {
-                                const newP = [...aboutUsData.paragraphs];
+                                const newP = [...(aboutUsData?.paragraphs || [])];
                                 newP[i] = e.target.value;
                                 setAboutUsData({...aboutUsData, paragraphs: newP});
                               }}
                             />
                             <button onClick={() => {
-                              const newP = [...aboutUsData.paragraphs];
+                              const newP = [...(aboutUsData?.paragraphs || [])];
                               newP.splice(i, 1);
                               setAboutUsData({...aboutUsData, paragraphs: newP});
                             }} className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-colors h-12">
@@ -3464,22 +3558,22 @@ export default function AdminDashboard() {
                     <div>
                       <div className="flex justify-between items-center mb-2 mt-8">
                         <label className="block text-gray-400 text-xs font-bold uppercase">Advantages List</label>
-                        <button onClick={() => setAboutUsData({...aboutUsData, advantages: [...aboutUsData.advantages, ""]})} className="text-yellow-500 text-xs font-bold hover:text-yellow-400">+ Add Advantage</button>
+                        <button onClick={() => setAboutUsData({...aboutUsData, advantages: [...(aboutUsData?.advantages || []), ""]})} className="text-yellow-500 text-xs font-bold hover:text-yellow-400">+ Add Advantage</button>
                       </div>
                       <div className="space-y-3">
-                        {aboutUsData.advantages.map((adv: string, i: number) => (
-                          <div key={`about-adv-${i}-${adv.substring(0, 10)}`} className="flex gap-2">
+                        {(aboutUsData?.advantages || []).map((adv: string, i: number) => (
+                          <div key={`about-adv-${i}-${(adv || '').substring(0, 10)}`} className="flex gap-2">
                             <input 
                               className="w-full bg-[#15161d] border border-[#1a1a24] rounded-xl px-4 py-3 text-white focus:border-yellow-500 transition-colors"
                               value={adv}
                               onChange={(e) => {
-                                const newA = [...aboutUsData.advantages];
+                                const newA = [...(aboutUsData?.advantages || [])];
                                 newA[i] = e.target.value;
                                 setAboutUsData({...aboutUsData, advantages: newA});
                               }}
                             />
                             <button onClick={() => {
-                              const newA = [...aboutUsData.advantages];
+                              const newA = [...(aboutUsData?.advantages || [])];
                               newA.splice(i, 1);
                               setAboutUsData({...aboutUsData, advantages: newA});
                             }} className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-colors flex-shrink-0">
@@ -3556,22 +3650,22 @@ export default function AdminDashboard() {
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="block text-gray-400 text-xs font-bold uppercase">Intro Paragraphs</label>
-                        <button onClick={() => setRegulationsData({...regulationsData, introParas: [...regulationsData.introParas, ""]})} className="text-yellow-500 text-xs font-bold hover:text-yellow-400">+ Add Paragraph</button>
+                        <button onClick={() => setRegulationsData({...regulationsData, introParas: [...(regulationsData?.introParas || []), ""]})} className="text-yellow-500 text-xs font-bold hover:text-yellow-400">+ Add Paragraph</button>
                       </div>
                       <div className="space-y-3">
-                        {regulationsData.introParas.map((p: string, i: number) => (
+                        {(regulationsData?.introParas || []).map((p: string, i: number) => (
                           <div key={`reg-intro-para-${i}`} className="flex gap-2">
                             <textarea 
                               className="w-full bg-[#15161d] border border-[#1a1a24] rounded-xl px-4 py-3 text-white focus:border-yellow-500 transition-colors min-h-[100px]"
                               value={p}
                               onChange={(e) => {
-                                const newP = [...regulationsData.introParas];
+                                const newP = [...(regulationsData?.introParas || [])];
                                 newP[i] = e.target.value;
                                 setRegulationsData({...regulationsData, introParas: newP});
                               }}
                             />
                             <button onClick={() => {
-                              const newP = [...regulationsData.introParas];
+                              const newP = [...(regulationsData?.introParas || [])];
                               newP.splice(i, 1);
                               setRegulationsData({...regulationsData, introParas: newP});
                             }} className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-colors h-12">
@@ -5321,6 +5415,26 @@ export default function AdminDashboard() {
                                       <p className="text-[10px] text-yellow-500 font-bold leading-relaxed">
                                           TIP: Partners can copy the "Asset Link" directly from their dashboard. Use high-quality JPG/PNG URLs.
                                       </p>
+                                  </div>
+                              </div>
+                          )}
+                          {modalType === 'story' && (
+                              <div className="space-y-4">
+                                  <textarea 
+                                      placeholder="Short Description" value={editingItem?.description || ''} onChange={e => setEditingItem({...editingItem, description: e.target.value})}
+                                      className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 h-24 focus:border-yellow-500 outline-none resize-none"
+                                  />
+                                  <input type="text" placeholder="Image URL" value={editingItem?.imageUrl || ''} onChange={e => setEditingItem({...editingItem, imageUrl: e.target.value})} className="w-full bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <input type="text" placeholder="Link (Optional)" value={editingItem?.link || ''} onChange={e => setEditingItem({...editingItem, link: e.target.value})} className="bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
+                                      <input type="number" placeholder="Order" value={editingItem?.order || 0} onChange={e => setEditingItem({...editingItem, order: parseInt(e.target.value) || 0})} className="bg-[#15161d] border border-[#1a1a24] rounded-2xl px-5 py-4 outline-none" />
+                                  </div>
+                                  <div className="flex items-center gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                                      <input 
+                                        type="checkbox" checked={editingItem?.isActive} onChange={e => setEditingItem({...editingItem, isActive: e.target.checked})}
+                                        className="w-5 h-5 rounded border-white/10 accent-yellow-500" 
+                                      />
+                                      <label className="text-xs font-black uppercase text-gray-400">Is Active / Visible</label>
                                   </div>
                               </div>
                           )}

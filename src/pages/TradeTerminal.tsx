@@ -4191,6 +4191,17 @@ const PROMOTED_ARTICLES = [
   const [systemActive, setSystemActive] = useState(true);
   const [markets, setMarkets] = useState<any>({});
   const [activitiesBanners, setActivitiesBanners] = useState<any[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, "stories"), where("isActive", "==", true), orderBy("order", "asc"), limit(20));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (docs.length > 0) {
+        setActivitiesBanners(docs);
+      }
+    }, (err) => console.warn("Failed to listen to stories:", err.message));
+    return () => unsub();
+  }, []);
   const [dataError, setDataError] = useState<string | null>(null);
   const [showBottomHistory, setShowBottomHistory] = useState(false);
   const [sidebarTradeTab, setSidebarTradeTab] = useState<"trades" | "history">("trades");

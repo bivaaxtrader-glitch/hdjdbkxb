@@ -20,6 +20,10 @@ export const TradingChart: React.FC = () => {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // Load persisted zoom level
+    const persistedBarSpacing = localStorage.getItem('trading_chart_bar_spacing');
+    const initialBarSpacing = persistedBarSpacing ? parseFloat(persistedBarSpacing) : 22;
+
     // Initialize Chart
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
@@ -45,7 +49,7 @@ export const TradingChart: React.FC = () => {
         borderColor: colors.border,
         timeVisible: true,
         secondsVisible: true,
-        barSpacing: 22,
+        barSpacing: initialBarSpacing,
         fixLeftEdge: true,
         fixRightEdge: true, // Prevent scrolling into the future/void
         rightOffset: 2,
@@ -56,18 +60,29 @@ export const TradingChart: React.FC = () => {
         mouseWheel: true,
         pressedMouseMove: true,
         horzTouchDrag: true,
-        vertTouchDrag: true, 
+        vertTouchDrag: false,
       },
       handleScale: {
-        axisPressedMouseMove: true,
-        mouseWheel: true, 
-        pinch: true,      
+        axisPressedMouseMove: false,
+        mouseWheel: false, 
+        pinch: false,      
+      },
+      kineticScroll: {
+        touch: false,
+        mouse: false,
       },
     });
 
     // Strict Clamping: Prevent the chart from ever being dragged into a blank state
     chart.timeScale().subscribeVisibleTimeRangeChange(() => {
       const timeScale = chart.timeScale();
+      
+      // Persist zoom level
+      const currentSpacing = timeScale.options().barSpacing;
+      if (currentSpacing) {
+          localStorage.setItem('trading_chart_bar_spacing', currentSpacing.toString());
+      }
+
       const visibleRange = timeScale.getVisibleRange();
       if (!visibleRange) return;
       
@@ -88,12 +103,6 @@ export const TradingChart: React.FC = () => {
         precision: 5,
         minMove: 0.00001,
       },
-      autoscaleInfoProvider: () => ({
-        priceRange: {
-          minValue: lastCandleRef.current ? lastCandleRef.current.low * 0.999 : 0,
-          maxValue: lastCandleRef.current ? lastCandleRef.current.high * 1.001 : 0,
-        },
-      }),
     });
 
     chartRef.current = chart;

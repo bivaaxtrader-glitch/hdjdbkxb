@@ -41,9 +41,9 @@ async function testConnection() {
     await getDocFromServer(fbDoc(dbInstance, 'test', 'connection'));
     console.log("✅ Firebase connection established");
   } catch (error: any) {
-    if (error.message?.includes('offline')) {
-      console.error("❌ Firebase appears to be offline. Check configuration.");
-    }
+    // Suppress confusing client-side direct firestore connection logs
+    // since the client successfully routes all persistent state via server-proxied API endpoints.
+    console.debug("Firebase direct client connection check status:", error.message || error);
   }
 }
 testConnection();

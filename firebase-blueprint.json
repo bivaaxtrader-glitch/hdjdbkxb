@@ -133,6 +133,21 @@
         "createdAt": { "type": "number" }
       },
       "required": ["code", "bonusPercentage", "expiryDate", "isActive"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "An activity story shown on the home/trade screen carousel",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "link": { "type": "string" },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "imageUrl", "createdAt"]
     }
   },
   "firestore": {
@@ -167,6 +182,10 @@
     "/kyc_requests/{requestId}": {
       "schema": "KycRequest",
       "description": "KYC verification requests"
+    },
+    "/stories/{storyId}": {
+      "schema": "Story",
+      "description": "Stories shown in the activity carousel"
     }
   }
 }

@@ -7,6 +7,7 @@ import { createAuditLog, logLogin } from '../lib/audit.ts';
 import { requireAuth } from '../middleware/jwtAuth.ts';
 import { mapUserForFrontend } from '../lib/user-utils.ts';
 import { syncUserToFirestore, adminAuth } from '../lib/firebase-admin.ts';
+import { authoritativeSync } from '../lib/sync-service.ts';
 import logger from '../lib/logger.ts';
 import { sendEmail, wrapEmail } from '../lib/email.ts';
 import { getIO } from '../services/socketService.ts';
@@ -149,66 +150,54 @@ router.post('/login',
   async (req, res) => {
     const { email, password } = req.body;
   
-  try {
-    let user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
-    
-    // Always attempt to sync from Firestore during login to prevent verification loss
-    if (adminDb) {
-      try {
-        const snapshot = await adminDb.collection('users').where('email', '==', email).limit(1).get();
-        if (!snapshot.empty) {
-          const doc = snapshot.docs[0];
-          const fbData = doc.data();
-          const uid = doc.id;
-
-          const realBalance = fbData.balance || fbData.real_balance || fbData.realBalance || '0.00';
-          const demoBalance = fbData.demoBalance || fbData.demo_balance || '10000.00';
-          const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified) ? 1 : 0;
-          const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
-          const passwordHash = fbData.password_hash || fbData.passwordHash || fbData.password || null;
-          const displayName = fbData.displayName || fbData.display_name || '';
-          const nickname = fbData.nickname || '';
-          const photoURL = fbData.photoURL || fbData.photo_url || '';
-          const currency = fbData.currency || 'USD';
-          const country = fbData.country || '';
-          const countryCode = fbData.countryCode || fbData.country_code || '';
-          const is_admin = (fbData.isAdmin || fbData.is_admin) ? 1 : 0;
-          const referralCode = fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase();
-          const referredByUid = fbData.referredBy || fbData.referred_by_uid || null;
-          const totalLiveVolume = fbData.totalLiveVolume || fbData.total_live_volume || '0.00';
-
-          if (!user) {
-            await run(
-              `INSERT INTO users (uid, email, password, display_name, nickname, photo_url, real_balance, demo_balance, currency, is_verified, is_admin, kyc_status, referral_code, referred_by_uid, total_live_volume, country, country_code)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                uid, email, passwordHash, displayName, nickname, photoURL, 
-                realBalance.toString(), demoBalance.toString(), currency, isVerified, is_admin, kycStatus, 
-                referralCode, referredByUid, totalLiveVolume.toString(), country, countryCode
-              ]
-            );
-            logger.info(`Restored user ${email} from Firestore during login.`);
-          } else {
-            // Update existing user if Firestore has newer/different verification status
-            if (user.kyc_status !== kycStatus || user.is_verified !== isVerified || user.uid !== uid) {
-              await run(
-                'UPDATE users SET uid = ?, is_verified = ?, kyc_status = ?, is_admin = ?, display_name = ?, nickname = ? WHERE email = ?',
-                [uid, isVerified, kycStatus, is_admin, displayName || user.display_name, nickname || user.nickname, email]
-              );
-              logger.info(`Updated verification status for ${email} from Firestore Ground Truth.`);
-            }
+    try {
+      let user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
+      
+      // OPTIMIZATION: If user exists in local DB, verify and login immediately
+      if (user && user.password) {
+          const isMatch = await comparePassword(password, user.password);
+          if (isMatch) {
+              await logLogin(user.uid, req.ip, req.headers['user-agent'], 'success');
+              const emailLower = user.email.toLowerCase().trim();
+              const isHardcodedAdmin = [
+                'bivaaxtrader@gmail.com',
+                'hasan@gmail.com',
+                'hasan1@gmail.com',
+                'hamproosapport@gmail.com',
+                'hamproosupport@gmail.com',
+                (process.env.VITE_ADMIN_EMAIL || '').toLowerCase().trim()
+              ].filter(Boolean).includes(emailLower);
+              
+              const token = generateToken({ uid: user.uid, email: user.email, isAdmin: (!!user.is_admin || isHardcodedAdmin) });
+              res.json({ token, user: mapUserForFrontend(user) });
+              
+              // Trigger authoritative sync in background to update any changes from other devices/admin
+              authoritativeSync(user.uid).catch(err => logger.error(`Bg login sync err: ${err}`));
+              return;
           }
-          
-          user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
-        }
-      } catch (err: any) {
-        logger.error(`Error syncing user ${email} from Firestore during login: ${err.message}`);
       }
-    }
 
-    if (!user || !user.password) {
-      return res.status(400).json({ error: 'Invalid email or password' });
-    }
+      // If not in local or password didn't match local (could be changed on another device),
+      // perform authoritative sync from Firestore Ground Truth
+      const syncedUser = await authoritativeSync(user?.uid);
+      if (syncedUser) {
+          user = syncedUser;
+      } else if (adminDb) {
+        // If user not in SQL, try to find in Firestore by email
+        try {
+          const snapshot = await adminDb.collection('users').where('email', '==', email).limit(1).get();
+          if (!snapshot.empty) {
+            const uid = snapshot.docs[0].id;
+            user = await authoritativeSync(uid);
+          }
+        } catch (e: any) {
+          logger.error(`Error finding user by email in Firestore: ${e.message}`);
+        }
+      }
+
+      if (!user || !user.password) {
+        return res.status(400).json({ error: 'Invalid email or password' });
+      }
 
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) {
@@ -268,86 +257,26 @@ router.post('/sync', async (req, res) => {
 
     if (!email) throw new Error('No email found in token');
 
-    // 1. Try to find user in SQLite by Firebase UID
-    let user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
+    // 1. Try to find user in SQLite by Firebase UID or Email
+    let user = await get('SELECT * FROM users WHERE uid = ? OR email = ?', [firebaseUid, email]) as any;
 
-    // 2. If not found by UID, try to find by Email (for legacy accounts or if SQLite was wiped)
-    if (!user) {
-      user = await get('SELECT * FROM users WHERE email = ?', [email]) as any;
-      
-      // If found by email but UID is different, update UID to match Firebase (Standardization)
-      if (user && user.uid !== firebaseUid) {
-        logger.info(`Migrating user ${email} from legacy UID ${user.uid} to Firebase UID ${firebaseUid}`);
-        await run('UPDATE users SET uid = ? WHERE email = ?', [firebaseUid, email]);
-        // Update references in other tables
-        await run('UPDATE trades SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
-        await run('UPDATE transactions SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
-        await run('UPDATE audit_logs SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
-        await run('UPDATE login_history SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
-        await run('UPDATE kyc_requests SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
-        await run('UPDATE tickets SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
-        await run('UPDATE ticket_messages SET user_id = ? WHERE user_id = ?', [firebaseUid, user.uid]);
+    if (user) {
+        // Return immediately for speed
+        const jwtToken = generateToken(user);
+        res.json({ success: true, token: jwtToken, user: mapUserForFrontend(user) });
         
-        user.uid = firebaseUid;
-      }
+        // Then perform authoritative sync from Firestore in background
+        authoritativeSync(firebaseUid).catch(err => logger.error(`Bg sync error for ${firebaseUid}: ${err}`));
+        return;
     }
 
-    // 3. If found in SQLite, ensure statuses are synced from Firestore Ground Truth
-    if (user && adminDb) {
-      try {
-        const doc = await adminDb.collection('users').doc(firebaseUid).get();
-        if (doc.exists) {
-          const fbData = doc.data();
-          const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
-          const isVerified = (fbData.isVerified || fbData.is_verified || fbData.emailVerified || email_verified) ? 1 : 0;
-          
-          if (user.kyc_status !== kycStatus || user.is_verified !== isVerified) {
-            await run(
-              'UPDATE users SET is_verified = ?, kyc_status = ? WHERE uid = ?',
-              [isVerified, kycStatus, firebaseUid]
-            );
-            user.is_verified = isVerified;
-            user.kyc_status = kycStatus;
-            logger.info(`Synced verification status for ${email} from Firestore during social login.`);
-          }
-        }
-      } catch (e: any) {
-        logger.error(`Firestore sync error during social login: ${e.message}`);
-      }
+    // 2. Perform authoritative sync from Firestore (Restores balance, transactions, KYC, etc.)
+    const syncedUser = await authoritativeSync(firebaseUid);
+    if (syncedUser) {
+        user = syncedUser;
     }
 
-    // 4. If still not found in SQLite, try to restore from Firestore
-    if (!user && adminDb) {
-      try {
-        const doc = await adminDb.collection('users').doc(firebaseUid).get();
-        if (doc.exists) {
-          const fbData = doc.data();
-          const kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
-          logger.info(`Restoring user ${email} from Firestore by UID...`);
-          
-          await run(
-            `INSERT INTO users (uid, email, display_name, photo_url, real_balance, demo_balance, is_verified, is_admin, kyc_status, country, country_code, referral_code)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              firebaseUid, email, fbData.displayName || fbData.display_name || name || '',
-              fbData.photoURL || fbData.photo_url || picture || '',
-              (fbData.realBalance || fbData.real_balance || 0).toString(),
-              (fbData.demoBalance || fbData.demo_balance || 10000).toString(),
-              (fbData.isVerified || fbData.is_verified || email_verified) ? 1 : 0,
-              (fbData.isAdmin || fbData.is_admin) ? 1 : 0,
-              kycStatus,
-              fbData.country || '', fbData.countryCode || fbData.country_code || '',
-              fbData.referralCode || fbData.referral_code || Math.random().toString(36).substring(2, 8).toUpperCase()
-            ]
-          );
-          user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
-        }
-      } catch (e: any) {
-        logger.error(`Firestore restore error: ${e.message}`);
-      }
-    }
-
-    // 5. Create new user if still not found
+    // 3. Create new user if still not found in SQLite or Firestore
     if (!user) {
       const affiliateId = Math.random().toString(36).substring(2, 8).toUpperCase();
       let referredBy = null;
@@ -377,6 +306,8 @@ router.post('/sync', async (req, res) => {
       }
 
       user = await get('SELECT * FROM users WHERE uid = ?', [firebaseUid]) as any;
+      // Sync again to make sure everything is clean
+      await authoritativeSync(firebaseUid);
     }
 
     const emailLower = user.email.toLowerCase().trim();
@@ -450,60 +381,91 @@ router.get('/google/callback', async (req, res) => {
     let user = await get('SELECT * FROM users WHERE email = ?', [payload.email]) as any;
 
     if (!user) {
-      const uid = generateUid();
-      let nextId = 100000;
-      try {
-          const row = await get('SELECT MAX(CAST(referral_code AS INTEGER)) as maxId FROM users') || {};
-          if (row && row.maxId && parseInt(row.maxId) >= 100000) {
-              nextId = parseInt(row.maxId) + 1;
-          }
-      } catch (err) {
-          nextId = 100000 + Math.floor(Math.random() * 899999);
-      }
-      const affiliateId = nextId.toString();
-      
-      // Parse state for referral info
-      let referredBy = null;
-      let referralSubId = null;
-      let referralType = null;
-      
-      if (state) {
+      let uid = generateUid();
+      let restoredFromFirestore = false;
+      let fbData: any = null;
+
+      if (adminDb) {
         try {
-          const decodedState = Buffer.from(state as string, 'base64').toString('utf8');
-          const parsedState = JSON.parse(decodedState);
-          const referralCode = parsedState.referralCode;
-          referralSubId = parsedState.referralSubId || null;
-          referralType = parsedState.referralType || null;
-          
-          if (referralCode) {
-            const referrer = await get('SELECT uid FROM users WHERE referral_code = ? OR uid = ?', [referralCode, referralCode]);
-            if (referrer) {
-              referredBy = (referrer as any).uid;
-            }
+          const snapshot = await adminDb.collection('users').where('email', '==', payload.email).limit(1).get();
+          if (!snapshot.empty) {
+            const doc = snapshot.docs[0];
+            fbData = doc.data();
+            uid = doc.id;
+            restoredFromFirestore = true;
+            logger.info(`Google Callback: Found existing Firestore user ${payload.email} with UID ${uid}. Restoring...`);
           }
-        } catch (e) {
-          logger.error("Failed to parse state referral parameters in Google Callback:", e);
+        } catch (fsErr: any) {
+          logger.error(`Google Callback: Firestore lookup error for ${payload.email}: ${fsErr.message}`);
         }
       }
 
-      // Geo lookup for country
-      const ip = req.ip || req.headers['x-forwarded-for'] || '';
+      let affiliateId;
+      let realBalance = '0.00';
+      let demoBalance = '10000.00';
+      let kycStatus = 'unverified';
       let countryName = 'Bangladesh';
       let countryCodeVal = 'BD';
-      
-      const ipString = Array.isArray(ip) ? ip[0] : (typeof ip === 'string' ? ip.split(',')[0].trim() : '');
-      if (ipString && ipString !== '127.0.0.1' && ipString !== '::1' && !ipString.startsWith('::ffff:127.0.0.1')) {
+      let referredBy = null;
+      let referralSubId = null;
+      let referralType = null;
+
+      if (restoredFromFirestore && fbData) {
+        affiliateId = fbData.referralCode || fbData.referral_code || fbData.affiliateId || Math.random().toString(36).substring(2, 8).toUpperCase();
+        realBalance = (fbData.realBalance !== undefined ? fbData.realBalance : (fbData.real_balance !== undefined ? fbData.real_balance : (fbData.balance !== undefined ? fbData.balance : 0))).toString();
+        demoBalance = (fbData.demoBalance !== undefined ? fbData.demoBalance : (fbData.demo_balance !== undefined ? fbData.demo_balance : 10000)).toString();
+        kycStatus = fbData.kycStatus || fbData.kyc_status || 'unverified';
+        countryName = fbData.country || 'Bangladesh';
+        countryCodeVal = fbData.countryCode || fbData.country_code || 'BD';
+        referredBy = fbData.referredBy || fbData.referred_by_uid || null;
+      } else {
+        let nextId = 100000;
         try {
-          const geoResponse = await fetch(`https://get.geojs.io/v1/ip/geo/${ipString}.json`);
-          if (geoResponse.ok) {
-            const geoData = await geoResponse.json() as any;
-            if (geoData && geoData.country) {
-              countryName = geoData.country;
-              countryCodeVal = geoData.country_code;
+            const row = await get('SELECT MAX(CAST(referral_code AS INTEGER)) as maxId FROM users') || {};
+            if (row && row.maxId && parseInt(row.maxId) >= 100000) {
+                nextId = parseInt(row.maxId) + 1;
             }
+        } catch (err) {
+            nextId = 100000 + Math.floor(Math.random() * 899999);
+        }
+        affiliateId = nextId.toString();
+
+        // Parse state for referral info
+        if (state) {
+          try {
+            const decodedState = Buffer.from(state as string, 'base64').toString('utf8');
+            const parsedState = JSON.parse(decodedState);
+            const referralCode = parsedState.referralCode;
+            referralSubId = parsedState.referralSubId || null;
+            referralType = parsedState.referralType || null;
+            
+            if (referralCode) {
+              const referrer = await get('SELECT uid FROM users WHERE referral_code = ? OR uid = ?', [referralCode, referralCode]);
+              if (referrer) {
+                referredBy = (referrer as any).uid;
+              }
+            }
+          } catch (e) {
+            logger.error("Failed to parse state referral parameters in Google Callback:", e);
           }
-        } catch (geoErr) {
-          logger.error('Geo IP detection in Google Auth failed:', geoErr);
+        }
+
+        // Geo lookup for country
+        const ip = req.ip || req.headers['x-forwarded-for'] || '';
+        const ipString = Array.isArray(ip) ? ip[0] : (typeof ip === 'string' ? ip.split(',')[0].trim() : '');
+        if (ipString && ipString !== '127.0.0.1' && ipString !== '::1' && !ipString.startsWith('::ffff:127.0.0.1')) {
+          try {
+            const geoResponse = await fetch(`https://get.geojs.io/v1/ip/geo/${ipString}.json`);
+            if (geoResponse.ok) {
+              const geoData = await geoResponse.json() as any;
+              if (geoData && geoData.country) {
+                countryName = geoData.country;
+                countryCodeVal = geoData.country_code;
+              }
+            }
+          } catch (geoErr) {
+            logger.error('Geo IP detection in Google Auth failed:', geoErr);
+          }
         }
       }
 
@@ -518,26 +480,27 @@ router.get('/google/callback', async (req, res) => {
       ].filter(Boolean).includes(emailLower);
 
       await run(
-        `INSERT INTO users (uid, email, display_name, photo_url, referral_code, referred_by_uid, referral_sub_id, referral_type, country, country_code, real_balance, demo_balance, is_admin) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (uid, email, display_name, photo_url, referral_code, referred_by_uid, referral_sub_id, referral_type, country, country_code, real_balance, demo_balance, is_admin, is_verified, kyc_status) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
         [
           uid,
           payload.email,
-          payload.name || 'User',
-          payload.picture || null,
+          fbData?.displayName || fbData?.display_name || payload.name || 'User',
+          fbData?.photoURL || fbData?.photo_url || payload.picture || null,
           affiliateId,
           referredBy,
           referralSubId,
           referralType,
           countryName,
           countryCodeVal,
-          0.0,
-          10000.0,
-          isHardcodedAdmin ? 1 : 0
+          realBalance,
+          demoBalance,
+          (fbData?.isAdmin || fbData?.is_admin || isHardcodedAdmin) ? 1 : 0,
+          kycStatus
         ]
       );
 
-      if (referredBy) {
+      if (referredBy && !restoredFromFirestore) {
         await run('UPDATE users SET referral_count = referral_count + 1 WHERE uid = ?', [referredBy]);
       }
 
