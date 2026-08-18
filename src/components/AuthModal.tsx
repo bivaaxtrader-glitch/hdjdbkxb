@@ -27,8 +27,8 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
   const [characterState, setCharacterState] = useState<'idle' | 'success' | 'error' | 'thinking'>('idle');
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
-  // New states for custom 4-digit OTP password reset workflow
-  const [otpCode, setOtpCode] = useState<string[]>(['', '', '', '']);
+  // New states for custom 6-digit OTP password reset workflow
+  const [otpCode, setOtpCode] = useState<string[]>(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -39,7 +39,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
     setOtpCode(newOtp);
 
     // Auto-focus next input if a number is typed
-    if (cleaned && index < 3) {
+    if (cleaned && index < 5) {
       const nextInput = document.getElementById(`modal-otp-input-${index + 1}`);
       nextInput?.focus();
     }
@@ -55,10 +55,10 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
   const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData('text').trim().replace(/[^0-9]/g, '');
-    if (pastedData.length >= 4) {
-      const newOtp = [pastedData[0], pastedData[1], pastedData[2], pastedData[3]];
+    if (pastedData.length >= 6) {
+      const newOtp = [pastedData[0], pastedData[1], pastedData[2], pastedData[3], pastedData[4], pastedData[5]];
       setOtpCode(newOtp);
-      document.getElementById('modal-otp-input-3')?.focus();
+      document.getElementById('modal-otp-input-5')?.focus();
     }
   };
 
@@ -146,11 +146,11 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Failed to request OTP');
             
-            setSuccessMsg("A 4-digit OTP code has been sent to your email!");
+            setSuccessMsg("A 6-digit OTP code has been sent to your email!");
             setView('verify_otp');
         } else if (view === 'verify_otp') {
             const otpStr = otpCode.join('');
-            if (otpStr.length < 4) throw new Error('Please enter the full 4-digit OTP code');
+            if (otpStr.length < 6) throw new Error('Please enter the full 6-digit OTP code');
             
             const response = await fetch('/api/auth/verify-reset-otp', {
               method: 'POST',
@@ -531,12 +531,12 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
               </>
             )}
 
-            {/* NEUMORPHIC 4-DIGIT OTP UI inside Modal */}
+            {/* NEUMORPHIC 6-DIGIT OTP UI inside Modal */}
             {view === 'verify_otp' && (
               <div className="flex flex-col items-center">
-                <p className="text-gray-400 text-[14px] text-center mb-6">Enter the 4-digit security code</p>
+                <p className="text-gray-400 text-[14px] text-center mb-6">Enter the 6-digit security code</p>
                 
-                <div className="flex gap-4.5 justify-center mb-8">
+                <div className="flex gap-2.5 justify-center mb-8">
                   {otpCode.map((digit, idx) => (
                     <input
                       key={idx}
@@ -547,7 +547,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                       onPaste={handleOtpPaste}
-                      className="w-[58px] h-[58px] bg-[#22242c] border border-white/5 rounded-xl text-center text-white text-[26px] font-black focus:outline-none focus:ring-2 focus:ring-[#ffcf00] focus:border-transparent transition-all shadow-[inset_3px_3px_6px_rgba(0,0,0,0.8),inset_-1px_-1px_3px_rgba(255,255,255,0.05),0_4px_8px_rgba(0,0,0,0.4)]"
+                      className="w-[48px] h-[48px] bg-[#22242c] border border-white/5 rounded-xl text-center text-white text-[22px] font-black focus:outline-none focus:ring-2 focus:ring-[#ffcf00] focus:border-transparent transition-all shadow-[inset_3px_3px_6px_rgba(0,0,0,0.8),inset_-1px_-1px_3px_rgba(255,255,255,0.05),0_4px_8px_rgba(0,0,0,0.4)]"
                     />
                   ))}
                 </div>
@@ -591,7 +591,7 @@ export function AuthModal({ isOpen, onClose, initialView = 'login', onSuccess }:
                         });
                         const data = await response.json();
                         if (!response.ok) throw new Error(data.error || 'Failed to resend OTP');
-                        setSuccessMsg("A new 4-digit OTP code has been sent!");
+                        setSuccessMsg("A new 6-digit OTP code has been sent!");
                       } catch (err: any) {
                         setError(err.message || "Failed to resend code");
                       } finally {

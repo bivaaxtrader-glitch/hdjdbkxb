@@ -265,7 +265,7 @@ export default function AuthPage() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to request OTP');
         
-        setSuccessMsg("A 4-digit OTP code has been sent to your email!");
+        setSuccessMsg("A 6-digit OTP code has been sent to your email!");
         setView('verify_otp');
       } else if (view === 'verify_otp') {
         const otpStr = otpCode.join('');
@@ -788,7 +788,7 @@ export default function AuthPage() {
                           });
                           const data = await response.json();
                           if (!response.ok) throw new Error(data.error || 'Failed to resend OTP');
-                          setSuccessMsg("A new 4-digit OTP code has been sent!");
+                          setSuccessMsg("A new 6-digit OTP code has been sent!");
                         } catch (err: any) {
                           setError(err.message || "Failed to resend code");
                         } finally {

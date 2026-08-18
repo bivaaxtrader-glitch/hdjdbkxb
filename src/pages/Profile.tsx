@@ -749,7 +749,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="text-left">
                         <h4 className="font-extrabold text-gray-900 text-lg leading-tight">
-                          {kycStatus?.status === 'approved' ? 'Premium Star' : kycStatus?.status === 'pending' ? 'In Review' : 'Standard'}
+                          {(kycStatus?.status === 'approved' || kycStatus?.status === 'verified') ? 'Premium Star' : kycStatus?.status === 'pending' ? 'In Review' : 'Standard'}
                         </h4>
                         <p className="text-xs text-gray-500 font-semibold mt-0.5">Your status</p>
                       </div>
@@ -829,7 +829,7 @@ export default function ProfilePage() {
                         <div className="grid grid-cols-3 gap-3 pt-2 pb-4">
                           {[
                             { name: 'Trade Star', desc: 'Secure 10 successful trades', locked: true },
-                            { name: 'VIP Node', desc: 'Verify KYC Identity', locked: kycStatus?.status !== 'approved' },
+                            { name: 'VIP Node', desc: 'Verify KYC Identity', locked: kycStatus?.status !== 'approved' && kycStatus?.status !== 'verified' },
                             { name: '2FA Iron Fort', desc: 'Enable Authenticator APP', locked: !user.tfaEnabled },
                           ].map((ach, i) => (
                             <div key={`ach-list-exp-${i}`} className="bg-[#f4f5f8] relative border border-gray-100/60 rounded-xl p-3 flex flex-col items-center justify-center gap-2 text-center">
@@ -1347,7 +1347,7 @@ export default function ProfilePage() {
                     ))}
                 </div>
 
-                {kycStatus?.status === 'approved' ? (
+                {kycStatus?.status === 'approved' || kycStatus?.status === 'verified' ? (
                   <div className="text-center py-12 space-y-4 bg-emerald-50 rounded-3xl border border-emerald-100">
                     <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mx-auto">
                       <ShieldCheck size={36} />

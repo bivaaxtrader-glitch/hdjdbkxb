@@ -150,7 +150,7 @@ export default function AdminDashboard() {
     return 'deposits';
   });
   const [selectedUserDetail, setSelectedUserDetail] = useState<any>(null);
-  const [userDetailTab, setUserDetailTab] = useState<'overview' | 'trades' | 'finances' | 'profile' | 'security' | 'staff'>('overview');
+  const [userDetailTab, setUserDetailTab] = useState<'overview' | 'trades' | 'finances' | 'profile' | 'security' | 'staff' | 'verification'>('overview');
   const [selectedUserTrades, setSelectedUserTrades] = useState<any[]>([]);
   const [selectedUserTransactions, setSelectedUserTransactions] = useState<any[]>([]);
   const [selectedKYCRequest, setSelectedKYCRequest] = useState<any>(null);
@@ -561,9 +561,23 @@ export default function AdminDashboard() {
             unsubs.push(onSnapshot(collection(db, 'deposits'), (snap) => {
                 const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 reqs.sort((a: any, b: any) => {
-                    const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
-                    const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
-                    return timeB - timeA;
+                    const getMillis = (item: any) => {
+                        if (!item) return 0;
+                        const candidates = [item.timestamp, item.submittedAt, item.createdAt, item.date];
+                        for (const val of candidates) {
+                            if (!val) continue;
+                            if (typeof val.toMillis === 'function') return val.toMillis();
+                            if (typeof val.toDate === 'function') return val.toDate().getTime();
+                            if (val instanceof Date) return val.getTime();
+                            if (typeof val === 'number') return val;
+                            if (typeof val === 'string') {
+                                const parsed = Date.parse(val);
+                                if (!isNaN(parsed)) return parsed;
+                            }
+                        }
+                        return 0;
+                    };
+                    return getMillis(b) - getMillis(a);
                 });
                 setDepositRequests(reqs);
             }));
@@ -571,9 +585,23 @@ export default function AdminDashboard() {
             unsubs.push(onSnapshot(collection(db, 'withdrawals'), (snap) => {
                 const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 reqs.sort((a: any, b: any) => {
-                    const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
-                    const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
-                    return timeB - timeA;
+                    const getMillis = (item: any) => {
+                        if (!item) return 0;
+                        const candidates = [item.timestamp, item.submittedAt, item.createdAt, item.date];
+                        for (const val of candidates) {
+                            if (!val) continue;
+                            if (typeof val.toMillis === 'function') return val.toMillis();
+                            if (typeof val.toDate === 'function') return val.toDate().getTime();
+                            if (val instanceof Date) return val.getTime();
+                            if (typeof val === 'number') return val;
+                            if (typeof val === 'string') {
+                                const parsed = Date.parse(val);
+                                if (!isNaN(parsed)) return parsed;
+                            }
+                        }
+                        return 0;
+                    };
+                    return getMillis(b) - getMillis(a);
                 });
                 setWithdrawals(reqs);
             }));
@@ -581,9 +609,23 @@ export default function AdminDashboard() {
             unsubs.push(onSnapshot(collection(db, 'kycRequests'), (snap) => {
                 const reqs = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 reqs.sort((a: any, b: any) => {
-                    const timeA = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
-                    const timeB = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
-                    return timeB - timeA;
+                    const getMillis = (item: any) => {
+                        if (!item) return 0;
+                        const candidates = [item.timestamp, item.submittedAt, item.createdAt, item.date];
+                        for (const val of candidates) {
+                            if (!val) continue;
+                            if (typeof val.toMillis === 'function') return val.toMillis();
+                            if (typeof val.toDate === 'function') return val.toDate().getTime();
+                            if (val instanceof Date) return val.getTime();
+                            if (typeof val === 'number') return val;
+                            if (typeof val === 'string') {
+                                const parsed = Date.parse(val);
+                                if (!isNaN(parsed)) return parsed;
+                            }
+                        }
+                        return 0;
+                    };
+                    return getMillis(b) - getMillis(a);
                 });
                 setKycRequests(reqs);
             }));
@@ -1452,6 +1494,22 @@ export default function AdminDashboard() {
                                     </div>
                                     
                                     <div className="flex items-center gap-2 ml-auto lg:ml-0 w-full lg:w-auto mt-2 lg:mt-0">
+                                        <button
+                                          onClick={async () => {
+                                              const isVerified = u.kycStatus === 'verified' || u.kycStatus === 'approved';
+                                              if(!confirm(`Are you sure you want to ${isVerified ? 'REVOKE identity verification' : 'MANUALLY VERIFY (without NID)'} for ${u.email}?`)) return;
+                                              try {
+                                                  const newStatus = isVerified ? 'unverified' : 'verified';
+                                                  await updateDoc(doc(db, 'users', u.id), { kycStatus: newStatus });
+                                                  await logAdminAction('Manual Verification Override', `Manually set kycStatus to ${newStatus} for user ${u.id} (${u.email})`);
+                                                  toast.success(`Identity status updated to ${newStatus} successfully`);
+                                              } catch(err: any) { toast.error(err.message); }
+                                          }}
+                                          title={u.kycStatus === 'verified' || u.kycStatus === 'approved' ? "Revoke Verification" : "Manually Verify (No NID)"}
+                                          className={`w-12 h-12 lg:w-10 lg:h-10 rounded-2xl lg:rounded-xl flex items-center justify-center transition-all active:scale-95 ${u.kycStatus === 'verified' || u.kycStatus === 'approved' ? 'bg-green-500/20 text-green-500 border border-green-500/30' : 'bg-white/5 text-gray-500 hover:text-white border border-white/5'}`}
+                                        >
+                                            <ShieldCheck size={16} />
+                                        </button>
                                         <button 
                                           onClick={() => setSelectedUserDetail(u)}
                                           className="flex-1 lg:flex-none h-12 lg:h-10 px-6 rounded-2xl lg:rounded-xl flex items-center justify-center bg-yellow-500 text-black hover:bg-yellow-400 transition-all font-black text-[10px] uppercase tracking-widest gap-2 shadow-lg shadow-yellow-500/10 active:scale-95"
@@ -4255,6 +4313,7 @@ export default function AdminDashboard() {
                             { id: 'finances', label: 'Finances', icon: Wallet },
                             { id: 'profile', label: 'Profile', icon: User },
                             { id: 'security', label: 'Security', icon: Lock },
+                            { id: 'verification', label: 'Identity', icon: ShieldCheck },
                             ...(admins.some(a => a.id === selectedUserDetail.id) ? [{ id: 'staff', label: 'Clearance', icon: Shield }] : [])
                         ].map((tab) => (
                             <button
@@ -4339,7 +4398,35 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
 
-                                        <div className="bg-gradient-to-br from-yellow-500/[0.03] to-transparent border border-yellow-500/10 p-8 rounded-[40px] flex flex-col justify-between">
+                                        <div className="bg-gradient-to-br from-yellow-500/[0.03] to-transparent border border-yellow-500/10 p-8 rounded-[40px] flex flex-col justify-between gap-6">
+                                             <div className="space-y-6">
+                                                 <div className="space-y-3">
+                                                     <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-yellow-500">Identity Clearance</h4>
+                                                     <p className="text-xs text-gray-500 leading-relaxed font-medium">Bypass document submission (NID/Passport) and grant full verified credentials to this trader manually.</p>
+                                                     <button 
+                                                         onClick={async () => {
+                                                             const isVerified = selectedUserDetail.kycStatus === 'verified' || selectedUserDetail.kycStatus === 'approved';
+                                                             if(!confirm(`Are you sure you want to ${isVerified ? 'REVOKE' : 'MANUALLY VERIFY'} the identity of ${selectedUserDetail.email}?`)) return;
+                                                             try {
+                                                                 const newStatus = isVerified ? 'unverified' : 'verified';
+                                                                 await updateDoc(doc(db, 'users', selectedUserDetail.id), { kycStatus: newStatus });
+                                                                 setSelectedUserDetail({...selectedUserDetail, kycStatus: newStatus});
+                                                                 await logAdminAction('Manual Verification Override', `Manually set kycStatus to ${newStatus} for user ${selectedUserDetail.id} (${selectedUserDetail.email})`);
+                                                                 toast.success(`Identity status updated to ${newStatus} successfully`);
+                                                             } catch(e: any) { toast.error(e.message); }
+                                                         }}
+                                                         className={`w-full py-3 px-6 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                                                             (selectedUserDetail.kycStatus === 'verified' || selectedUserDetail.kycStatus === 'approved')
+                                                             ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' 
+                                                             : 'bg-white/5 text-gray-400 hover:bg-yellow-500 hover:text-black hover:border-yellow-500 border border-white/5'
+                                                         }`}
+                                                     >
+                                                         {(selectedUserDetail.kycStatus === 'verified' || selectedUserDetail.kycStatus === 'approved') ? 'ID Verified (Click to Revoke)' : 'Manually Verify Trader'}
+                                                     </button>
+                                                 </div>
+
+                                                 <div className="border-t border-white/5 my-2" />
+                                             </div>
                                             <div className="space-y-4">
                                                 <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-yellow-500">Account Quarantine</h4>
                                                 <p className="text-xs text-gray-500 leading-relaxed font-medium">Revoking node access will immediately terminate all active sessions and prevent further market interaction for this identifier.</p>
@@ -4784,6 +4871,84 @@ export default function AdminDashboard() {
                                 </motion.div>
                             )}
 
+                            {userDetailTab === 'verification' && (
+                                <motion.div 
+                                    key="verification" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
+                                    className="space-y-10"
+                                >
+                                    <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                                        <div className="space-y-1">
+                                            <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-4">
+                                                <ShieldCheck className="text-yellow-500" size={24} />
+                                                IDENTIFIER VERIFICATION
+                                            </h3>
+                                            <p className="text-gray-500 text-xs font-medium uppercase tracking-widest">Manual clearance & identity document oversight</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-8">
+                                            <div className="flex items-center gap-6">
+                                                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center border-2 shadow-2xl transition-all ${selectedUserDetail.kycStatus === 'verified' ? 'bg-green-500/10 border-green-500/20 text-green-500 shadow-green-500/10' : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-500 shadow-yellow-500/10'}`}>
+                                                    {selectedUserDetail.kycStatus === 'verified' ? <ShieldCheck size={40} /> : <Shield size={40} />}
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest leading-none">Security Status</p>
+                                                    <h4 className={`text-2xl font-black tracking-tight ${selectedUserDetail.kycStatus === 'verified' ? 'text-green-500' : 'text-yellow-500'}`}>
+                                                        {selectedUserDetail.kycStatus === 'verified' ? 'FULL CLEARANCE' : 'UNVERIFIED NODE'}
+                                                    </h4>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-6 bg-white/5 rounded-3xl border border-white/5">
+                                                <p className="text-gray-400 text-xs leading-relaxed">
+                                                    Manual verification allows an administrator to grant a user 'Verified' status regardless of whether they have submitted documents. This bypasses the standard NID/Passport verification queue.
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                onClick={async () => {
+                                                    const isVerified = selectedUserDetail.kycStatus === 'verified';
+                                                    if(!confirm(`Proceed with manual override for ${selectedUserDetail.email}? Status will be set to: ${isVerified ? 'UNVERIFIED' : 'VERIFIED'}`)) return;
+                                                    try {
+                                                        const newStatus = isVerified ? 'unverified' : 'verified';
+                                                        await updateDoc(doc(db, 'users', selectedUserDetail.id), { kycStatus: newStatus });
+                                                        setSelectedUserDetail({ ...selectedUserDetail, kycStatus: newStatus });
+                                                        await logAdminAction('Manual Identity Override', `Override: ${selectedUserDetail.id} set to ${newStatus}`);
+                                                        toast.success(`Identifier status updated to ${newStatus}`);
+                                                    } catch(err: any) { toast.error(err.message); }
+                                                }}
+                                                className={`w-full py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center justify-center gap-3 ${selectedUserDetail.kycStatus === 'verified' ? 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white' : 'bg-green-500 text-black hover:bg-green-400 shadow-lg shadow-green-500/20'}`}
+                                            >
+                                                {selectedUserDetail.kycStatus === 'verified' ? <ShieldOff size={18} /> : <UserCheck size={18} />}
+                                                {selectedUserDetail.kycStatus === 'verified' ? 'REVOKE CLEARANCE' : 'GRANT MANUAL CLEARANCE'}
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-[#050507] p-8 rounded-[40px] border border-white/5 space-y-6">
+                                            <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Verification Dossier</h4>
+                                            
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                                                    <span className="text-[10px] font-black text-gray-500 uppercase">Document Request</span>
+                                                    <span className="text-xs font-bold text-white">None (Manual Ready)</span>
+                                                </div>
+                                                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                                                    <span className="text-[10px] font-black text-gray-500 uppercase">Trust Index</span>
+                                                    <span className="text-xs font-bold text-yellow-500">Tier 1 Internal</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-4 space-y-4">
+                                                <p className="text-[9px] text-gray-600 font-bold uppercase leading-relaxed">
+                                                    Granting manual clearance marks the account as "Verified" in all trade terminals and removes withdrawal limitations associated with unverified accounts.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+
                             {userDetailTab === 'staff' && (
                                 <motion.div 
                                     key="staff" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}
@@ -4922,8 +5087,6 @@ export default function AdminDashboard() {
                                           <option value="Crypto">Crypto</option>
                                           <option value="E-wallets">E-wallets / Mobile Banking</option>
                                           <option value="Popular">Popular</option>
-                                          <option value="Bank transfer">Bank Transfer</option>
-                                          <option value="Credit cards">Credit Cards</option>
                                           <option value="Other">Other</option>
                                       </select>
                                   </div>

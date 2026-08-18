@@ -1669,8 +1669,7 @@ export async function syncUserSpecificTradesFromFirestore(uid: string) {
       UPDATE trades SET status = ?, exit_price = ?, payout_amount = ?, settled_at = ? WHERE firebase_id = ? AND status != ?
     `);
 
-    db.prepare('BEGIN').run();
-    try {
+    await transaction(async () => {
       for (const doc of snapshot.docs) {
         const data = doc.data();
         const firebaseId = doc.id;
@@ -1695,11 +1694,7 @@ export async function syncUserSpecificTradesFromFirestore(uid: string) {
           updateStmt.run(status, exitPrice, payoutAmount, settledAt, firebaseId, status);
         }
       }
-      db.prepare('COMMIT').run();
-    } catch (txErr) {
-      db.prepare('ROLLBACK').run();
-      logger.error(`[syncUserSpecificTrades] Failed for ${uid}: ${txErr}`);
-    }
+    });
   } catch (err: any) {
     logger.error(`[syncUserSpecificTrades] Error: ${err.message}`);
   }

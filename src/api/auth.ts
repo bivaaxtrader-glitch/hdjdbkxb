@@ -628,7 +628,7 @@ router.post('/forgot-password',
       await sendEmail(email, resetSubject, resetHtml);
     }
     // Return standard message to protect privacy
-    res.json({ success: true, message: 'If an account exists with this email, a 4-digit OTP has been sent.' });
+    res.json({ success: true, message: 'If an account exists with this email, a 6-digit OTP has been sent.' });
   }
 );
 
@@ -703,6 +703,32 @@ router.post('/reset-password',
     }
   }
 );
+
+// 5.75 Change Password (while logged in)
+router.post('/change-password', requireAuth, async (req: any, res: any) => {
+  const { password } = req.body;
+  const uid = req.user.uid;
+
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  try {
+    const hashedPassword = await hashPassword(password);
+    await run('UPDATE users SET password = ? WHERE uid = ?', [hashedPassword, uid]);
+    
+    // Also ensure Firestore is updated with the hash if needed (for disaster recovery sync)
+    if (adminDb) {
+      await adminDb.collection('users').doc(uid).set({ password_hash: hashedPassword }, { merge: true });
+    }
+
+    logger.info(`User ${uid} updated their password via settings.`);
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err: any) {
+    logger.error(`Change password error: ${err.message}`);
+    res.status(500).json({ error: 'Failed to update password in database' });
+  }
+});
 
 // 6. Send OTP
 router.post('/send-otp', async (req: any, res: any) => {

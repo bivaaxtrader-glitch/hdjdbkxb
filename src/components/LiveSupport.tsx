@@ -14,7 +14,10 @@ import {
   CheckCheck, 
   User, 
   ShieldCheck,
-  Trash2
+  Trash2,
+  ExternalLink,
+  MessageSquare,
+  Zap
 } from 'lucide-react';
 import { 
   db, 
@@ -26,9 +29,12 @@ import {
   query, 
   where, 
   orderBy, 
-  onSnapshot 
+  onSnapshot,
+  getDoc
 } from '../firebase';
 import { toast } from 'react-hot-toast';
+import { useI18n } from '../context/I18nContext';
+import { useTranslation } from '../lib/translations';
 
 interface LiveSupportProps {
   onClose: () => void;
@@ -74,6 +80,29 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { language } = useI18n();
+  const { t } = useTranslation(language);
+
+  const [socialLinks, setSocialLinks] = useState({
+    whatsapp: 'https://wa.me/message/BIVAAX',
+    telegram: 'https://t.me/Bivaax_Official'
+  });
+
+  useEffect(() => {
+    const fetchLinks = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'app_config', 'settings'));
+        if (snap.exists()) {
+          const data = snap.data();
+          setSocialLinks({
+            whatsapp: data.socialWhatsapp || 'https://wa.me/message/BIVAAX',
+            telegram: data.socialTelegram || 'https://t.me/Bivaax_Official'
+          });
+        }
+      } catch (err) {}
+    };
+    fetchLinks();
+  }, []);
 
   const currentUser = auth.currentUser;
   const currentUid = currentUser?.uid || userId || 'guest_user';
@@ -312,7 +341,7 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
           </div>
           <div className="min-w-0">
             <h2 className="text-sm font-black tracking-tight text-white truncate">
-              {view === 'list' ? 'Live Support Desk' : (activeTicket?.subject || 'Support Chat')}
+              {view === 'list' ? t('supportDesk') : (activeTicket?.subject || t('liveChat'))}
             </h2>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -381,8 +410,55 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
               className="w-full py-3.5 px-4 bg-[#FFE24C] hover:bg-[#F0D544] text-black font-black text-xs uppercase tracking-wider rounded-2xl shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2"
             >
               <Plus size={16} strokeWidth={3} />
-              Start New Support Chat
+              {t('startNewChat')}
             </button>
+
+            {/* Social Shortcuts */}
+            <div className="grid grid-cols-2 gap-3">
+              <a 
+                href={socialLinks.whatsapp}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 py-3 px-4 bg-[#25D366] text-white rounded-2xl shadow-sm hover:opacity-90 transition-all font-bold text-[11px] uppercase tracking-wide"
+              >
+                <MessageSquare size={16} /> WhatsApp
+              </a>
+              <a 
+                href={socialLinks.telegram}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 py-3 px-4 bg-[#0088CC] text-white rounded-2xl shadow-sm hover:opacity-90 transition-all font-bold text-[11px] uppercase tracking-wide"
+              >
+                <Send size={16} /> Telegram
+              </a>
+            </div>
+
+            {/* Quick Question Shortcuts */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+              <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2">
+                <Zap size={12} className="text-amber-400 fill-amber-400" /> {t('quickShortcuts')}
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: t('depositIssue'), msg: "I have an issue with my deposit. It's not reflecting." },
+                  { label: t('withdrawalStatus'), msg: "I want to check my withdrawal status." },
+                  { label: t('verificationHelp'), msg: "I need help with my account verification." },
+                  { label: t('howToTrade'), msg: "Can you explain how to start trading?" }
+                ].map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setView('new');
+                      setInputMessage(item.msg);
+                      setNewSubject(item.label);
+                    }}
+                    className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-[10px] font-bold rounded-xl border border-gray-100 transition-all active:scale-95"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Past / Ongoing Conversations */}
             <div className="pt-2">
@@ -442,13 +518,13 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
         {view === 'new' && (
           <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-white">
             <div>
-              <h3 className="text-base font-black text-gray-900 tracking-tight">How can we help you?</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Please describe your query and our live support agents will reply shortly.</p>
+              <h3 className="text-base font-black text-gray-900 tracking-tight">{t('howCanWeHelp')}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{t('describeQuery')}</p>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1 block">Category</label>
+                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1 block">{t('category')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {['Deposit & Payment', 'Withdrawal', 'Account & KYC', 'Trading / General'].map((cat) => (
                     <button
@@ -468,7 +544,7 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1 block">Subject (Optional)</label>
+                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1 block">{t('subjectOptional')}</label>
                 <input
                   type="text"
                   placeholder="e.g. Deposit confirmation / Payment query"
@@ -479,7 +555,7 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1 block">Your Message</label>
+                <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1 block">{t('yourMessage')}</label>
                 <textarea
                   rows={4}
                   placeholder="Write your message here in detail..."
@@ -522,7 +598,7 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
                   className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl flex items-center gap-2 transition-all"
                 >
                   <ImageIcon size={16} />
-                  Attach Screenshot
+                  {t('attachScreenshot')}
                 </button>
               </div>
 
@@ -534,7 +610,7 @@ export const LiveSupport: React.FC<LiveSupportProps> = ({ onClose, userId }) => 
                   className="w-full py-3.5 bg-[#FFE24C] hover:bg-[#F0D544] disabled:opacity-50 text-black font-black text-xs uppercase tracking-wider rounded-2xl shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                 >
                   <Send size={16} />
-                  {isSending ? 'Sending...' : 'Send Message to Support'}
+                  {isSending ? 'Sending...' : t('sendMessage')}
                 </button>
               </div>
             </div>

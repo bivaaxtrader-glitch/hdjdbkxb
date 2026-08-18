@@ -614,10 +614,8 @@ export default function Homepage() {
           
           <div className="space-y-4 mb-10">
              {[
-               { icon: Landmark, name: "Bank cards" },
-               { icon: Smartphone, name: "E-wallets" },
-               { icon: TrendingUp, name: "Crypto methods" },
-               { icon: Landmark, name: "Bank transfer" }
+                { icon: Smartphone, name: "E-wallets" },
+                { icon: TrendingUp, name: "Crypto methods" }
              ].map((method, i) => (
                 <div key={`pay-method-${method.name}`} className="bg-white rounded-2xl p-6 flex items-center shadow-sm">
                   <method.icon size={32} className="text-[#ffcf00] mr-6" strokeWidth={1.5} />

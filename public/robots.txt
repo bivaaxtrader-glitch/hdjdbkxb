@@ -6,6 +6,9 @@ Allow: /about-us$
 Allow: /docs$
 Allow: /news/
 Allow: /page/
+Allow: /affiliate$
+Allow: /help-center$
+Allow: /support$
 
 # Allow crawling of assets & bundles required for Google page rendering
 Allow: /assets/
@@ -15,10 +18,7 @@ Allow: /favicon.jpg
 Allow: /icon-512.png
 Allow: /manifest.json
 
-# Disallow authentication & private accounts
-Disallow: /login
-Disallow: /register
-Disallow: /signup
+# Disallow authentication & private internal app paths
 Disallow: /trade
 Disallow: /leaderboard
 Disallow: /promotions
@@ -26,16 +26,16 @@ Disallow: /calendar
 Disallow: /tournaments
 Disallow: /education
 Disallow: /statuses
-Disallow: /help-center
-Disallow: /support
 Disallow: /profile
-Disallow: /affiliate
 Disallow: /signals
 Disallow: /copytrading
 Disallow: /crypto-deposit
 Disallow: /mfs-deposit
 Disallow: /deposit/
 Disallow: /Bivaaxpay
+Disallow: /login
+Disallow: /register
+Disallow: /signup
 
 # Disallow admin panels & sensitive support interfaces
 Disallow: /admin

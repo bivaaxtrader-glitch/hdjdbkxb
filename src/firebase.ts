@@ -5,7 +5,13 @@ import {
   GoogleAuthProvider as FbGoogleAuthProvider,
   signInWithEmailAndPassword as fbSignInWithEmailAndPassword,
   createUserWithEmailAndPassword as fbCreateUserWithEmailAndPassword,
-  updateProfile as fbUpdateProfile
+  updateProfile as fbUpdateProfile,
+  updatePassword as fbUpdatePassword,
+  updateEmail as fbUpdateEmail,
+  sendPasswordResetEmail as fbSendPasswordResetEmail,
+  sendEmailVerification as fbSendEmailVerification,
+  reauthenticateWithCredential as fbReauthenticateWithCredential,
+  EmailAuthProvider as FbEmailAuthProvider
 } from "firebase/auth";
 
 import { 
@@ -333,14 +339,14 @@ export function handleFirestoreError(error: any, operation?: OperationType, path
 // Re-exports for compatibility
 export const onAuthStateChanged = (authObj: any, cb: any) => authObj.onAuthStateChanged(cb);
 export const signOut = (authObj: any) => authObj.signOut();
-export const reauthenticateWithCredential = async (...args: any[]) => {};
-export const updatePassword = async (...args: any[]) => {};
-export const updateEmail = async (...args: any[]) => {};
-export const sendEmailVerification = async (...args: any[]) => {};
+export const reauthenticateWithCredential = (user: any, cred: any) => fbReauthenticateWithCredential(user, cred);
+export const updatePassword = (user: any, pass: string) => fbUpdatePassword(user, pass);
+export const updateEmail = (user: any, email: string) => fbUpdateEmail(user, email);
+export const sendEmailVerification = (user: any) => fbSendEmailVerification(user);
 export const GoogleAuthProvider = FbGoogleAuthProvider;
-export const EmailAuthProvider = { credential: (...args: any[]) => ({}) };
+export const EmailAuthProvider = FbEmailAuthProvider;
 export const googleProvider = new FbGoogleAuthProvider();
-export const sendPasswordResetEmail = async (...args: any[]) => {};
+export const sendPasswordResetEmail = (auth: any, email: string) => fbSendPasswordResetEmail(auth, email);
 export const collection = (dbObj: any, ...path: string[]) => {
   let basePath = '';
   if (dbObj) {

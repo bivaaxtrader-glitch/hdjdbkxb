@@ -392,6 +392,19 @@ addColIfMissing('ticket_messages', 'is_read INTEGER DEFAULT 0');
 
 const statementCache = new Map<string, any>();
 
+class Mutex {
+  private mutex = Promise.resolve();
+  lock(): Promise<() => void> {
+    let begin: (unlock: () => void) => void;
+    this.mutex = this.mutex.then(() => new Promise(begin));
+    return new Promise(res => {
+      begin = (unlock: () => void) => res(unlock);
+    });
+  }
+}
+
+const dbMutex = new Mutex();
+
 export async function query(sql: string, params: any[] = [], conn?: any) {
   let statement = statementCache.get(sql);
   if (!statement) {
@@ -420,6 +433,7 @@ export async function run(sql: string, params: any[] = [], conn?: any) {
 }
 
 export async function transaction<T>(fn: (connection: any) => Promise<T>): Promise<T> {
+  const unlock = await dbMutex.lock();
   const isNested = db.inTransaction;
   if (!isNested) db.prepare('BEGIN').run();
   try {
@@ -429,6 +443,8 @@ export async function transaction<T>(fn: (connection: any) => Promise<T>): Promi
   } catch (err) {
     if (!isNested) db.prepare('ROLLBACK').run();
     throw err;
+  } finally {
+    unlock();
   }
 }
 

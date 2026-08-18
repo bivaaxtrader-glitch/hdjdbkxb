@@ -19,9 +19,9 @@ interface SEOProps {
 }
 
 const SEO: React.FC<SEOProps> = ({
-  title = 'Bivaax Trade | Official Trading Platform (bivaax.com & bivaax.trade)',
-  description = 'Official Bivaax Trade platform operating on bivaax.com and bivaax.trade. Premier binary options trading platform with up to 95%+ payouts, instant local cash bKash, Nagad, Rocket deposits and withdrawals, and 24/7 client support.',
-  keywords = 'Bivaax, bivaax.com, bivaax.trade, Bivaax Trade, bivaax login, bivaax.com login, bivaax.trade login, Bivaax binary options, Bivaax trading Bangladesh, Bivaax BD, binary trade, bivax, bivax trade, earn money online Bangladesh, bkash deposit trading, nagad trading, bivaax sign up, bivaax app, বিভাবক্স, বিভাবক্স ট্রেড, বাইনারি অপশন ট্রেডিং বাংলাদেশ, বিকাশ দিয়ে ট্রেডিং, অনলাইনে আয় করার অ্যাপ, Quotex bkash, Pocket Option bkash, IQ Option Bangladesh',
+  title = 'Bivaax Trade',
+  description = 'Official Bivaax Trade platform. Premier binary options trading platform with up to 95%+ payouts, instant local deposits and withdrawals, and 24/7 client support.',
+  keywords = 'Bivaax, bivaax.com, bivaax.trade, Bivaax Trade, bivaax login, bivaax.com login, bivaax.trade login, Bivaax binary options, Bivaax trading, Bivaax platform, binary trade, bivax, bivax trade, earn money online, bkash deposit trading, nagad trading, bivaax sign up, bivaax app, trading platform, digital options',
   image = 'https://i.postimg.cc/sXX8XQDV/file-000000005f788211bd6a5c656938f636.png',
   url,
   type = 'website',
@@ -59,7 +59,7 @@ const SEO: React.FC<SEOProps> = ({
 
   const effectiveRobots = isPrivatePath ? 'noindex, nofollow' : robots;
 
-  const siteTitle = title.includes('Bivaax') ? title : `${title} | Bivaax Trade (bivaax.com & bivaax.trade)`;
+  const siteTitle = title === 'Bivaax Trade' ? title : `${title} | Bivaax Trade`;
 
   return (
     <Helmet>
@@ -123,7 +123,7 @@ const SEO: React.FC<SEOProps> = ({
             "@type": "Organization",
             "name": "Bivaax Trade",
             "url": "https://bivaax.com",
-            "logo": image,
+            "logo": "https://bivaax.com/logo.png",
             "contactPoint": {
               "@type": "ContactPoint",
               "telephone": "+1-000-000-0000",

@@ -1705,6 +1705,12 @@ export default function TradeTerminal() {
                         return next;
                       });
                     }
+                    if (userData.readNewsIds) {
+                      setReadNewsIds(userData.readNewsIds);
+                    }
+                    if (userData.readPromotionsIds) {
+                      setReadPromotionsIds(userData.readPromotionsIds);
+                    }
             }
         }, async (e) => {
             console.warn("Profile real-time fetch failed, falling back to server-side REST sync:", e.message);
@@ -2101,11 +2107,12 @@ export default function TradeTerminal() {
     | "calculator"
     | "calendar"
     | "statuses"
+    | "strategies"
   >(getInitialTab() as any);
 
   useEffect(() => {
     const newTab = getInitialTab();
-    if (newTab !== activeTabRaw && ['top-20', 'promotions', 'calendar', 'support', 'tournaments', 'education', 'statuses', 'help-center', 'trade', 'history', 'assets'].includes(newTab)) {
+    if (newTab !== activeTabRaw && ['top-20', 'promotions', 'calendar', 'support', 'tournaments', 'education', 'statuses', 'help-center', 'trade', 'history', 'assets', 'strategies'].includes(newTab)) {
       setActiveTabRaw(newTab as any);
     }
   }, [location.pathname]);
@@ -2190,6 +2197,95 @@ export default function TradeTerminal() {
   const [realtimeNews, setRealtimeNews] = useState<any[]>([]);
   const [newsData, setNewsData] = useState<any[]>([]);
   const [newsFeedTab, setNewsFeedTab] = useState<"platform">("platform");
+
+  const [readNewsIds, setReadNewsIds] = useState<string[]>([]);
+  const [readPromotionsIds, setReadPromotionsIds] = useState<string[]>([]);
+
+  // Sync read news and promotions from localStorage on user change
+  useEffect(() => {
+    const uid = auth.currentUser?.uid || 'guest';
+    try {
+      const savedNews = localStorage.getItem(`read_news_${uid}`);
+      if (savedNews) {
+        setReadNewsIds(JSON.parse(savedNews));
+      } else {
+        setReadNewsIds([]);
+      }
+    } catch (e) {
+      setReadNewsIds([]);
+    }
+
+    try {
+      const savedPromos = localStorage.getItem(`read_promotions_${uid}`);
+      if (savedPromos) {
+        setReadPromotionsIds(JSON.parse(savedPromos));
+      } else {
+        setReadPromotionsIds([]);
+      }
+    } catch (e) {
+      setReadPromotionsIds([]);
+    }
+  }, [auth.currentUser?.uid]);
+
+  const markNewsAsRead = async (newsId: string) => {
+    if (!newsId) return;
+    if (readNewsIds.includes(newsId)) return;
+
+    const updated = [...readNewsIds, newsId];
+    setReadNewsIds(updated);
+
+    const uid = auth.currentUser?.uid || 'guest';
+    localStorage.setItem(`read_news_${uid}`, JSON.stringify(updated));
+
+    if (auth.currentUser) {
+      try {
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+          readNewsIds: updated
+        });
+      } catch (err) {
+        console.error("Failed to update readNewsIds in Firestore:", err);
+      }
+    }
+  };
+
+  const markPromotionAsRead = async (promoId: string) => {
+    if (!promoId) return;
+    if (readPromotionsIds.includes(promoId)) return;
+
+    const updated = [...readPromotionsIds, promoId];
+    setReadPromotionsIds(updated);
+
+    const uid = auth.currentUser?.uid || 'guest';
+    localStorage.setItem(`read_promotions_${uid}`, JSON.stringify(updated));
+
+    if (auth.currentUser) {
+      try {
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+          readPromotionsIds: updated
+        });
+      } catch (err) {
+        console.error("Failed to update readPromotionsIds in Firestore:", err);
+      }
+    }
+  };
+
+  const markAllNewsAsRead = async () => {
+    const allIds = newsData.map(n => n.id).filter(Boolean);
+    setReadNewsIds(allIds);
+
+    const uid = auth.currentUser?.uid || 'guest';
+    localStorage.setItem(`read_news_${uid}`, JSON.stringify(allIds));
+
+    if (auth.currentUser) {
+      try {
+        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+          readNewsIds: allIds
+        });
+      } catch (err) {
+        console.error("Failed to update all readNewsIds in Firestore:", err);
+      }
+    }
+  };
   const [newsSearchQuery, setNewsSearchQuery] = useState("");
   const [marketNewsCategory, setMarketNewsCategory] = useState<"All" | "Crypto" | "Forex" | "Regulations">("All");
   const [newsRefreshing, setNewsRefreshing] = useState(false);
@@ -2251,6 +2347,7 @@ export default function TradeTerminal() {
     }).catch(err => console.warn("Master traders fetch failed:", err));
   }, []);
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = useState<any>(null);
   const [promotionsData, setPromotionsData] = useState<any[]>([]);
   const [tournamentsData, setTournamentsData] = useState<any[]>([
     {
@@ -7932,7 +8029,7 @@ const PROMOTED_ARTICLES = [
 
         <div className="py-6 border-t border-white/5 flex flex-col items-center">
            <button 
-             onClick={openSupport}
+             onClick={() => navigate("/support")}
              className="w-11 h-11 rounded-xl bg-[#f45c5c]/10 text-[#f45c5c] flex items-center justify-center hover:bg-[#f45c5c] hover:text-white transition-all shadow-lg group relative"
            >
              <Icons.MessageCircle size={22} />
@@ -8362,11 +8459,11 @@ const PROMOTED_ARTICLES = [
                 {openForTraders && (
                   <div className="flex flex-col bg-[#1a1b1f]">
                     {[
-                      { label: "Tournaments", tab: "tournaments" },
-                      { label: "Promotions", tab: "promotions" },
-                      { label: "Profit calculator", tab: "calculator" },
-                      { label: "Strategies", tab: "strategies" },
-                      { label: "Economic calendar", tab: "calendar" }
+                      { label: t('tournaments'), tab: "tournaments" },
+                      { label: t('promotions'), tab: "promotions" },
+                      { label: t('calculator'), tab: "calculator" },
+                      { label: t('strategies'), tab: "strategies" },
+                      { label: t('economicCalendar'), tab: "calendar" }
                     ].map(link => (
                       <button 
                         key={`sidebar-drawer-${link.tab}`} 
@@ -8419,21 +8516,15 @@ const PROMOTED_ARTICLES = [
                 )}
               </div>
 
-              <button 
-                onClick={() => {
-                  setActiveTab("help-center");
-                  setShowSidebar(false);
-                }}
-                className="flex items-center gap-4 px-6 h-[64px] hover:bg-white/5 border-b border-white/5 w-full text-left"
-              >
-                <span className="text-[15px] font-medium text-white/90">Help Center</span>
-              </button>
-              <button 
-  
-                className="flex items-center gap-4 px-6 h-[64px] hover:bg-white/5 border-b border-white/5 w-full text-left group"
-              >
-                <span className="text-[15px] font-medium text-white/90 group-hover:text-[#f45c5c] transition-colors">Support</span>
-              </button>
+               <button 
+                  onClick={() => {
+                    setShowSidebar(false);
+                    navigate("/support");
+                  }}
+                  className="flex items-center gap-4 px-6 h-[64px] hover:bg-white/5 border-b border-white/5 w-full text-left group"
+                >
+                  <span className="text-[15px] font-medium text-white/90 group-hover:text-[#f45c5c] transition-colors">Support</span>
+                </button>
               <button className="flex items-center gap-4 px-6 h-[64px] hover:bg-white/5 border-b border-white/5">
                 <span className="text-[15px] font-medium text-white/90">Reviews</span>
               </button>
@@ -8613,47 +8704,53 @@ const PROMOTED_ARTICLES = [
 
                     {/* 3 Square Grid Items */}
                     <div className="grid grid-cols-3 gap-3">
-                      {[
-                        { label: "Bonuses", tab: "promotions", icon: Gift, count: "2" },
-                        { label: "Calendar", tab: "calendar", icon: Calendar },
-                        { label: "Top-20", tab: "top-20", icon: Icons.Award, hasDot: true },
-                      ].map((item) => (
-                        <button 
-                          key={`activities-grid-${item.label}`}
-                          onClick={() => setActiveTab(item.tab as any)}
-                          className="bg-[#2a2c31] hover:bg-[#32343a] rounded-2xl p-3 flex flex-col items-center gap-3 transition-all border border-white/5 shadow-lg h-[110px] justify-center relative group"
-                        >
-                          <div className="w-12 h-12 rounded-xl bg-[#1f2026] flex items-center justify-center border border-white/5 group-hover:scale-105 transition-transform">
-                            <item.icon size={24} className="text-white" />
-                          </div>
-                          <span className="text-[12px] font-bold text-white/90">{item.label}</span>
-                          {item.count && <div className="absolute top-3 right-3 w-4 h-4 bg-[#ff4757] rounded-full flex items-center justify-center text-[9px] font-black">{item.count}</div>}
-                          {item.hasDot && <div className="absolute top-3 right-3 w-2 h-2 bg-[#ff4757] rounded-full"></div>}
-                        </button>
-                      ))}
+                      {(() => {
+                        const unreadPromosCount = promotionsData.filter(promo => !readPromotionsIds.includes(promo.id)).length;
+                        return [
+                          { label: "Bonuses", tab: "promotions", icon: Gift, count: unreadPromosCount > 0 ? String(unreadPromosCount) : undefined },
+                          { label: "Calendar", tab: "calendar", icon: Calendar },
+                          { label: "Top-20", tab: "top-20", icon: Icons.Award, hasDot: true },
+                        ].map((item) => (
+                          <button 
+                            key={`activities-grid-${item.label}`}
+                            onClick={() => setActiveTab(item.tab as any)}
+                            className="bg-[#2a2c31] hover:bg-[#32343a] rounded-2xl p-3 flex flex-col items-center gap-3 transition-all border border-white/5 shadow-lg h-[110px] justify-center relative group"
+                          >
+                            <div className="w-12 h-12 rounded-xl bg-[#1f2026] flex items-center justify-center border border-white/5 group-hover:scale-105 transition-transform">
+                              <item.icon size={24} className="text-white" />
+                            </div>
+                            <span className="text-[12px] font-bold text-white/90">{item.label}</span>
+                            {item.count && <div className="absolute top-3 right-3 w-4 h-4 bg-[#ff4757] rounded-full flex items-center justify-center text-[9px] font-black">{item.count}</div>}
+                            {item.hasDot && <div className="absolute top-3 right-3 w-2 h-2 bg-[#ff4757] rounded-full"></div>}
+                          </button>
+                        ));
+                      })()}
                     </div>
 
                     {/* Vertical List Items */}
                     <div className="space-y-3">
-                      {[
-                        { label: "What's new?", tab: "news", icon: Megaphone, badge: "9+" },
-                        { label: "Invite Friends", tab: "affiliate", icon: UserPlus },
-                        { label: "Education", tab: "education", icon: GraduationCap },
-                      ].map((item) => (
-                        <button 
-                          key={`activities-list-${item.label}`}
-                          onClick={() => setActiveTab(item.tab as any)}
-                          className="w-full bg-[#2a2c31] hover:bg-[#32343a] rounded-2xl p-4 flex items-center justify-between transition-all border border-white/5 shadow-lg h-[80px] group"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-[#1f2026] flex items-center justify-center border border-white/5 group-hover:scale-105 transition-transform">
-                              <item.icon size={22} className="text-white" />
+                      {(() => {
+                        const unreadNewsCount = newsData.filter(news => !readNewsIds.includes(news.id)).length;
+                        return [
+                          { label: "What's new?", tab: "news", icon: Megaphone, badge: unreadNewsCount > 0 ? (unreadNewsCount > 9 ? "9+" : String(unreadNewsCount)) : undefined },
+                          { label: "Invite Friends", tab: "affiliate", icon: UserPlus },
+                          { label: "Education", tab: "education", icon: GraduationCap },
+                        ].map((item) => (
+                          <button 
+                            key={`activities-list-${item.label}`}
+                            onClick={() => setActiveTab(item.tab as any)}
+                            className="w-full bg-[#2a2c31] hover:bg-[#32343a] rounded-2xl p-4 flex items-center justify-between transition-all border border-white/5 shadow-lg h-[80px] group"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-full bg-[#1f2026] flex items-center justify-center border border-white/5 group-hover:scale-105 transition-transform">
+                                <item.icon size={22} className="text-white" />
+                              </div>
+                              <span className="text-[16px] font-bold text-white/90">{item.label}</span>
                             </div>
-                            <span className="text-[16px] font-bold text-white/90">{item.label}</span>
-                          </div>
-                          {item.badge && <div className="bg-[#ff4757] text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{item.badge}</div>}
-                        </button>
-                      ))}
+                            {item.badge && <div className="bg-[#ff4757] text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{item.badge}</div>}
+                          </button>
+                        ));
+                      })()}
                     </div>
                   </div>
                 </>
@@ -8864,10 +8961,15 @@ const PROMOTED_ARTICLES = [
             <div className="flex justify-between items-center px-6 pb-4 border-b border-[#2C2C2E]/60 bg-[#1C1C1E]">
               <div className="flex items-center gap-2">
                 <span className="text-[15px] font-bold text-white">Unread</span>
-                <span className="bg-[#ffe24c] text-black text-[12px] font-black px-2 py-0.5 rounded-full">{newsData.filter(n => n.isPlatformNews).length}</span>
+                <span className="bg-[#ffe24c] text-black text-[12px] font-black px-2 py-0.5 rounded-full">
+                  {newsData.filter(n => n.isPlatformNews && !readNewsIds.includes(n.id)).length}
+                </span>
               </div>
 
-              <button className="text-gray-400 hover:text-gray-300 text-[13px] underline underline-offset-2 transition-colors">
+              <button 
+                onClick={markAllNewsAsRead}
+                className="text-gray-400 hover:text-gray-300 text-[13px] underline underline-offset-2 transition-colors"
+              >
                 Mark all read
               </button>
             </div>
@@ -8908,13 +9010,14 @@ const PROMOTED_ARTICLES = [
                             isRealtime: false
                           });
                           setActiveTab("news-detail");
+                          markNewsAsRead(news.id);
                         }}
                         className="bg-[#2C2C2E] hover:bg-[#3A3A3C] rounded-2xl p-5 border border-transparent transition-all cursor-pointer flex flex-col gap-3 active:scale-[0.98] group relative"
                         id={`platform-news-card-${news.id || idx}`}
                       >
                         <div className="flex justify-between items-center">
                           <p className="text-[#8C8F96] text-[13px] font-medium">{news.date}</p>
-                          {idx !== 0 && <span className="w-2 h-2 rounded-full bg-[#FFE24C]"></span>}
+                          {!readNewsIds.includes(news.id) && <span className="w-2 h-2 rounded-full bg-[#FFE24C]"></span>}
                         </div>
                         <h4 className="text-[17px] font-bold leading-snug text-white group-hover:text-[#ffe24c] transition-colors">
                           {news.title} {news.emoji}
@@ -9241,6 +9344,188 @@ const PROMOTED_ARTICLES = [
                   </>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OVERLAY STRATEGIES MODAL */}
+      {activeTab === "strategies" && (
+        <div className="fixed md:absolute inset-0 md:left-[72px] md:right-auto md:w-[420px] z-[150] overflow-hidden bg-[#1C1C1E] border-r border-[#2C2C2E] shadow-2xl animate-in slide-in-from-left duration-300">
+          <div className="w-full h-full flex flex-col relative text-white">
+            <div className="pt-6 pb-4 px-6 flex items-center gap-4 border-b border-[#2C2C2E]">
+              <button
+                onClick={() => selectedStrategy ? setSelectedStrategy(null) : setActiveTab("activities")}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <Icons.ChevronLeft size={24} strokeWidth={1.5} />
+              </button>
+              <h2 className="text-[22px] font-bold">{selectedStrategy ? selectedStrategy.name : "Trading Strategies"}</h2>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scrollbar-hide pb-20">
+              {selectedStrategy ? (
+                <div className="space-y-6 animate-in fade-in slide-in-from-right duration-300">
+                  <div className="relative rounded-2xl overflow-hidden aspect-[16/10] bg-[#2C2C2E] border border-white/5">
+                    <img 
+                      src={selectedStrategy.image} 
+                      alt={selectedStrategy.name}
+                      className="w-full h-full object-cover opacity-60"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#1C1C1E] to-transparent" />
+                    <div className="absolute bottom-4 left-4 right-4">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/30 text-yellow-500 text-[10px] font-black uppercase tracking-widest mb-2">
+                        <Icons.Zap size={10} fill="currentColor" /> {selectedStrategy.level}
+                      </div>
+                      <h3 className="text-xl font-bold">{selectedStrategy.name}</h3>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 px-2">
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-500">Overview</h4>
+                      <p className="text-[14px] text-gray-300 leading-relaxed font-medium">
+                        {selectedStrategy.fullDesc}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-500">Execution Steps</h4>
+                      <div className="space-y-3">
+                        {selectedStrategy.steps.map((step: string, i: number) => (
+                          <div key={i} className="flex gap-4">
+                            <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[11px] font-black text-yellow-500 flex-shrink-0">
+                              {i + 1}
+                            </div>
+                            <p className="text-[13px] text-gray-400 font-medium leading-normal">{step}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-yellow-500/5 border border-yellow-500/10 rounded-2xl p-5 space-y-2 mt-8">
+                       <div className="flex items-center gap-2 text-yellow-500">
+                         <Icons.AlertTriangle size={16} />
+                         <span className="text-[12px] font-black uppercase tracking-wider">Trader's Note</span>
+                       </div>
+                       <p className="text-[12px] text-gray-400 font-medium leading-relaxed italic">
+                         "Success in {selectedStrategy.name} requires discipline. Always verify signals across multiple timeframes before commitment."
+                       </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {[
+                    {
+                      id: 'bollinger',
+                      name: "Bollinger Breakout",
+                      level: "Intermediate",
+                      desc: "Capitalize on volatility expansions using price-band interactions.",
+                      fullDesc: "This strategy focuses on 'The Squeeze'. When Bollinger Bands narrow, it indicates low volatility. A breakout outside these bands often signals the start of a new, aggressive trend.",
+                      image: "https://images.unsplash.com/photo-1611974714851-48206138d73e?auto=format&fit=crop&q=80&w=800",
+                      steps: [
+                        "Identify a period where Bollinger Bands are extremely narrow (The Squeeze).",
+                        "Wait for a candle to close outside either the Upper or Lower band.",
+                        "Confirm with high relative volume during the breakout candle.",
+                        "Enter the trade in the direction of the breakout (CALL for upper, PUT for lower)."
+                      ]
+                    },
+                    {
+                      id: 'ma-cross',
+                      name: "Dynamic SMA Crossover",
+                      level: "Beginner",
+                      desc: "Traditional trend-following using 7 and 14 period SMA convergence.",
+                      fullDesc: "One of the most reliable beginner strategies. It uses the crossing of a fast-moving average over a slow-moving average to identify trend shifts.",
+                      image: "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=800",
+                      steps: [
+                        "Plot a 7-period (Yellow) and 14-period (White) Simple Moving Average.",
+                        "Wait for the 7 SMA to cross completely over the 14 SMA.",
+                        "If crossing upwards: Prepare for a CALL trade.",
+                        "If crossing downwards: Prepare for a PUT trade."
+                      ]
+                    },
+                    {
+                      id: 'rsi-rev',
+                      name: "RSI Momentum Reversal",
+                      level: "Advanced",
+                      desc: "Spotting over-extended markets using RSI oscillator limits.",
+                      fullDesc: "This strategy targets market exhaustion. Markets rarely move in one direction forever; RSI helps identify when a trend is likely to reverse.",
+                      image: "https://images.unsplash.com/photo-1579546678183-a848499b0028?auto=format&fit=crop&q=80&w=800",
+                      steps: [
+                        "Set RSI period to 14 with Overbought at 70 and Oversold at 30.",
+                        "Wait for RSI to enter the extreme zones (>70 or <30).",
+                        "Wait for a 'Bearish Engulfing' or 'Bullish Pinbar' candle pattern.",
+                        "Execute a counter-trend trade as RSI begins to exit the extreme zone."
+                      ]
+                    },
+                    {
+                      id: 'price-action',
+                      name: "Pure Price Action",
+                      level: "Expert",
+                      desc: "Reading raw market psychology through Support & Resistance.",
+                      fullDesc: "Eliminate the noise. This strategy relies purely on horizontal support and resistance levels where big institutional orders are typically placed.",
+                      image: "https://images.unsplash.com/photo-1642390237263-1d5138000033?auto=format&fit=crop&q=80&w=800",
+                      steps: [
+                        "Identify major swing highs and lows on a 15-minute chart.",
+                        "Draw clear horizontal zones at these key turning points.",
+                        "Wait for price to approach these zones on a 1-minute timeframe.",
+                        "Execute trades on 'Rejection' signals (long wicks touching the zone)."
+                      ]
+                    }
+                  ].map((strategy) => (
+                    <div 
+                      key={strategy.id}
+                      onClick={() => setSelectedStrategy(strategy)}
+                      className="group bg-[#212124] hover:bg-[#2C2C2E] border border-white/5 hover:border-yellow-500/30 rounded-2xl p-5 transition-all cursor-pointer active:scale-[0.98]"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2 px-2 py-0.5 rounded-md bg-yellow-500/10 text-yellow-500 text-[9px] font-black uppercase tracking-wider">
+                          <Icons.Trophy size={10} fill="currentColor" /> {strategy.level}
+                        </div>
+                        <Icons.ArrowUpRight size={18} className="text-gray-600 group-hover:text-yellow-500 transition-colors" />
+                      </div>
+                      <h3 className="text-[17px] font-bold text-white mb-2 group-hover:text-yellow-400 transition-colors">{strategy.name}</h3>
+                      <p className="text-[13px] text-gray-400 font-medium leading-snug">{strategy.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ECONOMIC CALENDAR DRAWER */}
+      {activeTab === "calendar" && (
+        <div className="fixed md:absolute inset-0 md:left-[72px] md:right-auto md:w-[420px] z-[150] overflow-hidden bg-[#1C1C1E] border-r border-[#2C2C2E] shadow-2xl animate-in slide-in-from-left duration-300">
+          <div className="w-full h-full flex flex-col relative text-white">
+            <div className="pt-6 pb-4 px-6 flex items-center gap-4 border-b border-[#2C2C2E]">
+              <button
+                onClick={() => setActiveTab("trade")}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <Icons.ChevronLeft size={24} strokeWidth={1.5} />
+              </button>
+              <h2 className="text-[22px] font-bold">{t('economicCalendar')}</h2>
+            </div>
+            
+            <div className="flex-1 overflow-hidden bg-[#1C1C1E]">
+               <iframe 
+                 src="https://sslecal2.investing.com?columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&category=_main,central_banks,inflation,employment,economic_activity,confidence_indicators,balance_of_payments,government&importance=1,2,3&features=datepicker,timezone&countries=25,32,6,37,7,5,22,11,10,35,43,56,36,4,12,17,42,15,45,47,48,23,51,52,53,55,59,60,61,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200&calType=day&timeZone=8&lang=1" 
+                 width="100%" 
+                 height="100%" 
+                 frameBorder="0" 
+                 marginWidth={0} 
+                 marginHeight={0}
+                 title="Investing.com Economic Calendar"
+               />
+            </div>
+            
+            <div className="p-4 bg-[#1C1C1E] border-t border-[#2C2C2E]">
+               <p className="text-[10px] text-gray-500 text-center uppercase tracking-widest font-black">
+                  Real-time market events powered by Investing.com
+               </p>
             </div>
           </div>
         </div>
@@ -12650,10 +12935,14 @@ const PROMOTED_ARTICLES = [
                                     <span className="text-white font-bold text-lg">{method.logo}</span>
                                  )}
                               </div>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <p className="text-[#E0E0E0] text-[15px] font-normal leading-tight">{method.name}</p>
-                                <p className="text-gray-500 text-[12px] font-normal leading-none mt-1">{method.instant ? 'instant' : method.time || '15 minutes'}</p>
-                              </div>
+                              <div className="flex flex-col ml-4">
+                                 <p className="text-[#E0E0E0] text-[15px] font-bold leading-tight">{method.name}</p>
+                                 <div className="flex items-center gap-2 mt-1">
+                                   <p className="text-[#00C980] text-[10px] font-black uppercase tracking-widest">{method.instant ? 'instant' : method.time || '15 mins'}</p>
+                                   <span className="text-white/10 text-[10px]">•</span>
+                                   <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">Min: {isCryptoDeposit ? `${method.minDeposit || 10}` : formatWithCurrency(method.minDeposit || 500, userCurrency)}</p>
+                                 </div>
+                               </div>
                             </div>
                           ))}
                         </div>
@@ -12675,78 +12964,6 @@ const PROMOTED_ARTICLES = [
                           }).map((method, idx) => (
                             <div 
                               key={`ewallet-${idx}-${method.name}`}
-                              onClick={(e) => { e.stopPropagation(); setSelectedMethod(method); setDepositStep("amount"); }}
-                              className="bg-[#2A2B31] hover:bg-[#323338] transition-colors rounded-[16px] flex items-center cursor-pointer border border-[#3b3b3f]/30 relative overflow-hidden min-h-[70px] px-4"
-                            >
-                              
-                              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-md z-10 overflow-hidden" style={{ backgroundColor: method.bgColor || '#1e1e1e' }}>
-                                 {method.logoType === 'image' || !method.logoType ? (
-                                    method.logo ? (
-                                      <img src={method.logo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer"  loading="lazy" />
-                                    ) : (
-                                      <div className="text-white font-bold">{method.name?.[0] || '?'}</div>
-                                    )
-                                 ) : (
-                                    <span className="text-white font-bold">{method.logo}</span>
-                                 )}
-                              </div>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <p className="text-[#E0E0E0] text-[15px] font-normal leading-tight">{method.name}</p>
-                                <p className="text-gray-500 text-[12px] font-normal leading-none mt-1">{method.instant ? 'instant' : method.time || '15 minutes'}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {(depositCategory === "All" || depositCategory === "Bank transfer") && (
-                      <div className="mb-6 relative z-10">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Icons.Building size={16} className="text-[#888]" />
-                          <h3 className="text-white font-bold text-[16px]">Bank transfer</h3>
-                        </div>
-                        
-                        <div className="flex flex-col gap-2">
-                           {depositMethods.filter(m => m.isActive !== false && m.category?.toLowerCase() === 'bank transfer').map((method, idx) => (
-                            <div 
-                              key={`bank-${idx}-${method.name}`}
-                              onClick={(e) => { e.stopPropagation(); setSelectedMethod(method); setDepositStep("amount"); }}
-                              className="bg-[#2A2B31] hover:bg-[#323338] transition-colors rounded-[16px] flex items-center cursor-pointer border border-[#3b3b3f]/30 relative overflow-hidden min-h-[70px] px-4"
-                            >
-                              
-                              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-md z-10 overflow-hidden" style={{ backgroundColor: method.bgColor || '#1e1e1e' }}>
-                                 {method.logoType === 'image' || !method.logoType ? (
-                                    method.logo ? (
-                                      <img src={method.logo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer"  loading="lazy" />
-                                    ) : (
-                                      <div className="text-white font-bold">{method.name?.[0] || '?'}</div>
-                                    )
-                                 ) : (
-                                    <span className="text-white font-bold">{method.logo}</span>
-                                 )}
-                              </div>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <p className="text-[#E0E0E0] text-[15px] font-normal leading-tight">{method.name}</p>
-                                <p className="text-gray-500 text-[12px] font-normal leading-none mt-1">{method.instant ? 'instant' : method.time || '15 minutes'}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(depositCategory === "All" || depositCategory === "Credit cards") && (
-                      <div className="mb-6 relative z-10">
-                        <div className="flex items-center gap-2 mb-3">
-                          <CreditCard size={16} className="text-[#888]" />
-                          <h3 className="text-white font-bold text-[16px]">Credit cards</h3>
-                        </div>
-                        
-                        <div className="flex flex-col gap-2">
-                           {depositMethods.filter(m => m.isActive !== false && m.category?.toLowerCase() === 'credit cards').map((method, idx) => (
-                            <div 
-                              key={`credit-${idx}-${method.name}`}
                               onClick={(e) => { e.stopPropagation(); setSelectedMethod(method); setDepositStep("amount"); }}
                               className="bg-[#2A2B31] hover:bg-[#323338] transition-colors rounded-[16px] flex items-center cursor-pointer border border-[#3b3b3f]/30 relative overflow-hidden min-h-[70px] px-4"
                             >
@@ -13567,7 +13784,7 @@ const PROMOTED_ARTICLES = [
                        </button>
                     </div>
                     <div className="flex flex-col gap-1.5 px-2 max-h-[50vh] overflow-y-auto">
-                       {["All", "Popular", "Crypto", "E-wallets", "Bank transfer", "Credit cards", "Other"].map(cat => (
+                       {["All", "Popular", "Crypto", "E-wallets", "Other"].map(cat => (
                          <div 
                            key={`cashier-cat-drop-${cat}`}
                            className={`px-4 py-3.5 rounded-xl cursor-pointer transition-colors ${depositCategory === cat ? 'bg-white/10 text-white shadow-sm' : 'hover:bg-white/5 text-gray-300'} font-medium text-[16px]`}
@@ -13605,27 +13822,23 @@ const PROMOTED_ARTICLES = [
                 </div>
 
                 {(() => {
-                   const completedDeposits = userTransactions.filter(t => t.type === "Deposit" && t.status === "Completed");
-                   const usedMethodNames = new Set(completedDeposits.map(t => t.method));
+                   const activeMethods = depositMethods.filter(m => m.isActive !== false);
                    
-                   const unlockedMethods = depositMethods.filter(m => usedMethodNames.has(m.name));
-                   const lockedMethods = depositMethods.filter(m => !usedMethodNames.has(m.name));
-
                    return (
                       <>
-                         <h3 className="text-white text-xl font-bold mb-4 tracking-tight">Methods</h3>
-                         {unlockedMethods.length > 0 ? (
+                         <h3 className="text-white text-xl font-bold mb-4 tracking-tight">Withdrawal Methods</h3>
+                         {activeMethods.length > 0 ? (
                             <div className="flex flex-col gap-2.5 mb-8">
-                               {unlockedMethods.map((method, idx) => (
+                               {activeMethods.map((method, idx) => (
                                   <div 
-                                     key={`unlocked-${idx}-${method.name}`}
+                                     key={`withdraw-${idx}-${method.name}`}
                                      className="bg-[#2A2B31] border border-[#3b3b3f]/50 rounded-[16px] p-4 flex items-center gap-4 shadow-sm group hover:border-[#5a5a5f] transition-all cursor-pointer"
                                      onClick={() => {
                                        setSelectedMethod(method);
                                        setWithdrawStep("form");
                                      }}
                                   >
-                                     <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-1 overflow-hidden" style={{ backgroundColor: method.bgColor || '#EC2A24' }}>
+                                     <div className="w-12 h-12 rounded-full flex items-center justify-center p-1 overflow-hidden" style={{ backgroundColor: method.bgColor || '#1e1e1e' }}>
                                         {method.logoType === 'image' || !method.logoType ? (
                                            method.logo ? (
                                               <img src={method.logo} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer"  loading="lazy" />
@@ -13640,48 +13853,21 @@ const PROMOTED_ARTICLES = [
                                         <span className="text-white font-semibold text-[15px] mb-0.5">{method.name}</span>
                                         <div className="flex items-center text-[12px]">
                                            <Icons.Zap size={10} className="text-[#00C980] mr-1" fill="currentColor" />
-                                           <span className="text-[#00C980] font-semibold mr-1.5">active</span>
-                                           <span className="text-gray-500 font-medium">• from {formatWithCurrency(1000, userCurrency)}</span>
+                                           <span className="text-[#00C980] font-semibold mr-1.5">Available</span>
+                                           <span className="text-gray-500 font-medium">• Min: {formatWithCurrency(currentMinWithdrawal, userCurrency)}</span>
                                         </div>
+                                     </div>
+                                     <div className="ml-auto">
+                                        <Icons.ChevronRight size={18} className="text-gray-600 group-hover:text-white transition-colors" />
                                      </div>
                                   </div>
                                ))}
                             </div>
                          ) : (
                             <div className="bg-[#2A2B31]/40 rounded-[16px] p-8 text-center border border-dashed border-white/5 mb-8">
-                               <p className="text-gray-500 text-sm">No active withdrawal methods. Please make a deposit first.</p>
+                               <p className="text-gray-500 text-sm">No withdrawal methods available. Please contact support.</p>
                             </div>
                          )}
-
-                         <h3 className="text-white text-xl font-bold mb-4 tracking-tight">Deposit to unlock</h3>
-                         <div className="flex flex-col gap-2.5">
-                            {lockedMethods.map((method, idx) => (
-                               <div 
-                                  key={`locked-${idx}-${method.name}`} 
-                                  className="bg-[#2A2B31] border border-[#3b3b3f]/50 rounded-[16px] p-4 flex items-center gap-4 shadow-sm group hover:border-[#5a5a5f] transition-all cursor-not-allowed opacity-60"
-                               >
-                                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-white text-[10px] font-bold overflow-hidden" style={{ backgroundColor: '#15161d' }}>
-                                     {method.logoType === 'image' || !method.logoType ? (
-                                        method.logo ? (
-                                           <img src={method.logo} alt="" className="w-full h-full object-contain grayscale opacity-60" referrerPolicy="no-referrer"  loading="lazy" />
-                                        ) : (
-                                           <div className="text-gray-600 font-bold">{method.name?.[0] || '?'}</div>
-                                        )
-                                     ) : (
-                                        <span className="text-gray-600 font-bold text-lg">{method.logo}</span>
-                                     )}
-                                  </div>
-                                  <div className="flex flex-col">
-                                     <span className="text-gray-400 font-semibold text-[15px] mb-0.5">{method.name}</span>
-                                     <div className="flex items-center text-[12px]">
-                                        <Icons.Lock size={10} className="text-gray-600 mr-1" fill="currentColor" />
-                                        <span className="text-gray-600 font-medium mr-1.5">locked</span>
-                                        <span className="text-gray-600 font-medium font-mono">• from {formatWithCurrency(1000, userCurrency)}</span>
-                                     </div>
-                                  </div>
-                               </div>
-                            ))}
-                         </div>
                       </>
                    );
                 })()}
@@ -14058,12 +14244,12 @@ const PROMOTED_ARTICLES = [
                                   </button>
                                   <button 
                                      onClick={() => {
-                                        setActiveTab("support");
+                                        navigate("/support");
                                         setShowDeposit(false);
                                      }}
                                      className="w-full bg-[#313134] hover:bg-[#3b3b3f]/70 border-none text-white font-bold py-4 rounded-[12px] transition-colors flex items-center justify-center gap-2 text-[15px]"
                                   >
-
+                                     <Icons.Headphones size={18} /> Contact Support
                                   </button>
                                </div>
                             </div>
@@ -15262,7 +15448,12 @@ const PROMOTED_ARTICLES = [
                               <Gift size={48} className="text-gray-800" />
                             </div>
                           )}
-                          <div className="absolute top-6 right-6 px-4 py-1.5 bg-yellow-500 text-black text-[11px] font-black uppercase rounded-full shadow-lg">Active</div>
+                          <div className="absolute top-6 right-6 flex gap-2">
+                            {!readPromotionsIds.includes(promo.id) && (
+                              <div className="px-4 py-1.5 bg-[#ff4757] text-white text-[11px] font-black uppercase rounded-full shadow-lg animate-pulse">New</div>
+                            )}
+                            <div className="px-4 py-1.5 bg-yellow-500 text-black text-[11px] font-black uppercase rounded-full shadow-lg">Active</div>
+                          </div>
                         </div>
                         <div className="p-8 flex flex-col flex-1 text-left">
                           <h3 className="text-[24px] font-black tracking-tight mb-3 text-white leading-tight">{promo.title}</h3>
@@ -15270,7 +15461,10 @@ const PROMOTED_ARTICLES = [
                             {promo.description}
                           </p>
                           <button 
-                             onClick={() => setSelectedPromotion(promo)}
+                             onClick={() => {
+                               setSelectedPromotion(promo);
+                               markPromotionAsRead(promo.id);
+                             }}
                              className="w-full py-4 bg-white hover:bg-gray-200 text-black rounded-2xl font-black text-sm transition-all uppercase tracking-widest shadow-xl active:scale-[0.98]"
                           >
                              View Details
@@ -15492,6 +15686,21 @@ const PROMOTED_ARTICLES = [
                     await reauthenticateWithCredential(currentUser, credential);
                     await updatePassword(currentUser, passwords.new);
 
+                    // Keep SQL database in sync
+                    try {
+                      const token = localStorage.getItem('bivax_token');
+                      await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: { 
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ password: passwords.new })
+                      });
+                    } catch (syncErr) {
+                      console.error("SQL password sync failed:", syncErr);
+                    }
+
                     toast.success("Password updated successfully!");
                     setShowPasswordModal(false);
                     setPasswords({ current: "", new: "", confirm: "" });
@@ -15622,114 +15831,168 @@ const PROMOTED_ARTICLES = [
            </div>
         </div>
       )}
-
       {/* REGULATIONS MODAL */}
       {showRegulations && (
-        <div className="fixed inset-0 z-[500] bg-[#1C1C1E] w-full h-full overflow-y-auto">
-          <div className="w-full h-full text-white relative">
-            <div className="sticky top-0 bg-[#1C1C1E] border-b border-[#2C2C2E] p-6 z-10 flex items-center justify-between">
-              <h2 className="text-3xl font-black w-full text-center">Regulation</h2>
+        <div className="fixed inset-0 z-[500] bg-[#131313] w-full h-full overflow-y-auto scrollbar-hide">
+          <div className="w-full min-h-screen text-white relative bg-gradient-to-b from-[#1a1a1a] to-[#131313]">
+            {/* Header */}
+            <div className="sticky top-0 bg-[#131313]/80 backdrop-blur-md border-b border-white/5 p-4 md:p-6 z-50 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
+                  <Icons.ShieldCheck className="text-yellow-500" size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold">Regulation</h2>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold">Compliance & Security</p>
+                </div>
+              </div>
               <button
                 onClick={() => setShowRegulations(false)}
-                className="absolute right-4 text-gray-400 hover:text-white transition-colors bg-[#2C2C2E] rounded-full p-2 focus:outline-none"
+                className="text-gray-400 hover:text-white transition-all bg-white/5 hover:bg-white/10 rounded-full p-2.5 focus:outline-none border border-white/5"
               >
-                <Icons.X size={24} />
+                <Icons.X size={20} />
               </button>
             </div>
             
-            <div className="max-w-3xl mx-auto p-8 md:p-12 space-y-10">
-              <div className="space-y-6">
-                <h3 className="text-2xl md:text-3xl font-bold">{regulationsData?.title}</h3>
-                {regulationsData?.introParas?.map((p: string, i: number) => (
-                  <p key={`intro-${i}`} className="text-gray-400 text-[15px] md:text-[17px] leading-relaxed">
-                    {p}
-                  </p>
-                ))}
-              </div>
-
-              <div className="pt-4">
-                <button className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-4 px-8 rounded-xl w-full md:w-auto shadow-lg transition-colors">
-                  View certificate
-                </button>
-              </div>
-
-              <div className="flex flex-col items-center py-6 border-y border-white/5 space-y-6">
-                <div className="w-32 h-32 bg-green-900/40 rounded-full flex items-center justify-center border-4 border-green-700 shadow-[0_0_30px_rgba(34,197,94,0.15)] relative overflow-hidden">
-                  <div className="absolute inset-x-0 bottom-0 h-10 bg-green-700/80 flex items-center justify-center transform -skew-y-6 origin-bottom-right">
-                    <span className="font-bold text-white tracking-widest">€20.000</span>
-                  </div>
-                  <Icons.Building size={48} className="text-green-500 mb-4" />
+            <div className="max-w-4xl mx-auto px-6 py-12 space-y-20">
+              {/* Introduction Section */}
+              <div className="space-y-8 text-center md:text-left">
+                <div className="space-y-4">
+                  <h3 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
+                    {regulationsData?.title || "The Financial Commission"}
+                  </h3>
+                  <div className="h-1.5 w-20 bg-yellow-500 rounded-full mx-auto md:mx-0"></div>
                 </div>
-                <p className="text-center text-gray-300 font-medium leading-relaxed w-full text-[15px] md:text-[17px]">
-                  {regulationsData?.compensationFundText}
-                </p>
-              </div>
-
-              <div className="space-y-8 pt-4">
-                <h4 className="text-2xl font-bold text-center">Commission:</h4>
-                <div className="space-y-10 relative">
-                  <div className="absolute left-6 top-6 bottom-6 w-px bg-[#2C2C2E] hidden md:block"></div>
-                  {regulationsData?.appealSteps?.map((step: string, i: number) => (
-                    <div key={`step-${i}`} className="flex flex-col md:flex-row items-center md:items-start gap-6 relative">
-                      <div className="w-12 h-12 rounded-full bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 flex items-center justify-center font-bold text-xl flex-shrink-0 z-10 mx-auto md:mx-0">
-                        {i + 1}
-                      </div>
-                      <p className="text-gray-400 leading-relaxed text-center md:text-left text-[15px] md:text-[17px] pt-2">
-                        {step}
+                
+                <div className="grid md:grid-cols-2 gap-10 items-start">
+                  <div className="space-y-6">
+                    {regulationsData?.introParas?.map((p: string, i: number) => (
+                      <p key={`intro-${i}`} className="text-gray-400 text-[16px] leading-relaxed font-medium">
+                        {p}
                       </p>
+                    ))}
+                  </div>
+                  <div className="bg-[#1c1c1e] border border-white/5 rounded-3xl p-8 flex flex-col items-center justify-center text-center space-y-6 shadow-2xl">
+                    <div className="w-20 h-20 bg-yellow-500/10 rounded-2xl flex items-center justify-center border border-yellow-500/20">
+                      <Icons.Award size={40} className="text-yellow-500" />
                     </div>
-                  ))}
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Official Membership</p>
+                      <h4 className="text-xl font-bold">Category "A" Member</h4>
+                    </div>
+                    <button className="bg-yellow-500 hover:bg-yellow-400 text-black font-black py-4 px-10 rounded-2xl w-full shadow-[0_10px_20px_rgba(234,179,8,0.2)] transition-all transform hover:-translate-y-1">
+                      View Certificate
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {regulationsData?.appealNote && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-6 md:p-8 mt-10">
-                  <p className="text-yellow-500/90 font-bold text-[15px] md:text-[17px] text-center leading-relaxed">
-                    {regulationsData?.appealNote}
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-8 pt-10 border-t border-white/5">
-                <h4 className="text-2xl font-bold text-center">The Financial Commission for the trader</h4>
-                <div className="space-y-8 max-w-3xl mx-auto">
-                  {regulationsData?.traderFeatures?.map((feature: any, i: number) => (
-                    <div key={`feat-${i}`} className="flex items-start gap-6">
-                      <div className="w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center text-black flex-shrink-0">
-                        {feature.icon === 'shield' ? <Icons.ShieldCheck size={28} /> : 
-                         feature.icon === 'scales' ? <Icons.Scale size={28} /> : 
-                         <Icons.FileText size={28} />}
+              {/* Compensation Fund Bento Card */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-green-500/10 blur-[80px] rounded-full opacity-30 group-hover:opacity-50 transition-opacity"></div>
+                <div className="relative bg-[#1c1c1e] border border-white/5 rounded-[40px] p-8 md:p-12 overflow-hidden">
+                  <div className="grid md:grid-cols-[200px_1fr] gap-12 items-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="relative w-40 h-40">
+                         <div className="absolute inset-0 bg-green-500/20 rounded-full animate-pulse"></div>
+                         <div className="absolute inset-2 bg-[#131313] rounded-full border border-green-500/30 flex flex-col items-center justify-center z-10">
+                            <Icons.Building2 size={44} className="text-green-500 mb-1" />
+                            <span className="text-2xl font-black text-white">€20.000</span>
+                            <span className="text-[8px] font-black uppercase tracking-tighter text-green-500/80">Per Claim</span>
+                         </div>
                       </div>
-                      <p className="text-gray-300 leading-relaxed text-[15px] md:text-[17px] pt-3">{feature.title}</p>
                     </div>
-                  ))}
+                    <div className="space-y-4">
+                      <h4 className="text-2xl md:text-3xl font-black">Compensation Fund</h4>
+                      <p className="text-gray-400 text-[15px] md:text-17px leading-relaxed font-medium">
+                        {regulationsData?.compensationFundText || "The Compensation Fund is a service included with membership, providing protection up to €20,000 per case."}
+                      </p>
+                      <div className="flex flex-wrap gap-3 pt-2">
+                         {["Independent Resolution", "Fast Processing", "Legal Protection"].map(tag => (
+                           <span key={tag} className="px-3 py-1 rounded-lg bg-green-500/5 border border-green-500/10 text-[10px] font-black text-green-500 uppercase tracking-widest">{tag}</span>
+                         ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
+              {/* VMT Section */}
               {regulationsData?.vmtSection && (
-                <div className="bg-[#242427] border border-white/5 rounded-2xl p-8 md:p-12 mt-12 text-center flex flex-col items-center shadow-lg">
-                  <div className="mb-8 w-32 h-32">
-                    <div className="w-full h-full bg-blue-900/40 rounded-full flex items-center justify-center border-4 border-blue-700 relative overflow-hidden">
-                      <div className="absolute top-0 inset-x-0 bottom-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNGRwIiBoZWlnaHQ9IjI0ZHAiIGZpbGw9IiM0QTlGRkYiPjxwYXRoIGQ9Ik0xMiAxTDMgNXYxNGw5IDEwIDktMTBWNUwxMiAxem0wIDJ2MTZsLTctN3YtOGw3LTR6Ij48L3BhdGg+PC9zdmc+')] bg-center bg-no-repeat bg-[length:60%] opacity-30"></div>
-                      <Icons.CheckCircle size={48} className="text-blue-500 relative z-10" />
-                      <div className="absolute inset-x-0 bottom-6 bg-orange-600/90 text-[10px] font-black tracking-widest text-white py-1 z-20 shadow-md transform -rotate-2">
-                        BEST EXECUTION
-                      </div>
-                    </div>
+                <div className="space-y-10">
+                  <div className="flex flex-col md:flex-row gap-6 items-center border-l-4 border-yellow-500 pl-8">
+                    <h3 className="text-2xl md:text-3xl font-black max-w-2xl leading-tight">
+                      {regulationsData.vmtSection.title}
+                    </h3>
                   </div>
-                  <h4 className="text-2xl font-bold mb-8 max-w-xl leading-snug">{regulationsData?.vmtSection?.title}</h4>
-                  <div className="space-y-6 text-left max-w-3xl">
-                    {regulationsData?.vmtSection?.paras?.map((p: string, i: number) => (
-                      <p key={`vmt-p-${i}`} className="text-gray-400 text-[15px] md:text-[17px] leading-relaxed">
-                        {i === 0 && typeof p === 'string' ? <span className="font-semibold text-white/80">{(p || "").split("Verify My Trade (VMT)")[0]}Verify My Trade (VMT){(p || "").split("Verify My Trade (VMT)")[1]}</span> : 
-                         i === 1 && typeof p === 'string' ? <><span className="font-semibold text-white/80">Verify My Trade</span>{(p || "").substring(15)}</> : 
-                         typeof p === 'string' ? p : ""}
-                      </p>
+                  <div className="grid md:grid-cols-2 gap-8">
+                    {regulationsData.vmtSection.paras?.map((p: string, i: number) => (
+                      <div key={`vmt-${i}`} className="bg-white/5 border border-white/5 p-8 rounded-3xl">
+                        <p className="text-gray-400 text-[15px] leading-relaxed font-medium">
+                          {p}
+                        </p>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
+              {/* Commission Steps */}
+              <div className="space-y-12">
+                <div className="text-center space-y-4">
+                  <h4 className="text-3xl md:text-4xl font-black">The Commission Process</h4>
+                  <p className="text-gray-500 font-medium">How to resolve disputes effectively</p>
+                </div>
+                
+                <div className="grid md:grid-cols-3 gap-8 relative">
+                  {regulationsData?.appealSteps?.map((step: string, i: number) => (
+                    <div key={`step-${i}`} className="relative bg-[#1c1c1e] border border-white/5 rounded-3xl p-8 space-y-6 group hover:border-yellow-500/30 transition-all">
+                      <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 flex items-center justify-center font-black text-xl">
+                        0{i + 1}
+                      </div>
+                      <p className="text-gray-400 text-[14px] leading-relaxed font-medium">
+                        {step}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {regulationsData?.appealNote && (
+                  <div className="flex items-center gap-4 bg-yellow-500/5 border border-yellow-500/10 rounded-2xl p-6">
+                    <Icons.Info className="text-yellow-500 flex-shrink-0" size={20} />
+                    <p className="text-yellow-500/80 font-bold text-[13px] italic leading-relaxed">
+                      {regulationsData.appealNote}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Trader Benefits Grid */}
+              <div className="space-y-12 pt-10 border-t border-white/5">
+                <h4 className="text-3xl font-black text-center">Benefits for the Trader</h4>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {regulationsData?.traderFeatures?.map((feature: any, i: number) => (
+                    <div key={`feat-${i}`} className="flex flex-col items-center text-center p-8 bg-white/5 border border-white/5 rounded-[32px] space-y-6 group hover:bg-white/10 transition-all">
+                      <div className="w-16 h-16 bg-yellow-500 rounded-2xl flex items-center justify-center text-black shadow-lg transform group-hover:rotate-6 transition-transform">
+                        {feature.icon === 'shield' ? <Icons.ShieldCheck size={32} /> : 
+                         feature.icon === 'scales' ? <Icons.Scale size={32} /> : 
+                         <Icons.FileText size={32} />}
+                      </div>
+                      <h5 className="text-[15px] font-bold text-gray-200 leading-snug">
+                        {feature.title}
+                      </h5>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer Note */}
+              <div className="py-20 text-center space-y-4">
+                <Icons.Building2 className="mx-auto text-gray-700" size={40} />
+                <p className="text-gray-600 text-xs font-bold uppercase tracking-[0.3em]">
+                  Bivaax Compliance Division
+                </p>
+              </div>
             </div>
           </div>
         </div>
